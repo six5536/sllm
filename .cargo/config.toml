@@ -1,0 +1,5 @@
+[build]
+# Use sccache as a Rust compiler wrapper to speed up builds by caching compiled artifacts.
+rustc-wrapper = "sccache"
+
+[env]

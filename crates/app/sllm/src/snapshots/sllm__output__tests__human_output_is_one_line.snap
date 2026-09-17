@@ -1,0 +1,5 @@
+---
+source: crates/app/sllm/src/output.rs
+expression: out
+---
+Hello, ada!

@@ -1,0 +1,19 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # All checks live in the reusable workflow so release.yml runs exactly the
+  # same gate before it publishes.
+  checks:
+    uses: ./.github/workflows/checks.yml

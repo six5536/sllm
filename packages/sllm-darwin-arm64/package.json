@@ -1,0 +1,32 @@
+{
+  "name": "@six5536/sllm-darwin-arm64",
+  "version": "0.1.0",
+  "description": "Prebuilt sllm binary for darwin-arm64.",
+  "homepage": "https://github.com/six5536/sllm#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/six5536/sllm.git",
+    "directory": "packages/sllm-darwin-arm64"
+  },
+  "bugs": {
+    "url": "https://github.com/six5536/sllm/issues"
+  },
+  "author": "six5536 <10079653+six5536@users.noreply.github.com>",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "cli",
+    "command-line"
+  ],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin/"
+  ],
+  "license": "MIT"
+}

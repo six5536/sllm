@@ -1,0 +1,121 @@
+name: Checks
+
+# The single source of truth for "is this tree good?". Called by ci.yml on every
+# push/PR and by release.yml before it publishes anything, so the release gate
+# cannot drift from CI.
+on:
+  workflow_call:
+
+# sccache (configured in .cargo/config.toml) is bypassed in CI; we use
+# Swatinem/rust-cache for caching instead.
+env:
+  CARGO_BUILD_RUSTC_WRAPPER: ""
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # ubuntu is covered by the `coverage` job below (it runs the full suite while
+    # measuring), so the plain matrix needs the cross-platform macos and windows
+    # checks. Windows runs tests and doctests only — lint, docs, launcher, and
+    # repo checks are OS-independent and already run on macos.
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # No toolchain action: rust-toolchain.toml is the single source of truth
+      # for the version *and* the components, and rustup honours it over
+      # `rustup default`. Pinning a version in the workflow too would be a second
+      # copy that cannot affect the build but can drift — which is exactly how a
+      # Dependabot bump to a nonexistent Rust 1.100.0 broke CI.
+      - name: Install the pinned toolchain
+        run: rustup toolchain install --profile minimal
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2.85.6
+        with:
+          tool: cargo-nextest
+
+      - name: Format
+        if: runner.os != 'Windows'
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        if: runner.os != 'Windows'
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo nextest run --workspace --locked
+
+      - name: Doctests
+        run: cargo test --doc --workspace --locked
+
+      - name: Docs (warnings as errors)
+        if: runner.os != 'Windows'
+        run: cargo doc --workspace --no-deps --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+      - name: Launcher test
+        if: runner.os != 'Windows'
+        run: node --test packages/sllm/test/*.test.js
+
+      - name: Version consistency
+        if: runner.os != 'Windows'
+        run: node scripts/verify-version.mjs
+
+  coverage:
+    # Runs the full test suite on ubuntu under instrumentation and enforces the
+    # per-crate line-coverage gate. Uses nightly so the `coverage(off)` markers on
+    # untestable glue take effect (stable ignores them).
+    name: coverage (ubuntu, nightly)
+    runs-on: ubuntu-latest
+    env:
+      CARGO_BUILD_RUSTC_WRAPPER: ""
+    steps:
+      - uses: actions/checkout@v7
+
+      # Nightly genuinely is not in rust-toolchain.toml — it exists only so the
+      # `coverage(off)` markers take effect. Installed explicitly; the npm script
+      # selects it with `cargo +nightly`.
+      - name: Install nightly toolchain
+        run: rustup toolchain install nightly --profile minimal --component llvm-tools-preview
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install cargo-llvm-cov and cargo-nextest
+        uses: taiki-e/install-action@v2.85.6
+        with:
+          tool: cargo-llvm-cov,cargo-nextest
+
+      - name: Coverage gate (per-crate line >= 90%)
+        run: npm run coverage:check
+
+  deny:
+    # Deterministic supply-chain checks only: these fail when *we* change
+    # dependencies. Advisories are handled by audit.yml on a schedule so a new
+    # RUSTSEC entry can never block an unrelated PR or an in-flight release.
+    name: cargo-deny (licenses, bans, sources)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans sources

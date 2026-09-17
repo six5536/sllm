@@ -1,0 +1,51 @@
+# cargo-deny configuration.
+#
+# Split by design: `licenses`, `bans` and `sources` are deterministic — they
+# only fail when we change dependencies — so they block CI and releases.
+# `advisories` is exogenous and runs on a schedule (audit.yml), opening an issue
+# instead of failing an unrelated PR.
+
+[graph]
+all-features = true
+
+[licenses]
+# sllm is MIT. Permissive licences only; anything copyleft needs a decision,
+# not a default.
+version = 2
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "CC0-1.0",
+  "Zlib",
+  # MPL-2.0 is weak, file-level copyleft: obligations attach only to MPL files
+  # that are modified and redistributed, so linking it into an MIT binary is
+  # fine. Nothing in the tree uses it today. Revisit if we ever vendor or patch
+  # such a crate.
+  "MPL-2.0",
+]
+confidence-threshold = 0.9
+# The allow list is deliberately broader than what the current tree uses, so a
+# routine dependency bump does not fail on an unremarkable permissive licence.
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# A duplicate of one of these would mean two copies of real logic in the binary,
+# not just a leaf utility crate.
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+[advisories]
+version = 2
+# Enforced by the scheduled audit.yml run, not by CI.
+yanked = "warn"

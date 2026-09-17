@@ -1,0 +1,44 @@
+{
+  "name": "sllm",
+  "version": "0.1.0",
+  "description": "A skeleton Rust CLI, shipped by a complete release pipeline.",
+  "homepage": "https://github.com/six5536/sllm#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/six5536/sllm.git",
+    "directory": "packages/sllm"
+  },
+  "bugs": {
+    "url": "https://github.com/six5536/sllm/issues"
+  },
+  "author": "six5536 <10079653+six5536@users.noreply.github.com>",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "cli",
+    "command-line",
+    "rust"
+  ],
+  "bin": {
+    "sllm": "bin/sllm.js"
+  },
+  "files": [
+    "bin/",
+    "lib/"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@six5536/sllm-linux-x64": "0.1.0",
+    "@six5536/sllm-linux-arm64": "0.1.0",
+    "@six5536/sllm-darwin-x64": "0.1.0",
+    "@six5536/sllm-darwin-arm64": "0.1.0",
+    "@six5536/sllm-win32-x64": "0.1.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

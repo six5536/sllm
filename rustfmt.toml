@@ -1,0 +1,12 @@
+# rustfmt doc - https://rust-lang.github.io/rustfmt/
+
+# hard_tabs = true
+edition = "2024"
+
+tab_spaces = 4
+hex_literal_case = "Upper"
+imports_granularity = "Crate"
+# imports_granularity = "Module"
+group_imports = "StdExternalCrate"
+max_width = 100
+newline_style = "Unix"

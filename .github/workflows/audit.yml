@@ -1,0 +1,54 @@
+name: Audit
+
+# Advisories are exogenous — a new RUSTSEC entry can land overnight through no
+# fault of any PR author. So they run on a schedule and open an issue rather
+# than failing builds. Deterministic checks (licenses/bans/sources) live in
+# checks.yml and do block.
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  advisories:
+    name: cargo-deny advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        id: deny
+        continue-on-error: true
+        with:
+          command: check advisories
+
+      - name: Open an issue on failure
+        if: steps.deny.outcome == 'failure'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const title = 'cargo-deny: security advisory affecting dependencies';
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'security',
+            });
+            if (existing.some((i) => i.title === title)) return;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              labels: ['security'],
+              body: [
+                'The scheduled `cargo deny check advisories` run failed.',
+                '',
+                `See the run for details: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                '',
+                'Fix by updating the affected dependency, or record a considered',
+                'exception in `deny.toml`.',
+              ].join('\n'),
+            });
