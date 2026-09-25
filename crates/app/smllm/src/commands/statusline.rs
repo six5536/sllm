@@ -4,6 +4,7 @@
 // @zen-component: STL-Command
 
 use std::io::{IsTerminal as _, Read as _};
+use std::path::{Path, PathBuf};
 
 use agent_harness_kit::hook::HookInput;
 use smllm_core::{Error as EngineError, SessionStatus};
@@ -13,6 +14,15 @@ use crate::commands::harness::bound_key;
 use crate::error::{Error, Result};
 use crate::output::{self, EXIT_OK};
 use crate::runtime::Runtime;
+
+/// The setup skill, installed by harness part `statusline` and shipped in the
+/// plugin (STL-9).
+// @zen-component: STL-Skill
+// @zen-impl: STL-9_AC-1
+pub const SKILL: &str = include_str!("../skills/smllm-statusline/SKILL.md");
+
+const HINT: &str = "note: smllm is not in your Claude Code status line; \
+                    ask Claude to add it (skill smllm-statusline)";
 
 /// `smllm statusline`: the row, `--json` object, or nothing; always exit 0.
 // @zen-impl: STL-1_AC-1
@@ -118,6 +128,33 @@ pub(crate) fn row(s: &SessionStatus, color: bool) -> String {
     out
 }
 
+/// The setup hint, unless the first `statusLine` found in `settings` calls
+/// `smllm statusline`, itself or in a file it names (STL-11).
+// @zen-component: STL-Hint
+// @zen-impl: STL-11_AC-1
+pub(crate) fn hint(settings: &[PathBuf], home: &Path) -> Option<&'static str> {
+    let command = settings.iter().find_map(|p| {
+        let doc: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(p).ok()?).ok()?;
+        Some(doc.pointer("/statusLine/command")?.as_str()?.to_string())
+    });
+    let calls = |t: &str| t.contains("smllm statusline");
+    let names_a_caller = |command: &str| {
+        command.split_whitespace().any(|w| {
+            let w = w.trim_matches(['"', '\'']);
+            let path = ["~/", "$HOME/", "${HOME}/"]
+                .iter()
+                .find_map(|p| w.strip_prefix(p))
+                .map_or_else(|| PathBuf::from(w), |rest| home.join(rest));
+            std::fs::read_to_string(path).is_ok_and(|t| calls(&t))
+        })
+    };
+    match command {
+        Some(c) if calls(&c) || names_a_caller(&c) => None,
+        _ => Some(HINT),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use smllm_core::InstanceStatus;
@@ -189,6 +226,39 @@ mod tests {
         assert!(!use_color(Some(ColorChoice::Auto), Some("1")));
         assert!(use_color(Some(ColorChoice::Always), Some("1")));
         assert!(!use_color(Some(ColorChoice::Never), None));
+    }
+
+    // @zen-test: STL-11_AC-1
+    #[test]
+    fn the_hint_looks_for_smllm_in_the_status_line_command_or_its_script() {
+        let dir = std::env::temp_dir().join(format!("smllm-hint-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(".claude")).unwrap();
+        let (local, user) = (dir.join("local.json"), dir.join("user.json"));
+        let set = |p: &Path, command: &str| {
+            let v = serde_json::json!({ "statusLine": { "type": "command", "command": command } });
+            std::fs::write(p, v.to_string()).unwrap();
+        };
+        let both = [local.clone(), user.clone()];
+        assert_eq!(hint(&both, &dir), Some(HINT), "no statusLine at all");
+        set(&user, "smllm statusline");
+        assert_eq!(hint(&both, &dir), None);
+        set(&local, "bash ~/.claude/line.sh");
+        assert_eq!(
+            hint(&both, &dir),
+            Some(HINT),
+            "the first found wins; no script"
+        );
+        std::fs::write(dir.join(".claude/line.sh"), "input=$(cat)\necho hi\n").unwrap();
+        assert_eq!(hint(&both, &dir), Some(HINT));
+        std::fs::write(
+            dir.join(".claude/line.sh"),
+            "s=$(printf '%s' \"$input\" | smllm statusline --json)\n",
+        )
+        .unwrap();
+        assert_eq!(hint(&both, &dir), None);
+        set(&local, "bash \"$HOME/.claude/line.sh\"");
+        assert_eq!(hint(&both, &dir), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // @zen-test: STL-5_AC-1

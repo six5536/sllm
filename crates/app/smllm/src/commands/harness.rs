@@ -16,6 +16,7 @@ use smllm_core::Stop;
 use smllm_core::host::Store as _;
 
 use crate::cli::{HarnessArgs, HookArgs};
+use crate::commands::statusline;
 use crate::error::{Error, Result};
 use crate::output::{self, EXIT_ERRORS, EXIT_OK};
 use crate::paths::{self, CONFIG_FILE, PROJECT_DIR};
@@ -130,6 +131,28 @@ impl Smllm {
     }
 }
 
+impl Smllm {
+    /// Where Claude Code looks for `statusLine`, in precedence order.
+    fn settings(&self, scope: Scope) -> Vec<PathBuf> {
+        let user = self.claude_user.join("settings.json");
+        match scope {
+            Scope::Project => vec![
+                self.project.join(".claude/settings.local.json"),
+                self.project.join(".claude/settings.json"),
+                user,
+            ],
+            Scope::User => vec![user],
+        }
+    }
+
+    /// The home directory, for `~/` in a status line command.
+    fn home(&self) -> PathBuf {
+        self.claude_user
+            .parent()
+            .map_or_else(PathBuf::new, Path::to_path_buf)
+    }
+}
+
 impl Tool for Smllm {
     fn name(&self) -> &str {
         "smllm"
@@ -179,6 +202,15 @@ impl Tool for Smllm {
                         "permissions.allow",
                         "mcp__smllm__smllm",
                     )],
+                ),
+                // @zen-impl: STL-9_AC-2
+                Part::files(
+                    "statusline",
+                    match scope {
+                        Scope::Project => ".claude/skills/smllm-statusline",
+                        Scope::User => "skills/smllm-statusline",
+                    },
+                    vec![("SKILL.md".into(), statusline::SKILL.into())],
                 ),
             ],
             hooks: HOOKS.iter().map(|(_, h)| (*h).to_string()).collect(),
@@ -251,6 +283,12 @@ pub fn run(args: &HarnessArgs, installing: bool, explicit: Option<&Path>) -> Res
                  `smllm harness install {} --force` overwrites them",
                 args.name
             );
+        }
+        let skill = result.parts.iter().find(|p| p.part == "statusline");
+        if skill.is_some_and(|p| p.state != "skipped")
+            && let Some(note) = statusline::hint(&tool.settings(scope), &tool.home())
+        {
+            eprintln!("{note}");
         }
     }
     Ok(EXIT_OK)

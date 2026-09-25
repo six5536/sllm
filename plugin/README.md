@@ -1,7 +1,9 @@
 # smllm Claude Code plugin
 
 The one-command install of smllm for Claude Code (PLAN-001 D34): the three
-hooks (`SessionStart`, `UserPromptSubmit`, `Stop`) and the `smllm` MCP server.
+hooks (`SessionStart`, `UserPromptSubmit`, `Stop`), the `smllm` MCP server, and
+the `smllm-statusline` skill (ask Claude to "add smllm to my status line"; see
+[docs/statusline.md](../docs/statusline.md)).
 It is the same wiring `smllm harness install claude` writes into a project,
 minus the `AGENTS.md`/`CLAUDE.md` block (the MCP tool description carries the
 rules).

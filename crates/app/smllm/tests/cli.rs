@@ -309,6 +309,10 @@ fn user_scope_harness_goes_through_claude_mcp() {
             .unwrap()
             .contains("smllm:harness")
     );
+    assert!(
+        home.join(".claude/skills/smllm-statusline/SKILL.md")
+            .is_file()
+    );
     let o = w
         .cmd()
         .args(["harness", "status", "claude", "--scope", "user"])

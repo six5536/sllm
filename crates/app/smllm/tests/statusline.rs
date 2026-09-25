@@ -91,3 +91,46 @@ fn nothing_to_show_prints_nothing_and_exits_0() {
         assert_eq!((o.code, o.stdout.as_str()), (0, "{}\n"), "{args:?} {stdin}");
     }
 }
+
+// @zen-test: STL-9_AC-2
+// @zen-test: STL-9_AC-3
+// @zen-test: STL-11_AC-1
+#[test]
+fn install_adds_the_skill_and_hints_until_the_status_line_calls_smllm() {
+    let w = World::showcase("statusline-skill");
+    let o = w.run(&["harness", "install", "claude"]);
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    assert!(
+        o.stdout
+            .contains("created .claude/skills/smllm-statusline (statusline)"),
+        "{}",
+        o.stdout
+    );
+    let plugin =
+        std::fs::read_to_string(common::repo().join("plugin/skills/smllm-statusline/SKILL.md"))
+            .unwrap();
+    assert_eq!(
+        w.read(".claude/skills/smllm-statusline/SKILL.md"),
+        plugin,
+        "the plugin ships the same skill"
+    );
+    assert!(o.stderr.contains("ask Claude to add it"), "{}", o.stderr);
+    // Install never sets statusLine.
+    assert!(!w.read(".claude/settings.json").contains("statusLine"));
+
+    w.write(
+        ".claude/settings.local.json",
+        r#"{"statusLine":{"type":"command","command":"smllm statusline"}}"#,
+    );
+    let o = w.run(&["harness", "status", "claude"]);
+    assert!(!o.stderr.contains("ask Claude"), "{}", o.stderr);
+
+    // Declined: no skill, no hint.
+    let w = World::showcase("statusline-without");
+    let o = w.run(&["harness", "install", "claude", "--without", "statusline"]);
+    assert!(!w.project.join(".claude/skills").exists());
+    assert!(!o.stderr.contains("ask Claude"), "{}", o.stderr);
+    let o = w.run(&["harness", "status", "claude"]);
+    assert!(o.stdout.contains("skipped"), "{}", o.stdout);
+    assert!(!o.stderr.contains("ask Claude"), "{}", o.stderr);
+}

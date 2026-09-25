@@ -25,6 +25,9 @@ harness-agnostic, with Claude Code supported first.
 - Built-in events: `enter`, `resume`, `park`, `unmatched` (a detour), and `yield`.
 - Guards (`command`, `visits`) and actions (`prompt`, `command`, `setRef`), in XState's
   `{type, params}` form. Commands receive their input only through environment variables.
+- `smllm statusline`: the current machine, state and instance as a coloured row in Claude Code's
+  status line, or as JSON for your own row. Ask Claude to "add smllm to my status line"; see
+  [docs/statusline.md](docs/statusline.md).
 - `smllm validate` reports each finding as `file:line`. `smllm graph` prints text, JSON or
   Mermaid. `smllm info schema` prints a JSON Schema for editor completion.
 - `smllm-wasm`: the engine for browser or Node hosts, loading `smllm compile` output.
@@ -39,7 +42,8 @@ cargo install smllm    # from source, needs a Rust toolchain
 Then connect it to Claude Code, either per project or through the plugin:
 
 ```sh
-smllm harness install claude          # CLAUDE.md/AGENTS.md block, .mcp.json, hooks, permission
+smllm harness install claude          # CLAUDE.md/AGENTS.md block, .mcp.json, hooks, permission,
+                                      # status line skill
 # or
 claude plugin marketplace add six5536/smllm && claude plugin install smllm@smllm
 ```
@@ -99,12 +103,14 @@ Fire one event: smllm({ session: "sm-k7f3q2", event, params })
 ```
 
 Other commands: `smllm fire --session KEY EVENT --param k=v` (the tool, from a shell),
+`smllm statusline [--json]` (see [docs/statusline.md](docs/statusline.md)),
 `smllm session list|show`, `smllm instance list|show`, `smllm harness status claude`,
 `smllm compile`, `smllm completions <shell>`.
 
 Exit codes: `0` success, `1` errors found (config errors, a rejected event, a failed hook), `2`
-a usage or internal error. Errors go to stderr prefixed with `error: `, and `--json` prints
-exactly one object.
+a usage or internal error. `smllm statusline` is the exception: it always exits 0, so it never
+blanks a status line. Errors go to stderr prefixed with `error: `, and `--json` prints exactly one
+object.
 
 Config: `.smllm/config.toml` in the project, combined with `~/.config/smllm/config.toml`. When
 both define the same state machine id, the project's wins. Instances live in `.smllm/state/`,
@@ -120,6 +126,7 @@ crates/lib/smllm-wasm         wasm-bindgen bindings → packages/smllm-wasm (npm
 crates/app/smllm              the CLI: commands, file store, command runner, hooks, MCP server
 packages/smllm*               npm launcher + prebuilt-binary packages
 plugin/                       the Claude Code plugin (marketplace in .claude-plugin/)
+docs/                         user docs (status line)
 examples/                     showcase + dev state machines
 .zen/                         plan, specs (ARCHITECTURE, REQ-*, DESIGN-*), rules
 ```

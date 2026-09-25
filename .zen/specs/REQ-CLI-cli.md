@@ -129,7 +129,7 @@ AS AN agent user, I WANT `smllm statusline [--session KEY] [--json] [--color WHE
 
 ACCEPTANCE CRITERIA
 
-- [ ] CLI-14_AC-1 [event]: WHEN the user runs `smllm statusline` THEN the system SHALL behave as REQ-STL (STL-1..7), always exiting 0
+- [x] CLI-14_AC-1 [event]: WHEN the user runs `smllm statusline` THEN the system SHALL behave as REQ-STL (STL-1..7), always exiting 0
 
 ## Assumptions
 
