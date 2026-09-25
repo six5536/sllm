@@ -1,70 +1,124 @@
-# sllm
+# smllm
 
-[![CI](https://github.com/six5536/sllm/actions/workflows/ci.yml/badge.svg)](https://github.com/six5536/sllm/actions/workflows/ci.yml)
-[![crates.io](https://img.shields.io/crates/v/sllm.svg)](https://crates.io/crates/sllm)
-[![npm](https://img.shields.io/npm/v/sllm.svg)](https://www.npmjs.com/package/sllm)
-[![docs.rs](https://img.shields.io/docsrs/sllm-core)](https://docs.rs/sllm-core)
+[![CI](https://github.com/six5536/smllm/actions/workflows/ci.yml/badge.svg)](https://github.com/six5536/smllm/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/smllm.svg)](https://crates.io/crates/smllm)
+[![npm](https://img.shields.io/npm/v/smllm.svg)](https://www.npmjs.com/package/smllm)
+[![docs.rs](https://img.shields.io/docsrs/smllm-core)](https://docs.rs/smllm-core)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-sllm is a skeleton Rust CLI. The command it ships today prints a greeting —
-the point is everything around it: a two-crate workspace, a test suite with a
-coverage gate, and a tag-driven release pipeline that publishes prebuilt
-binaries to npm and crates.io, with man pages, completions and checksummed
-archives on GitHub.
+smllm puts state machines in charge of an LLM coding agent's turn loop. You describe a workflow as
+a state machine in YAML: a strict subset of an [XState v5](https://stately.ai/docs/xstate) machine config.
+When the agent enters a state, smllm gives it that state's instructions. When the agent tries to
+stop, smllm shows the events it may fire, and the agent picks one with a single MCP tool call. A
+state machine can also decide for itself: guarded transitions and eventless `always` states run
+commands such as `cargo test` and choose the next state deterministically. smllm is
+harness-agnostic, with Claude Code supported first.
 
-Replace `hello` with your own commands. The machinery does not change.
+## Features
+
+- One MCP tool, `smllm({ session, event?, params? })`. Called with no event, it tells the agent where it is.
+- Claude Code hooks: the current state is injected at session start, and stopping is blocked
+  (with the events list) until the agent fires an event or `yield`s.
+- Instances: each piece of work (an issue, a document, a plan) moves through a state machine. It
+  gets a generated id and an optional ref that is set once, such as `GH-123`. You can park it,
+  detour from it, resume it, reopen it, or have another session take it over.
+- Built-in events: `enter`, `resume`, `park`, `unmatched` (a detour), and `yield`.
+- Guards (`command`, `visits`) and actions (`prompt`, `command`, `setRef`), in XState's
+  `{type, params}` form. Commands receive their input only through environment variables.
+- `smllm validate` reports each finding as `file:line`. `smllm graph` prints text, JSON or
+  Mermaid. `smllm info schema` prints a JSON Schema for editor completion.
+- `smllm-wasm`: the engine for browser or Node hosts, loading `smllm compile` output.
 
 ## Install
 
 ```sh
-npm install -g sllm   # prebuilt binary, Linux/macOS/Windows
-cargo install sllm    # from source, needs a Rust toolchain
+npm install -g smllm   # prebuilt binary, Linux/macOS/Windows
+cargo install smllm    # from source, needs a Rust toolchain
 ```
 
-Prebuilt binaries cover Linux and macOS on `x64` and `arm64`, and Windows on
-`x64`. The Linux builds are statically linked against musl, so they need no
-particular glibc version and run on Alpine too.
+Then connect it to Claude Code, either per project or through the plugin:
+
+```sh
+smllm harness install claude          # CLAUDE.md/AGENTS.md block, .mcp.json, hooks, permission
+# or
+claude plugin marketplace add six5536/smllm && claude plugin install smllm@smllm
+```
 
 ## Usage
 
 ```sh
-sllm hello              # Hello, world!
-sllm hello ada          # Hello, ada!
-sllm hello ada --json   # {"name":"ada","message":"Hello, ada!"}
-
-sllm completions zsh    # a completion script for your shell
-sllm --help
-sllm --version
+smllm init                  # .smllm/config.toml
+smllm new dev --write       # .smllm/dev.smllm.yaml, listed in the config
+smllm validate --warnings   # findings as file:line: level: message (rule)
+smllm graph dev --mermaid
 ```
 
-Exit codes: `0` success, `2` error (a usage error exits `2` as well). Errors go
-to stderr prefixed with `error: `, so stdout stays parseable when `--json` is
-in play. A closed downstream pipe (`sllm man | head`) is not an error.
+A state machine (see [`examples/`](examples/) for the full showcase):
+
+```yaml
+id: dev
+initial: TRIAGE
+meta:
+  smllm: 1
+  instance: { noun: issue, ref: { param: issueId, pattern: "^GH-\\d+$" } }
+states:
+  TRIAGE:
+    meta: { entryPoint: true }
+    entry: { type: prompt, params: { file: triage.md } }
+    on:
+      issueCreated: { target: WORK, actions: setRef }
+  WORK:
+    on:
+      submit:
+        - guard: { type: command, params: { run: "cargo test --quiet" } }
+          target: DONE
+        - target: WORK
+          reenter: true
+  DONE:
+    type: final
+```
+
+What the agent sees when it tries to stop in `WORK`:
+
+```
+<smllm>
+session sm-k7f3q2 · dev › WORK (visit 2) · issue GH-123
+Fire one event: smllm({ session: "sm-k7f3q2", event, params })
+<events>
+- submit
+- yield — Stop for now and stay in WORK.
+    note (optional): What you are waiting for.
+- park — Put issue GH-123 aside and return to idle.
+- unmatched — The request fits none of these; handle it from idle, then resume.
+</events>
+</smllm>
+```
+
+Other commands: `smllm fire --session KEY EVENT --param k=v` (the tool, from a shell),
+`smllm session list|show`, `smllm instance list|show`, `smllm harness status claude`,
+`smllm compile`, `smllm completions <shell>`.
+
+Exit codes: `0` success, `1` errors found (config errors, a rejected event, a failed hook), `2`
+a usage or internal error. Errors go to stderr prefixed with `error: `, and `--json` prints
+exactly one object.
+
+Config: `.smllm/config.toml` in the project, combined with `~/.config/smllm/config.toml`. When
+both define the same state machine id, the project's wins. Instances live in `.smllm/state/`,
+which is git-ignored. Sessions live in `~/.local/state/smllm/`.
 
 ## Project layout
 
 ```
-crates/lib/sllm-core     the library: logic, no argument parsing
-crates/app/sllm          the binary: CLI parsing, wiring, output rendering
-packages/sllm            the npm launcher (a JS shim that spawns the binary)
-packages/sllm-<os>-<cpu> the five prebuilt-binary packages it selects from
-scripts/                 version, release, and smoke-test scripts
-.github/workflows/       ci.yml, checks.yml (the shared gate), release.yml, audit.yml
+crates/lib/smllm-core         the engine: no_std + alloc, host traits for IO (builds for wasm)
+crates/lib/smllm-format       YAML/TOML loading, validation, JSON Schema, compile
+crates/lib/agent-harness-kit  harness plumbing shared with sokf (install/status, hooks, reports)
+crates/lib/smllm-wasm         wasm-bindgen bindings → packages/smllm-wasm (npm)
+crates/app/smllm              the CLI: commands, file store, command runner, hooks, MCP server
+packages/smllm*               npm launcher + prebuilt-binary packages
+plugin/                       the Claude Code plugin (marketplace in .claude-plugin/)
+examples/                     showcase + dev state machines
+.zen/                         plan, specs (ARCHITECTURE, REQ-*, DESIGN-*), rules
 ```
-
-## Adding a command
-
-1. Put the logic in `sllm-core` as a function returning `Result<T>` — no I/O,
-   no printing, so it is testable without a process.
-2. Add a variant to `Command` in `crates/app/sllm/src/cli.rs`, with an `Args`
-   struct for its flags.
-3. Wire it up in `main.rs` and render it in `output.rs` (human and `--json`).
-4. Cover it: unit tests beside the code, an end-to-end test in
-   `crates/app/sllm/tests/cli.rs`, and a line in `scripts/release-smoke.mjs` if
-   it is part of what a shipped binary must do.
-
-The man page and shell completions are generated from the clap definitions, so
-they follow automatically.
 
 ## Development
 
@@ -74,14 +128,13 @@ Toolchains are pinned in `.mise.toml` and `rust-toolchain.toml` (managed with
 ```sh
 npm run build           # cargo build --workspace
 npm run test            # cargo nextest run --workspace
+npm run build:wasm      # packages/smllm-wasm (wasm-bindgen + wasm-opt, size budget)
+npm run test:wasm       # drive the wasm engine from Node
 npm run lint            # cargo clippy --workspace
-npm run fmt             # cargo fmt --all
-npm run coverage:check  # enforce the per-crate coverage gate (>= 90% lines)
-npm run verify-version  # every version in the tree agrees
+npm run coverage:check  # per-crate coverage gate (>= 90% lines)
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full setup, the test layers, and
-how releases are cut.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the test layers and how releases are cut.
 
 ## License
 

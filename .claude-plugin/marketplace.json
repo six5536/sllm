@@ -1,0 +1,16 @@
+{
+  "name": "smllm",
+  "owner": {
+    "name": "six5536"
+  },
+  "metadata": {
+    "description": "smllm: state machines for LLM agents."
+  },
+  "plugins": [
+    {
+      "name": "smllm",
+      "source": "./plugin",
+      "description": "State machines for LLM agents: smllm's hooks and MCP tool for Claude Code."
+    }
+  ]
+}

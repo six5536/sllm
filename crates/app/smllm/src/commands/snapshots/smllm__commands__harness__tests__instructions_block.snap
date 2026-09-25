@@ -1,0 +1,7 @@
+---
+source: crates/app/smllm/src/commands/harness.rs
+expression: INSTRUCTIONS_BLOCK
+---
+## smllm
+
+This project's work is guided by smllm state machines. Everything smllm says is fenced in `<smllm>…</smllm>`: follow its `<instructions>`, and when the work is done fire one of its `<events>` with the `smllm` MCP tool, passing the session key from the `<smllm>` header. Fire `yield` before stopping to ask the user something. Only the main agent calls smllm.

@@ -1,9 +1,9 @@
-# Contributing to sllm
+# Contributing to smllm
 
 How to get set up, what to run before you push, and how a release is cut.
 
-> Status: pre-1.0 skeleton. Minor versions may contain breaking changes, and
-> `sllm-core`'s API is not stable yet.
+> Status: pre-1.0 alpha. Minor versions may contain breaking changes, and
+> `smllm-core`'s API is not stable yet.
 
 ## Prerequisites
 
@@ -49,13 +49,13 @@ npm run test:launcher   # node test for the npm launcher shim
 npm run smoke           # behavioural smoke of a release binary (build --release first)
 npm run smoke:launcher  # npm-pack the launcher + host platform package, run the
                         # real binary through it (stage the binary into
-                        # packages/sllm-<host>/bin/ first)
+                        # packages/smllm-<host>/bin/ first)
 
 npm run verify-version  # every version in the tree agrees (16 locations)
 npm run release <ver>   # bump + verify + commit + tag (does not push)
 ```
 
-Only the launcher (`packages/sllm`) is an npm workspace. The five
+Only the launcher (`packages/smllm`) is an npm workspace. The five
 platform-binary packages deliberately are not: npm enforces their `os`/`cpu`
 fields on workspace members unconditionally, so including them made a plain
 `npm install` fail with `EBADPLATFORM` on every host. Nothing needs them to be
@@ -82,7 +82,7 @@ change dependencies.
 
 Documentation is gated in CI, so keep it green:
 
-- Public items in `sllm-core` need doc comments (`#![warn(missing_docs)]`).
+- Public items in `smllm-core` need doc comments (`#![warn(missing_docs)]`).
 - `cargo doc` must build clean under `RUSTDOCFLAGS=-D warnings` (no broken
   intra-doc links, no stray HTML).
 - Rustdoc examples run as doctests (`cargo test --doc`).
@@ -94,18 +94,23 @@ Documentation is gated in CI, so keep it green:
 Tests run under `cargo-nextest`, which gives per-test process isolation. The
 layers, each with a home a new command should extend:
 
-- **Unit tests** — beside the code they cover, in a `#[cfg(test)] mod tests`.
-  Renderers take a writer, so they are tested against a buffer rather than a
-  captured stdout; one `insta` snapshot pins the human output.
-- **Library integration** (`crates/lib/sllm-core/tests/`) — drive `sllm-core`
-  through its public API only, the way a consumer sees it.
-- **CLI end-to-end** (`crates/app/sllm/tests/cli.rs`) — invoke the real binary,
-  assert human and `--json` output, stderr, and exit codes.
-- **Release smoke** (`scripts/release-smoke.mjs`) — the same contract, run
-  against each *built artifact* in the release workflow.
-- **npm launcher** (`packages/sllm/test/`) — a JS test for platform selection
-  and exit-code forwarding, plus `scripts/launcher-smoke.mjs`, which packs the
-  real tarballs and runs the binary through the shim.
+- **Unit tests**: beside the code they cover, in a `#[cfg(test)] mod tests`.
+- **Engine** (`crates/lib/smllm-core/tests/`): a fake host (`support/`) drives the protocol.
+  `insta` snapshots pin every piece of agent text, and `proptest` checks the engine properties
+  (ENG_P-1..4).
+- **Format** (`crates/lib/smllm-format/tests/`): the examples load cleanly, the bad fixtures
+  produce a snapshot of findings, and the compiled JSON round-trips.
+- **CLI end-to-end** (`crates/app/smllm/tests/`): `cli.rs` covers the commands. `session.rs`
+  covers scripted sessions, where a fake agent drives the Claude Code hooks, `smllm fire` and
+  the MCP server over stdio (TEST-2).
+- **wasm** (`packages/smllm-wasm/test/`): run `npm run build:wasm && npm run test:wasm` to drive
+  one scripted session through the JS API (TEST-3).
+- **Release smoke** (`scripts/release-smoke.mjs`): the same contract, run against each built
+  artifact in the release workflow.
+- **npm launcher** (`packages/smllm/test/`): a JS test for platform selection and exit-code
+  forwarding, plus `scripts/launcher-smoke.mjs`.
+- **Live model** (`scripts/live-e2e.mjs`, TEST-4): a real `claude -p` session. Run it only on
+  explicit human request, with `SMLLM_LIVE=1`. It is never run in CI or hooks.
 
 Line coverage is gated per crate at 90% (`npm run coverage:check`). Glue that
 genuinely cannot be tested is marked `#[cfg_attr(coverage_nightly,
@@ -113,12 +118,20 @@ coverage(off))]`, which is why the coverage job runs on nightly.
 
 ## Project layout
 
-- `crates/lib/sllm-core` — the library: logic, no arg parsing.
-- `crates/app/sllm` — the binary: CLI parsing, wiring, output rendering.
-- `packages/` — the npm launcher and per-platform prebuilt-binary packages.
-- `scripts/` — version, release, and smoke-test scripts.
-- `.github/workflows/` — `ci.yml`, the shared `checks.yml` gate, `release.yml`,
-  and the scheduled `audit.yml`.
+See `.zen/specs/ARCHITECTURE.md`. In short:
+
+- `crates/lib/smllm-core`: the engine. It is `no_std`: follow the WASM rules in
+  `.zen/rules/rust-rules.md`, and check with
+  `cargo build -p smllm-core --no-default-features --target wasm32-unknown-unknown`.
+- `crates/lib/smllm-format`: parsing, validation, schema, compile.
+- `crates/lib/agent-harness-kit`: harness plumbing shared with sokf (no smllm dependencies).
+- `crates/lib/smllm-wasm`: wasm-bindgen bindings for `packages/smllm-wasm`.
+- `crates/app/smllm`: the binary.
+- `packages/`: the npm launcher, the per-platform binaries, and `smllm-wasm`.
+- `plugin/`: the Claude Code plugin.
+- `scripts/`: version, release, wasm build and smoke-test scripts.
+- `.github/workflows/`: `ci.yml`, the shared `checks.yml` gate, `release.yml`, and the scheduled
+  `audit.yml`.
 
 ## Commits and pull requests
 
@@ -151,7 +164,7 @@ npm run release X.Y.Z
 ```
 
 That sets the version everywhere in lockstep (Cargo workspace, the internal
-`sllm-core` pin, all six `package.json` files, and **both lockfiles**),
+`smllm-core` pin, all six `package.json` files, and **both lockfiles**),
 verifies it landed consistently, then commits and tags. It deliberately stops
 there.
 
@@ -199,7 +212,7 @@ one-time password, so it works unattended.
 
 ### Adding a platform package
 
-A new `@six5536/sllm-<os>-<cpu>` package needs setup **before** the release
+A new `@six5536/smllm-<os>-<cpu>` package needs setup **before** the release
 that first ships it:
 
 1. Publish a `0.0.0` placeholder by hand (see above — one `npm publish` of the
@@ -217,6 +230,6 @@ is expected; land the change and the release together or in quick succession.
 ### Version consistency
 
 `npm run verify-version [version]` checks that the Cargo workspace, the
-`sllm-core` pin, every `package.json`, the launcher's `optionalDependencies`,
+`smllm-core` pin, every `package.json`, the launcher's `optionalDependencies`,
 `Cargo.lock` and `package-lock.json` all agree. That is 16 locations. It runs in
 CI and again against the tag at release time.

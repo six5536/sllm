@@ -1,0 +1,35 @@
+{
+  "description": "smllm: inject the current state on session start, clear the yield on each prompt, and show the events list when the agent tries to stop.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "smllm harness hook claude session-start"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "smllm harness hook claude user-prompt-submit"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "smllm harness hook claude stop"
+          }
+        ]
+      }
+    ]
+  }
+}

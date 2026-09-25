@@ -1,0 +1,12 @@
+{
+  "name": "smllm",
+  "version": "0.1.0",
+  "description": "State machines for LLM agents: smllm's hooks and MCP tool for Claude Code. Needs the smllm binary on PATH (npm install -g smllm).",
+  "author": {
+    "name": "six5536"
+  },
+  "homepage": "https://github.com/six5536/smllm",
+  "repository": "https://github.com/six5536/smllm",
+  "license": "MIT",
+  "keywords": ["state-machine", "workflow", "hooks", "mcp"]
+}
