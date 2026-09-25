@@ -42,7 +42,7 @@ AS AN agent user, I WANT the status line to cost nothing, SO THAT it can run aft
 ACCEPTANCE CRITERIA
 
 - [x] STL-3_AC-1 [ubiquitous]: The system SHALL NOT write to the store, bind a session or run guard or action commands while answering `statusline`
-- [ ] STL-3_AC-2 [ubiquitous]: The system SHOULD answer within 20 ms on a typical project (NFR-2)
+- [x] STL-3_AC-2 [ubiquitous]: The system SHOULD answer within 20 ms on a typical project (NFR-2)
 
 ### STL-4: never blanks the status line [MUST]
 

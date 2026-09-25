@@ -2,7 +2,7 @@
 
 | Meta               | Value                                                                                  |
 | ------------------ | -------------------------------------------------------------------------------------- |
-| Status             | in-progress (grilled and decided, §8; ready to implement from S0)                      |
+| Status             | completed (S0–S5 implemented 2026-09-25, §9)                                           |
 | Workflow direction | top-down                                                                               |
 | Traces to          | `REQ-STL-statusline.md`, `DESIGN-STL-statusline.md` (to be written); CLI, HOST, NFR    |
 
@@ -127,3 +127,20 @@ status line, or asks to set up, change or remove it"). Steps:
 | D2-9 | Rename `noun` → `kind` everywhere (`meta.instance.kind`, `InstanceSpec.kind`, examples, schema, specs), before S1; pre-release, no migration |
 | D2-10 | The skill is harness part `statusline`: default in both scopes (project `.claude/skills/`, user `~/.claude/skills/`), excluded with `--without statusline` (remembered); the plugin always ships it |
 | D2-11 | User doc at `docs/statusline.md` (reference for the JSON contract and recipes); README and the skill link to it rather than repeating it |
+
+## 9. Outcome
+
+| Phase | Commit / result |
+| ----- | --------------- |
+| S0 | d7746ea: `noun` → `kind` |
+| S1 | 82eb8f3: REQ-STL, DESIGN-STL; CLI-14, HOST glossary, ARCHITECTURE |
+| S2 | 43e8e6f: `Engine::status` (`SessionStatus`, `InstanceStatus`); wasm `Engine.status`; wasm 264 KiB |
+| S3 | debbc6f: `smllm statusline`, row and JSON snapshots, e2e |
+| S4 | 4836ba1: skill (part `statusline` + plugin copy, test-checked equal), hint, `docs/statusline.md`, README |
+| Fix | a4414fa: the snippets use `if …; fi`; a trailing `[ -n "$row" ] && printf` exits 1 when there is no row, and Claude Code then blanks the whole status line |
+| S5 | `smllm` installed to `~/.cargo/bin`; the line appended to `~/.claude/statusline-command.sh` (backup `.bak-smllm`); verified with sample JSON: unbound → the user's row only, exit 0; bound → `smllm idle`, then `smllm showcase › DRAFT · document i-… · yielded`; ~2 ms per run. No live row in this repo's own sessions: it has no `.smllm/` config or smllm hooks (D2-3) |
+
+Changes from §4–§5 while implementing: `instance` and `suspended` share one shape including
+`machine` and `status` (D2-8); the core type is `SessionStatus` (`record::Status` already exists);
+the hint also fires with no `statusLine` at all, and not when the part is declined.
+

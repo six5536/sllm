@@ -177,7 +177,7 @@ SOURCE: .zen/specs/REQ-STL-statusline.md
 - STL-2_AC-1 → STL-Command
 - STL-2_AC-2 → STL-Command
 - STL-3_AC-1 → STL-Status (STL_P-1)
-- STL-3_AC-2 → STL-Command [n/a] one session read, a few instance reads
+- STL-3_AC-2 → STL-Command (measured ~2 ms per run, release build, 2026-09-25)
 - STL-4_AC-1 → STL-Command
 - STL-5_AC-1 → STL-Status (STL_P-2)
 - STL-5_AC-2 → STL-Status
