@@ -1,0 +1,231 @@
+# The Crypt of the Borrow Checker: a tiny dungeon crawl. The user plays, the
+# agent narrates, and smllm is the rules: dice and the riddle are command
+# guards, so the narrator can neither cheat nor be talked round. Loot lives in
+# .smllm/state/loot/<instance>/ (git-ignored). Start with:
+#   "let's play the quest"  →  enter { stateMachine: quest, heroName: Ferris }
+id: quest
+description: A dungeon crawl for a break. The user plays; you narrate and fire the moves they pick.
+initial: GATE
+
+meta:
+  smllm: 1
+  instance:
+    kind: hero
+    ref:
+      param: heroName
+      description: "The hero's name, chosen by the player: one capitalised word."
+      pattern: "^[A-Z][a-z]{1,15}$"
+  events:
+    named: { description: "Select with the name the player chose for their hero." }
+    open: { description: "Select when the player pushes the gate open." }
+    library: { description: "Select when the player takes the left passage, to the library." }
+    forge: { description: "Select when the player takes the right passage, to the forge." }
+    descend: { description: "Select when the player goes down the stairs." }
+    leave: { description: "Select when the player goes back to the hall." }
+    answer:
+      description: Select with the player's answer to the riddle.
+      params:
+        type: object
+        properties:
+          word: { type: string, description: "The player's answer, exactly as they said it." }
+        required: [word]
+    strike: { description: "Select when the player strikes the anvil." }
+    fight: { description: "Select when the player attacks the dragon." }
+    bribe:
+      description: Select when the player offers the dragon something.
+      params:
+        type: object
+        properties:
+          offer: { type: string, enum: [gold, poem, unsafe], description: "What the player offers." }
+        required: [offer]
+    recited: { description: "Select once the poem has been recited to the dragon." }
+    flee: { description: "Select when the player runs back up to the hall." }
+    yield:
+      description: Select after describing the room and asking the player for their move.
+  sharedActions:
+    - states: [GATE, HALL, LIBRARY, FORGE, LAIR, RECITAL]
+      position: before
+      entry: { type: prompt, params: { file: prompts/quest/narrator.md } }
+
+states:
+  GATE:
+    meta: { entryPoint: true }
+    entry:
+      - { type: command, params: { run: 'rm -rf ".smllm/state/loot/$SMLLM_INSTANCE" && mkdir -p ".smllm/state/loot/$SMLLM_INSTANCE"' } }
+      - type: prompt
+        params:
+          text: |
+            A rusted gate, carved with a crab wearing a crown. Beyond it, stairs spiral down into
+            the Crypt of the Borrow Checker, where a dragon sleeps on a hoard of lifetimes.
+            If the hero in the header has no name yet (only an id), ask the player for one and fire
+            named. Otherwise greet the hero by name and ask whether they dare to open the gate.
+    on:
+      named: { target: HALL, actions: setRef }
+      open: HALL
+
+  HALL:
+    entry:
+      type: prompt
+      params:
+        text: |
+          A torch-lit hall. Left: a library that whispers. Right: a forge that clangs by itself.
+          Ahead: stairs going down, towards a warm, sulphurous breeze.
+    on:
+      library: LIBRARY
+      forge: FORGE
+      descend: STAIRS
+
+  LIBRARY:
+    entry:
+      type: prompt
+      params:
+        text: |
+          Shelves of man pages to the ceiling. A book floats open and speaks:
+          "I speak without a mouth and hear without ears. Shout into the shell, and I shout back."
+          The player may answer (in any case), or leave.
+    on:
+      answer:
+        # Checked by checksum, so the answer never shows in the trace.
+        - guard:
+            type: command
+            params:
+              run: '[ "$(printf %s "$SMLLM_PARAM_WORD" | tr "[:upper:]" "[:lower:]" | tr -d " .!\"" | cksum)" = "1153022284 4" ]'
+          target: HALL
+          actions:
+            - { type: command, params: { run: 'touch ".smllm/state/loot/$SMLLM_INSTANCE/key"' } }
+            - { type: prompt, params: { text: "The book snaps shut and drops an iron key. The hero takes it: the key is in the inventory." } }
+        - guard: { type: visits, params: { state: LIBRARY, atLeast: 3 } }
+          target: LIBRARY
+          reenter: true
+          actions:
+            type: prompt
+            params: { text: "Wrong. A ghost librarian takes pity and whispers: \"four letters, and every shell has me built in.\"" }
+        - target: LIBRARY
+          reenter: true
+          actions:
+            type: prompt
+            params: { text: "Wrong. The book hisses and the candles gutter." }
+      leave: HALL
+
+  FORGE:
+    entry:
+      type: prompt
+      params:
+        text: |
+          An anvil glowing orange, a hammer that floats. Strike it to forge a sword: the crypt
+          rolls a die (4 or more wins). A failed roll shows in the trace; tell the player what they rolled.
+    on:
+      strike:
+        - guard:
+            type: command
+            params:
+              run: 'r=$(( $(od -An -N1 -tu1 /dev/urandom) % 6 + 1 )); echo "rolled $r"; [ "$r" -ge 4 ]'
+          target: HALL
+          actions:
+            - { type: command, params: { run: 'touch ".smllm/state/loot/$SMLLM_INSTANCE/sword"' } }
+            - { type: prompt, params: { text: "The blade rings true: a sword of tempered 'static. The hero carries it now." } }
+        - guard: { type: visits, params: { state: FORGE, atLeast: 4 } }
+          target: HALL
+          actions:
+            - { type: command, params: { run: 'touch ".smllm/state/loot/$SMLLM_INSTANCE/sword"' } }
+            - { type: prompt, params: { text: "The blade cracks again. The smith's ghost sighs and hands the hero a sword anyway." } }
+        - target: FORGE
+          reenter: true
+          actions:
+            type: prompt
+            params: { text: "The blade cracks and falls apart. The player may strike again." }
+      leave: HALL
+
+  # The crypt decides: no key, no dragon.
+  STAIRS:
+    always:
+      - guard: { type: command, params: { run: 'test -f ".smllm/state/loot/$SMLLM_INSTANCE/key"' } }
+        target: LAIR
+      - target: HALL
+        actions:
+          type: prompt
+          params: { text: "An iron door blocks the stairs. It has a keyhole, and the hero has no key." }
+
+  LAIR:
+    entry:
+      type: prompt
+      params:
+        text: |
+          The door grinds open. On a hoard of lifetimes sleeps Ferrisaur, a crab the size of a
+          house, breathing borrow errors. It opens one eye. The player may fight, bribe it with
+          gold, a poem or unsafe code, or flee.
+    on:
+      fight: ATTACK
+      bribe:
+        - guard: { type: command, params: { run: '[ "$SMLLM_PARAM_OFFER" = poem ]' } }
+          target: RECITAL
+        - guard: { type: command, params: { run: '[ "$SMLLM_PARAM_OFFER" = unsafe ]' } }
+          target: FALLEN
+          actions:
+            type: prompt
+            params: { text: "Ferrisaur's eyes go red. \"UNSAFE?\" The hero is dereferenced on the spot." }
+        - target: LAIR
+          reenter: true
+          actions:
+            type: prompt
+            params: { text: "Ferrisaur yawns. It is lying on gold. It wants something it cannot own." }
+      flee: HALL
+
+  # The crypt decides: a sword and a roll of 3+ wins; the fourth attack is the last.
+  ATTACK:
+    always:
+      - guard:
+          type: command
+          params:
+            run: 'test -f ".smllm/state/loot/$SMLLM_INSTANCE/sword" || { echo "no sword"; exit 1; }; r=$(( $(od -An -N1 -tu1 /dev/urandom) % 6 + 1 )); echo "rolled $r"; [ "$r" -ge 3 ]'
+        target: TREASURE
+      - guard: { type: visits, params: { state: ATTACK, atLeast: 4 } }
+        target: FALLEN
+        actions:
+          type: prompt
+          params: { text: "One attack too many. Ferrisaur's breath moves the hero out of scope, forever." }
+      - target: LAIR
+        reenter: true
+        actions:
+          type: prompt
+          params: { text: "The attack fails (see the roll, or the missing sword, in the trace). Ferrisaur singes the hero's eyebrows." }
+
+  RECITAL:
+    entry:
+      type: prompt
+      params:
+        text: |
+          Ferrisaur leans closer. "A poem, then. A haiku about the borrow checker, and it had
+          better scan." Write the haiku yourself, recite it in character, then fire recited.
+    on:
+      recited: TREASURE
+
+  TAVERN:
+    meta: { fallback: true }
+    entry:
+      type: prompt
+      params:
+        text: |
+          The Tavern of Unmatched Requests, where the hero rests while real work gets done.
+          Handle the player's out-of-game request fully and out of character, then fire resume
+          to go back into the crypt.
+
+  TREASURE:
+    type: final
+    entry:
+      - { type: command, params: { run: 'rm -rf ".smllm/state/loot/$SMLLM_INSTANCE"' } }
+      - type: prompt
+        params:
+          text: |
+            Victory! Tell the tale of the hero's quest in five sentences, using the name from the
+            header and what happened along the way, and draw the treasure as a small ASCII chest.
+            Then offer another quest.
+
+  FALLEN:
+    type: final
+    entry:
+      type: prompt
+      params:
+        text: |
+          The hero has fallen. Write a two-line epitaph for their tombstone. They can try again:
+          fire enter with this hero's name and state: GATE (a new run starts at the gate).

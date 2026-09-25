@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "smllm": {
+      "command": "smllm",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

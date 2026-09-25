@@ -1,0 +1,8 @@
+# Written by smllm harness install. Do not edit.
+
+[claude]
+hooks = "fnv1a64:326e9e3b4d9b77ad"
+instructions = "fnv1a64:9819c18528c40510"
+mcp = "fnv1a64:eb355a0645ac716a"
+permissions = "fnv1a64:a9d1c48e5d77dc9b"
+statusline = "fnv1a64:e140da82c817f376"

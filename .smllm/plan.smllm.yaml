@@ -1,0 +1,131 @@
+# How a plan moves through this repo, as PLAN-001 and PLAN-002 did: write it,
+# grill it with the user, implement it phase by phase with the tests as the
+# gate, double-check it, record the outcome.
+id: plan
+description: Take a PLAN-nnn from draft to implemented, phase by phase.
+initial: DRAFT
+
+meta:
+  smllm: 1
+  instance:
+    kind: plan
+    ref:
+      param: planId
+      description: "The plan's id, e.g. PLAN-003."
+      pattern: "^PLAN-\\d{3}$"
+  events:
+    written:
+      description: Select once the plan file exists in .zen/plans/.
+    decided:
+      description: Select when every open question is answered and the user wants it implemented.
+    revise:
+      description: Select when the grilling showed the plan needs rewriting.
+    phaseDone:
+      description: Select when one phase is implemented and committed.
+      params:
+        type: object
+        properties:
+          phase: { type: string, description: "The phase, e.g. S2." }
+        required: [phase]
+    allPhasesDone:
+      description: Select when the last phase is implemented and committed.
+    fixed:
+      description: Select when you believe the failures are fixed.
+    clean:
+      description: Select when the double-check found nothing left to fix.
+    issuesFound:
+      description: Select when the double-check found gaps; name them.
+      params:
+        type: object
+        properties:
+          issues: { type: string, description: "What is wrong or missing." }
+        required: [issues]
+    retry:
+      description: Select when the user has said how to proceed.
+  sharedActions:
+    - states: [DRAFT, GRILL, IMPLEMENT, FIX, DOUBLE_CHECK]
+      position: before
+      entry: { type: prompt, params: { file: prompts/plan/rules.md } }
+
+states:
+  DRAFT:
+    meta: { entryPoint: true }
+    entry: { type: prompt, params: { file: prompts/plan/draft.md } }
+    on:
+      written: { target: PLAN_EXISTS, actions: setRef }
+
+  PLAN_EXISTS:
+    always:
+      - guard: { type: command, params: { run: 'ls .zen/plans/"$SMLLM_REF"-*.md' } }
+        target: GRILL
+      - target: DRAFT
+        actions:
+          type: prompt
+          params: { text: "No .zen/plans/<planId>-*.md file exists yet. Write it first." }
+
+  GRILL:
+    meta: { entryPoint: true }
+    entry: { type: prompt, params: { file: prompts/plan/grill.md } }
+    on:
+      decided: IMPLEMENT
+      revise: DRAFT
+
+  IMPLEMENT:
+    meta: { entryPoint: true }
+    entry: { type: prompt, params: { file: prompts/plan/implement.md } }
+    on:
+      phaseDone: TESTS
+      allPhasesDone:
+        - guard: { type: command, params: { run: "npm run -s test:gate", timeoutSecs: 1800 } }
+          target: DOUBLE_CHECK
+        - target: FIX
+
+  # The machine decides: green goes on, red goes to FIX, from the fourth red on it asks the user.
+  TESTS:
+    always:
+      - guard: { type: command, params: { run: "npm run -s test:gate", timeoutSecs: 1800 } }
+        target: IMPLEMENT
+        actions:
+          type: prompt
+          params: { text: "Tests and clippy pass. Start the next phase, or fire allPhasesDone after the last one." }
+      - guard: { type: visits, params: { state: FIX, atLeast: 4 } }
+        target: STUCK
+      - target: FIX
+
+  FIX:
+    entry:
+      type: prompt
+      params:
+        text: |
+          The gate failed; the guard line above shows the tail of its output. Run
+          `npm run test:gate` yourself to see all of it, fix the cause (not the test),
+          commit, then fire fixed.
+    on:
+      fixed: TESTS
+
+  DOUBLE_CHECK:
+    entry: { type: prompt, params: { file: prompts/plan/double-check.md } }
+    on:
+      clean: DONE
+      issuesFound: FIX
+
+  STUCK:
+    entry:
+      type: prompt
+      params:
+        text: |
+          The gate has failed four times on this plan (visits add up over the whole plan, so
+          every further failure lands here too). Explain to the user what fails and why, then
+          fire yield. Fire retry once they say how to proceed.
+    on:
+      retry: IMPLEMENT
+
+  DETOUR:
+    meta: { fallback: true }
+    entry:
+      type: prompt
+      params: { text: "Handle the request that is not part of this plan, then fire resume to get back to it." }
+
+  DONE:
+    type: final
+    entry: { type: prompt, params: { file: prompts/plan/done.md } }

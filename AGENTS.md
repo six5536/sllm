@@ -104,3 +104,10 @@ Any file exceeding 800 lines MUST be split logically into multiple files unless 
  <read path=".zen/.agent/schemas/*.schema.md" required="before writing corresponding file type" />
 </tool>
 
+
+<!-- smllm:harness -->
+
+## smllm
+
+This project's work is guided by smllm state machines. Everything smllm says is fenced in `<smllm>…</smllm>`: follow its `<instructions>`, and when the work is done fire one of its `<events>` with the `smllm` MCP tool, passing the session key from the `<smllm>` header. Fire `yield` before stopping to ask the user something. Only the main agent calls smllm.
+<!-- /smllm:harness -->

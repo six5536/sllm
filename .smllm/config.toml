@@ -1,0 +1,6 @@
+# smllm dogfooding its own development. Paths are relative to this file.
+[machines]
+files = ["plan.smllm.yaml", "quest.smllm.yaml"]
+
+[idle]
+on-enter = { text = "For a PLAN-nnn, enter plan (new plans start at DRAFT; an existing one at GRILL or IMPLEMENT). For small changes, just work in idle. For a break, the user can play the quest." }

@@ -12,3 +12,7 @@ sudo chown -R vscode:vscode ${CONTAINER_WORKSPACE_FOLDER} 2>/dev/null || true
 mise install
 mise exec -- npm install
 
+
+# smllm dogfoods itself: the project's hooks and MCP server call `smllm` on PATH.
+# Reinstall after changing the app with `npm run install:local`.
+mise exec -- npm run install:local || echo "warning: smllm install failed; its hooks in this repo need smllm on PATH" >&2

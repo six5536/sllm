@@ -28,7 +28,9 @@
     "verify-version": "node scripts/verify-version.mjs",
     "release": "node scripts/release.mjs",
     "build:wasm": "node scripts/build-wasm.mjs",
-    "test:wasm": "node --test packages/smllm-wasm/test/*.test.mjs"
+    "test:wasm": "node --test packages/smllm-wasm/test/*.test.mjs",
+    "test:gate": "CARGO_BUILD_JOBS=4 cargo nextest run --workspace --no-fail-fast && CARGO_BUILD_JOBS=4 cargo clippy -q --workspace --all-targets -- -D warnings",
+    "install:local": "CARGO_BUILD_JOBS=4 cargo install --quiet --locked --path crates/app/smllm"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
