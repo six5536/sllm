@@ -1,0 +1,191 @@
+# The Release Gauntlet: every check a release needs, as a boss. A boss falls
+# only when its command passes, so the agent cannot declare victory: it has to
+# fix the tree. One boss per `challenge`, so no single call runs everything.
+# Ends at the door of `node scripts/release.mjs`, which stays the user's call.
+id: gauntlet
+description: Fight every release check as a boss, from the changelog to the release smoke test.
+initial: ARENA
+
+meta:
+  smllm: 1
+  instance:
+    kind: release
+    ref:
+      param: version
+      description: "The version to release, e.g. 0.2.0."
+      pattern: "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+  events:
+    begin: { description: "Select to step into the arena." }
+    challenge: { description: "Select to fight the boss in front of you: smllm runs its check." }
+  sharedActions:
+    - states: [SCRIBE, FORMATTER, GOLEM, LICH, HYDRA, DEMON, WRAITH, COLOSSUS, DRAGON, GATEKEEPER]
+      position: before
+      entry: { type: prompt, params: { file: prompts/gauntlet/champion.md } }
+
+states:
+  ARENA:
+    meta: { entryPoint: true }
+    entry:
+      type: prompt
+      params:
+        text: |
+          The Release Gauntlet: ten bosses stand between this tree and a release. Announce it in
+          one dramatic line, then fire begin.
+    on:
+      begin:
+        - guard: { type: command, params: { run: 'printf %s "$SMLLM_REF" | grep -Eq "^[0-9]"' } }
+          target: SCRIBE
+        - target: ARENA
+          actions:
+            type: prompt
+            params: { text: "The gate will not open for a nameless release: fire park, then enter gauntlet again with a version param." }
+
+  SCRIBE:
+    entry:
+      type: prompt
+      params:
+        text: |
+          Boss 1 of 10, The Scribe of Unreleased Things, demands a `## [<version>]` section in
+          CHANGELOG.md covering every user-visible change since the last tag (`git log`). Its
+          weakness: an honest changelog, with the Unreleased notes moved under the version.
+    on: { challenge: SCRIBE_CHECK }
+  SCRIBE_CHECK:
+    always:
+      - guard: { type: command, params: { run: 'grep -q "^## \[$SMLLM_REF\]" CHANGELOG.md || { echo "no ## [$SMLLM_REF] section"; exit 1; }' } }
+        target: FORMATTER
+        actions: { type: prompt, params: { text: "The Scribe's quill snaps. Boss 1 falls!" } }
+      - { guard: { type: visits, params: { state: SCRIBE, atLeast: 3 } }, target: SCRIBE, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/wounded.md } } }
+      - { target: SCRIBE, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/hit.md } } }
+
+  FORMATTER:
+    entry:
+      type: prompt
+      params: { text: "Boss 2 of 10, The Formatter, straightens every brace in sight: `cargo fmt --all --check`. Weakness: `cargo fmt --all`." }
+    on: { challenge: FORMATTER_CHECK }
+  FORMATTER_CHECK:
+    always:
+      - guard: { type: command, params: { run: "cargo fmt --all --check" } }
+        target: GOLEM
+        actions: { type: prompt, params: { text: "Not a single space out of place. Boss 2 falls!" } }
+      - { guard: { type: visits, params: { state: FORMATTER, atLeast: 3 } }, target: FORMATTER, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/wounded.md } } }
+      - { target: FORMATTER, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/hit.md } } }
+
+  GOLEM:
+    entry:
+      type: prompt
+      params: { text: "Boss 3 of 10, The Version Golem, is built from every version string in the repo, and they must all agree: `node scripts/verify-version.mjs`." }
+    on: { challenge: GOLEM_CHECK }
+  GOLEM_CHECK:
+    always:
+      - guard: { type: command, params: { run: "node scripts/verify-version.mjs" } }
+        target: LICH
+        actions: { type: prompt, params: { text: "The Golem's versions line up and it crumbles into one number. Boss 3 falls!" } }
+      - { guard: { type: visits, params: { state: GOLEM, atLeast: 3 } }, target: GOLEM, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/wounded.md } } }
+      - { target: GOLEM, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/hit.md } } }
+
+  LICH:
+    entry:
+      type: prompt
+      params: { text: "Boss 4 of 10, The Clippy Lich, raises every lint from the dead: `cargo clippy --workspace --all-targets -- -D warnings`. Weakness: fixing the code the lint points at." }
+    on: { challenge: LICH_CHECK }
+  LICH_CHECK:
+    always:
+      - guard: { type: command, params: { run: "CARGO_BUILD_JOBS=4 cargo clippy -q --workspace --all-targets -- -D warnings", timeoutSecs: 1200 } }
+        target: HYDRA
+        actions: { type: prompt, params: { text: "Not one warning left to feed on. Boss 4 falls!" } }
+      - { guard: { type: visits, params: { state: LICH, atLeast: 3 } }, target: LICH, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/wounded.md } } }
+      - { target: LICH, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/hit.md } } }
+
+  HYDRA:
+    entry:
+      type: prompt
+      params: { text: "Boss 5 of 10, The Test Hydra: every failing test is a head, and cutting one badly grows two. `cargo nextest run --workspace`." }
+    on: { challenge: HYDRA_CHECK }
+  HYDRA_CHECK:
+    always:
+      - guard: { type: command, params: { run: "CARGO_BUILD_JOBS=4 cargo nextest run --workspace --no-fail-fast", timeoutSecs: 1800 } }
+        target: DEMON
+        actions: { type: prompt, params: { text: "Every head is green, and green heads do not bite. Boss 5 falls!" } }
+      - { guard: { type: visits, params: { state: HYDRA, atLeast: 3 } }, target: HYDRA, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/wounded.md } } }
+      - { target: HYDRA, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/hit.md } } }
+
+  DEMON:
+    entry:
+      type: prompt
+      params: { text: "Boss 6 of 10, The Doc Demon, feeds on broken intra-doc links and missing docs: `cargo doc --workspace --no-deps` with warnings as errors." }
+    on: { challenge: DEMON_CHECK }
+  DEMON_CHECK:
+    always:
+      - guard: { type: command, params: { run: 'RUSTDOCFLAGS="-D warnings" CARGO_BUILD_JOBS=4 cargo doc -q --workspace --no-deps', timeoutSecs: 1200 } }
+        target: WRAITH
+        actions: { type: prompt, params: { text: "Every link resolves and the Demon starves. Boss 6 falls!" } }
+      - { guard: { type: visits, params: { state: DEMON, atLeast: 3 } }, target: DEMON, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/wounded.md } } }
+      - { target: DEMON, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/hit.md } } }
+
+  WRAITH:
+    entry:
+      type: prompt
+      params: { text: "Boss 7 of 10, The Wasm Wraith, grows with every byte past 300 KiB: `npm run build:wasm` (size budget) and `npm run test:wasm`." }
+    on: { challenge: WRAITH_CHECK }
+  WRAITH_CHECK:
+    always:
+      - guard: { type: command, params: { run: "CARGO_BUILD_JOBS=4 npm run -s build:wasm && npm run -s test:wasm", timeoutSecs: 1800 } }
+        target: COLOSSUS
+        actions: { type: prompt, params: { text: "The Wraith fits in its budget and fades. Boss 7 falls!" } }
+      - { guard: { type: visits, params: { state: WRAITH, atLeast: 3 } }, target: WRAITH, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/wounded.md } } }
+      - { target: WRAITH, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/hit.md } } }
+
+  COLOSSUS:
+    entry:
+      type: prompt
+      params: { text: "Boss 8 of 10, The Coverage Colossus, stands on 90% of every line: `npm run coverage:check`. It is slow and it is thorough. Weakness: tests for the uncovered lines." }
+    on: { challenge: COLOSSUS_CHECK }
+  COLOSSUS_CHECK:
+    always:
+      - guard: { type: command, params: { run: "CARGO_BUILD_JOBS=4 npm run -s coverage:check", timeoutSecs: 3600 } }
+        target: DRAGON
+        actions: { type: prompt, params: { text: "Its footing is covered, and the Colossus topples. Boss 8 falls!" } }
+      - { guard: { type: visits, params: { state: COLOSSUS, atLeast: 3 } }, target: COLOSSUS, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/wounded.md } } }
+      - { target: COLOSSUS, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/hit.md } } }
+
+  DRAGON:
+    entry:
+      type: prompt
+      params: { text: "Boss 9 of 10, The Release Dragon: the real binary, built for release and put through the behavioural smoke test (`cargo build --release -p smllm`, then `npm run smoke`)." }
+    on: { challenge: DRAGON_CHECK }
+  DRAGON_CHECK:
+    always:
+      - guard: { type: command, params: { run: "CARGO_BUILD_JOBS=4 cargo build -q --release -p smllm && npm run -s smoke", timeoutSecs: 2400 } }
+        target: GATEKEEPER
+        actions: { type: prompt, params: { text: "The binary breathes fire of its own. Boss 9 falls!" } }
+      - { guard: { type: visits, params: { state: DRAGON, atLeast: 3 } }, target: DRAGON, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/wounded.md } } }
+      - { target: DRAGON, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/hit.md } } }
+
+  GATEKEEPER:
+    entry:
+      type: prompt
+      params: { text: "Boss 10 of 10, The Gatekeeper, lets only a clean tree through (the release script refuses a dirty one). Commit every fix made along the way, with real messages." }
+    on: { challenge: GATEKEEPER_CHECK }
+  GATEKEEPER_CHECK:
+    always:
+      - guard: { type: command, params: { run: 'test -z "$(git status --porcelain)" || { git status --short; exit 1; }' } }
+        target: VICTORY
+      - { guard: { type: visits, params: { state: GATEKEEPER, atLeast: 3 } }, target: GATEKEEPER, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/wounded.md } } }
+      - { target: GATEKEEPER, reenter: true, actions: { type: prompt, params: { file: prompts/gauntlet/hit.md } } }
+
+  CAMP:
+    meta: { fallback: true }
+    entry:
+      type: prompt
+      params: { text: "Camp outside the arena: handle the request that has nothing to do with the release, then fire resume to face the same boss again." }
+
+  VICTORY:
+    type: final
+    entry:
+      type: prompt
+      params:
+        text: |
+          The Gatekeeper bows. All ten bosses have fallen. Tell the user the tale of the run in a few
+          lines: which bosses fought back, and what was fixed. Then say plainly what is left:
+          `node scripts/release.mjs <version>` makes the release commit and tag (it never pushes),
+          and pushing the tag publishes, which is theirs to do. Run the script only if they say so.

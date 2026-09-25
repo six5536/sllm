@@ -1,7 +1,7 @@
 # The Crypt of the Borrow Checker: a tiny dungeon crawl. The user plays, the
 # agent narrates, and smllm is the rules: dice and the riddle are command
 # guards, so the narrator can neither cheat nor be talked round. Loot lives in
-# .smllm/state/loot/<instance>/ (git-ignored). Start with:
+# .smllm/state/games/quest/<instance>/ (git-ignored). Start with:
 #   "let's play the quest"  →  enter { stateMachine: quest, heroName: Ferris }
 id: quest
 description: A dungeon crawl for a break. The user plays; you narrate and fire the moves they pick.
@@ -51,7 +51,7 @@ states:
   GATE:
     meta: { entryPoint: true }
     entry:
-      - { type: command, params: { run: 'rm -rf ".smllm/state/loot/$SMLLM_INSTANCE" && mkdir -p ".smllm/state/loot/$SMLLM_INSTANCE"' } }
+      - { type: command, params: { run: 'rm -rf ".smllm/state/games/quest/$SMLLM_INSTANCE" && mkdir -p ".smllm/state/games/quest/$SMLLM_INSTANCE"' } }
       - type: prompt
         params:
           text: |
@@ -92,7 +92,7 @@ states:
               run: '[ "$(printf %s "$SMLLM_PARAM_WORD" | tr "[:upper:]" "[:lower:]" | tr -d " .!\"" | cksum)" = "1153022284 4" ]'
           target: HALL
           actions:
-            - { type: command, params: { run: 'touch ".smllm/state/loot/$SMLLM_INSTANCE/key"' } }
+            - { type: command, params: { run: 'touch ".smllm/state/games/quest/$SMLLM_INSTANCE/key"' } }
             - { type: prompt, params: { text: "The book snaps shut and drops an iron key. The hero takes it: the key is in the inventory." } }
         - guard: { type: visits, params: { state: LIBRARY, atLeast: 3 } }
           target: LIBRARY
@@ -122,12 +122,12 @@ states:
               run: 'r=$(( $(od -An -N1 -tu1 /dev/urandom) % 6 + 1 )); echo "rolled $r"; [ "$r" -ge 4 ]'
           target: HALL
           actions:
-            - { type: command, params: { run: 'touch ".smllm/state/loot/$SMLLM_INSTANCE/sword"' } }
+            - { type: command, params: { run: 'touch ".smllm/state/games/quest/$SMLLM_INSTANCE/sword"' } }
             - { type: prompt, params: { text: "The blade rings true: a sword of tempered 'static. The hero carries it now." } }
         - guard: { type: visits, params: { state: FORGE, atLeast: 4 } }
           target: HALL
           actions:
-            - { type: command, params: { run: 'touch ".smllm/state/loot/$SMLLM_INSTANCE/sword"' } }
+            - { type: command, params: { run: 'touch ".smllm/state/games/quest/$SMLLM_INSTANCE/sword"' } }
             - { type: prompt, params: { text: "The blade cracks again. The smith's ghost sighs and hands the hero a sword anyway." } }
         - target: FORGE
           reenter: true
@@ -139,7 +139,7 @@ states:
   # The crypt decides: no key, no dragon.
   STAIRS:
     always:
-      - guard: { type: command, params: { run: 'test -f ".smllm/state/loot/$SMLLM_INSTANCE/key"' } }
+      - guard: { type: command, params: { run: 'test -f ".smllm/state/games/quest/$SMLLM_INSTANCE/key"' } }
         target: LAIR
       - target: HALL
         actions:
@@ -177,7 +177,7 @@ states:
       - guard:
           type: command
           params:
-            run: 'test -f ".smllm/state/loot/$SMLLM_INSTANCE/sword" || { echo "no sword"; exit 1; }; r=$(( $(od -An -N1 -tu1 /dev/urandom) % 6 + 1 )); echo "rolled $r"; [ "$r" -ge 3 ]'
+            run: 'test -f ".smllm/state/games/quest/$SMLLM_INSTANCE/sword" || { echo "no sword"; exit 1; }; r=$(( $(od -An -N1 -tu1 /dev/urandom) % 6 + 1 )); echo "rolled $r"; [ "$r" -ge 3 ]'
         target: TREASURE
       - guard: { type: visits, params: { state: ATTACK, atLeast: 4 } }
         target: FALLEN
@@ -213,7 +213,7 @@ states:
   TREASURE:
     type: final
     entry:
-      - { type: command, params: { run: 'rm -rf ".smllm/state/loot/$SMLLM_INSTANCE"' } }
+      - { type: command, params: { run: 'rm -rf ".smllm/state/games/quest/$SMLLM_INSTANCE"' } }
       - type: prompt
         params:
           text: |

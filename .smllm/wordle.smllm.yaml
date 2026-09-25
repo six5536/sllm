@@ -1,0 +1,56 @@
+# smllm Wordle: the agent plays, smllm keeps score. The secret is picked and
+# every guess is scored by a command (.smllm/games/), so the agent cannot
+# peek at its grading or talk its way to a win; six guesses, then it is over.
+id: wordle
+description: Watch the agent play Wordle against smllm (developer words, six guesses).
+initial: SHUFFLE
+
+meta:
+  smllm: 1
+  instance:
+    kind: game
+  events:
+    guess:
+      description: Select with your next guess.
+      params:
+        type: object
+        properties:
+          word: { type: string, description: "Five letters.", pattern: "^[A-Za-z]{5}$" }
+        required: [word]
+
+states:
+  # The machine picks the word, then goes straight to play.
+  SHUFFLE:
+    entry: { type: command, params: { run: "sh .smllm/games/wordle-pick.sh" } }
+    always: PLAY
+
+  PLAY:
+    entry: { type: prompt, params: { file: prompts/wordle/play.md } }
+    on:
+      guess:
+        - guard: { type: command, params: { run: "sh .smllm/games/wordle-score.sh" } }
+          target: WON
+        - guard: { type: visits, params: { state: PLAY, atLeast: 6 } }
+          target: LOST
+        - target: PLAY
+          reenter: true
+
+  WON:
+    type: final
+    entry:
+      type: prompt
+      params:
+        text: |
+          Solved! Show the user the board, the way people share Wordle results: the title
+          `smllm Wordle N/6`, then the rows from `.smllm/state/games/wordle/<the game id in the header>/board`.
+          One line on the guess that cracked it. Offer a rematch.
+
+  LOST:
+    type: final
+    entry:
+      type: prompt
+      params:
+        text: |
+          Six guesses, no word. Show the board from
+          `.smllm/state/games/wordle/<the game id in the header>/board`, then reveal the secret with
+          `base64 -d < .smllm/state/games/wordle/<id>/secret`, and take the loss gracefully. Offer a rematch.
