@@ -2,9 +2,9 @@
 
 | Meta               | Value                                                                                  |
 | ------------------ | -------------------------------------------------------------------------------------- |
-| Status             | in-progress (grilling Q1–Q28, double- and triple-check resolved, see §13)             |
+| Status             | completed (P0–P7 implemented 2026-09-25; HOST-9 spike + TEST-4 live run left for a human, §15) |
 | Workflow direction | top-down (no ARCHITECTURE.md yet — this plan seeds it)                                 |
-| Traces to          | `ARCHITECTURE.md`, `REQ/DESIGN-{CFG,INST,IDLE,ENG,DEC,ACT,TURN,STO,HOST,CLI,TEST}-*` (to be written) |
+| Traces to          | `.zen/specs/ARCHITECTURE.md`, `REQ-*`/`DESIGN-*` for CFG, INST, IDLE, ENG, DEC, ACT, TURN, STO, HOST, CLI, NFR, TEST |
 
 ## 1. What smllm is
 
@@ -478,3 +478,16 @@ Excluded: `RepoPath`/`RepoRoot` (sokf converts at its boundary).
 | --- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | O3  | Which harness after Claude Code (pi, headless `smllm run`, …)?                                              | Decide after P5                                    |
 | O6  | Share instances (commit `state/`)?                                                                           | Private in v1                                      |
+
+## 15. Implementation status (2026-09-25)
+
+| Item | State |
+| ---- | ----- |
+| Deps (§12) | Confirmed: serde-saphyr, toml/toml_edit, schemars, wasm-bindgen, etcetera, getrandom, wait-timeout, proptest, regex (added), rmcp + tokio (user chose rmcp); file lock = std `File::lock`; small JSON = serde_json (258 KiB wasm) |
+| R5 | GitHub repo rename + local dir rename: user action; devcontainer volume names kept (renaming loses volumes) |
+| NFR-8 | wasm budget 300 KiB, enforced by `scripts/build-wasm.mjs` |
+| HOST-9 | Deferred: hands-on Claude Code spike (SessionStart/UserPromptSubmit injection, `--resume` keeps `session_id`) |
+| TEST-4 | `scripts/live-e2e.mjs` written, never run (needs `SMLLM_LIVE=1`, human request only) |
+| TURN-6 | `stop_hook_active` only; sokf hash fallback deferred until a harness without it |
+| Deferred | Published `--json` output schemas; `agent-harness-kit` `query` module (needs jmespath) |
+
