@@ -2,7 +2,7 @@
 
 | Meta               | Value                                                                                  |
 | ------------------ | -------------------------------------------------------------------------------------- |
-| Status             | completed (P0–P7 implemented 2026-09-25; HOST-9 spike + TEST-4 live run left for a human, §15) |
+| Status             | completed (P0–P7 implemented 2026-09-25; TEST-4 live run left for a human, §15) |
 | Workflow direction | top-down (no ARCHITECTURE.md yet — this plan seeds it)                                 |
 | Traces to          | `.zen/specs/ARCHITECTURE.md`, `REQ-*`/`DESIGN-*` for CFG, INST, IDLE, ENG, DEC, ACT, TURN, STO, HOST, CLI, NFR, TEST |
 
@@ -486,7 +486,7 @@ Excluded: `RepoPath`/`RepoRoot` (sokf converts at its boundary).
 | Deps (§12) | Confirmed: serde-saphyr, toml/toml_edit, schemars, wasm-bindgen, etcetera, getrandom, wait-timeout, proptest, regex (added), rmcp + tokio (user chose rmcp); file lock = std `File::lock`; small JSON = serde_json (258 KiB wasm) |
 | R5 | GitHub repo rename + local dir rename: user action; devcontainer volume names kept (renaming loses volumes) |
 | NFR-8 | wasm budget 300 KiB, enforced by `scripts/build-wasm.mjs` |
-| HOST-9 | Deferred: hands-on Claude Code spike (SessionStart/UserPromptSubmit injection, `--resume` keeps `session_id`) |
+| HOST-9 | Done 2026-09-25 on Claude Code 2.1.282 (`claude -p`, haiku): SessionStart `additionalContext` reaches the agent; UserPromptSubmit and Stop carry the same `session_id`; `--resume` keeps `session_id` (SessionStart `source: resume`) so the same smllm key rebinds; the MCP tool works with the installed permission; Stop blocks with the events list and the agent fires `yield`; the second Stop has `stop_hook_active: true` |
 | TEST-4 | `scripts/live-e2e.mjs` written, never run (needs `SMLLM_LIVE=1`, human request only) |
 | TURN-6 | `stop_hook_active` only; sokf hash fallback deferred until a harness without it |
 | Deferred | Published `--json` output schemas; `agent-harness-kit` `query` module (needs jmespath) |

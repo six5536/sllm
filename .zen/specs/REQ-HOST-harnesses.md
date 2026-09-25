@@ -92,7 +92,7 @@ AS A maintainer, I WANT Claude Code's hook behaviour confirmed hands-on, SO THAT
 
 ACCEPTANCE CRITERIA
 
-- [ ] HOST-9_AC-1 [ubiquitous]: The project SHALL record whether SessionStart and UserPromptSubmit `additionalContext` reach the model and whether `--resume` keeps `session_id` — deferred: needs a hands-on Claude Code run by a human [untestable]
+- [x] HOST-9_AC-1 [ubiquitous]: The project SHALL record whether SessionStart and UserPromptSubmit `additionalContext` reach the model and whether `--resume` keeps `session_id` — done 2026-09-25 (Claude Code 2.1.282): all confirmed; results in PLAN-001 §15 [untestable]
 
 ### HOST-10: Instructions target file [MUST]
 

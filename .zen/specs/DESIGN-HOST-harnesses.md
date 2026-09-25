@@ -257,7 +257,7 @@ SOURCE: .zen/specs/REQ-HOST-harnesses.md
 - HOST-6_AC-3 → HOST-Claude — `ClaudeMcpUser`; not tested (needs the `claude` CLI)
 - HOST-7_AC-1 → HOST-Claude (HOST_P-1)
 - HOST-8_AC-1 → HOST-Claude
-- HOST-9_AC-1 → HOST-Claude [deferred] hands-on hook spike awaits a human run
+- HOST-9_AC-1 → HOST-Claude — spike run 2026-09-25: injection, same `session_id` on resume, MCP call, Stop block → `yield`, `stop_hook_active` all confirmed (PLAN-001 §15)
 - HOST-10_AC-1 → HOST-Claude — logic in agent-harness-kit `harness::target`; kit tests and cli.rs cover it without marker
 - HOST-11_AC-1 → HOST-Claude (HOST_P-3) — logic in agent-harness-kit `harness::region`; kit tests without marker
 - HOST-12_AC-1 → HOST-Mcp [partial] content asserted over stdio; no snapshot of the description yet
