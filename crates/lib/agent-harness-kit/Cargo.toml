@@ -1,0 +1,23 @@
+[package]
+name = "agent-harness-kit"
+description = "Shared plumbing for CLIs that plug into LLM agent harnesses (Claude Code first): install/status of harness parts, marker regions, JSON settings merges, hook answers, findings and CLI output conventions."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["llm", "agent", "claude-code", "hooks", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+serde = { workspace = true, features = ["std"] }
+serde_json.workspace = true
+thiserror.workspace = true
+toml_edit.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+proptest.workspace = true

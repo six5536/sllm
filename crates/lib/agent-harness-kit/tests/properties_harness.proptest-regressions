@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 362b64cd1678d9f1bd1e8f65dc15c35452e1c785a1ef6b85fdc184c1697dd8e7 # shrinks to s = Scenario { agents: None, claude: None, settings: None, without: ["mcp"] }, which = 3
