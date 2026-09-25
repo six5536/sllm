@@ -1,0 +1,21 @@
+---
+source: crates/lib/smllm-core/tests/engine.rs
+expression: r.text
+---
+<smllm>
+session sm-n0zmmz · dev › REVIEW · issue GH-1
+<instructions>
+Work on one issue at a time.
+</instructions>
+Fire one event: smllm({ session: "sm-n0zmmz", event, params })
+<events>
+- approve
+- reject — Select when a review checklist item fails.
+    reason (required): Which checklist item failed.
+    severity (optional, one of: minor, major): How much rework.
+- yield — Stop for now and stay in REVIEW.
+    note (optional): What you are waiting for.
+- park — Put issue GH-1 aside and return to idle.
+- unmatched — The request fits none of these; handle it from idle, then resume.
+</events>
+</smllm>

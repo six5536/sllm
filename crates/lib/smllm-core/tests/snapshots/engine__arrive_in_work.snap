@@ -1,0 +1,14 @@
+---
+source: crates/lib/smllm-core/tests/engine.rs
+expression: r.text
+---
+<smllm>
+session sm-n0zmmz · dev › WORK · issue GH-7
+Arrived by: issueCreated from TRIAGE
+Params: issueId = "GH-7"
+<instructions>
+Work on one issue at a time.
+
+Fix it. Add tests.
+</instructions>
+</smllm>

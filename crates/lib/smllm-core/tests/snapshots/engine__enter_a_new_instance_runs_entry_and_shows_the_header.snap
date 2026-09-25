@@ -1,0 +1,12 @@
+---
+source: crates/lib/smllm-core/tests/engine.rs
+expression: r.text
+---
+<smllm>
+session sm-n0zmmz · dev › TRIAGE · issue i-a1y99z
+Arrived by: enter (new issue)
+Params: stateMachine = "dev"
+<instructions>
+Decide whether the issue is real.
+</instructions>
+</smllm>

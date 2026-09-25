@@ -1,0 +1,31 @@
+---
+source: crates/lib/smllm-core/tests/engine.rs
+expression: r.text
+---
+<smllm>
+session sm-n0zmmz · dev › DONE · issue GH-7
+Arrived by: approve from REVIEW
+<instructions>
+Confirm the PR merged.
+
+All done.
+</instructions>
+Completed issue GH-7. You are now in idle.
+<instructions>
+Pick work from the list.
+</instructions>
+State machines:
+- dev — Fix an issue end to end.
+    issue id param: issueId — The GitHub issue id, e.g. GH-123. (pattern: ^GH-\d+$)
+    starts at: TRIAGE; entry points: TRIAGE, REVIEW
+- help
+    instance id param: ref
+    starts at: ASK; entry points: ASK
+Fire one event: smllm({ session: "sm-n0zmmz", event, params })
+<events>
+- enter — Start a new instance of a state machine, or continue one.
+    stateMachine (required, one of: dev, help): The state machine to enter.
+    issueId | ref (optional): The id param its state machine names above: an existing id or ref continues that instance, a new ref starts one with it; omit to start a new one.
+    state (optional): Enter here instead: an entry point. Omit for the initial state (new) or the saved state (existing).
+</events>
+</smllm>
