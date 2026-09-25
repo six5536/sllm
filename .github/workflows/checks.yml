@@ -45,7 +45,7 @@ jobs:
           node-version: 24
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.85.6
+        uses: taiki-e/install-action@v2.87.18
         with:
           tool: cargo-nextest
 
@@ -97,7 +97,7 @@ jobs:
           node-version: 24
 
       - name: Install wasm-bindgen
-        uses: taiki-e/install-action@v2.85.6
+        uses: taiki-e/install-action@v2.87.18
         with:
           tool: wasm-bindgen@0.2.128
 
@@ -140,7 +140,7 @@ jobs:
           node-version: 24
 
       - name: Install cargo-llvm-cov and cargo-nextest
-        uses: taiki-e/install-action@v2.85.6
+        uses: taiki-e/install-action@v2.87.18
         with:
           tool: cargo-llvm-cov,cargo-nextest
 
