@@ -36,7 +36,7 @@ Default row, added under the user's existing one:
 
 ```sh
 # ~/.claude/statusline-command.sh (end)
-row=$(printf '%s' "$input" | smllm statusline) && [ -n "$row" ] && printf '\n%s' "$row"
+if row=$(printf '%s' "$input" | smllm statusline 2>/dev/null) && [ -n "$row" ]; then printf '\n%s' "$row"; fi
 ```
 
 ```
@@ -49,7 +49,7 @@ A custom row, from the fields:
 ```sh
 s=$(printf '%s' "$input" | smllm statusline --json)
 state=$(jq -r '.state // empty' <<<"$s")
-[ -n "$state" ] && printf '\n\033[1;33m%s\033[0m %s' "$state" "$(jq -r '.instance.label' <<<"$s")"
+if [ -n "$state" ]; then printf '\n\033[1;33m%s\033[0m %s' "$state" "$(jq -r '.instance.label' <<<"$s")"; fi
 ```
 
 Nothing to show (no config, no binding) → the default row is empty and `--json` is `{}`, so the

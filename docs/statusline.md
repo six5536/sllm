@@ -24,10 +24,12 @@ By hand: Claude Code runs one `statusLine` command, and each line it prints is a
 line at the end of your status line script, after its other output:
 
 ```sh
-row=$(printf '%s' "$input" | smllm statusline) && [ -n "$row" ] && printf '\n%s' "$row"
+if row=$(printf '%s' "$input" | smllm statusline 2>/dev/null) && [ -n "$row" ]; then printf '\n%s' "$row"; fi
 ```
 
-`$input` is the status JSON your script read from stdin (`input=$(cat)`). With no script yet,
+`$input` is the status JSON your script read from stdin (`input=$(cat)`). The `if` form
+matters: Claude Code blanks the whole status line when the script exits non-zero, and a
+trailing `[ -n "$row" ] && printf …` would do exactly that whenever there is nothing to show. With no script yet,
 create `~/.claude/statusline-command.sh`:
 
 ```sh
@@ -118,7 +120,7 @@ Only the state, in bold yellow:
 ```sh
 s=$(printf '%s' "$input" | smllm statusline --json)
 state=$(jq -r '.state // empty' <<<"$s")
-[ -n "$state" ] && printf '\n\033[1;33m%s\033[0m' "$state"
+if [ -n "$state" ]; then printf '\n\033[1;33m%s\033[0m' "$state"; fi
 ```
 
 State and instance on the same row as your other fields, with nothing when idle:

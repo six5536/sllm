@@ -19,7 +19,10 @@ own row to the user's command. Never replace or reorder the user's existing rows
 - Edit only the status line script and the `statusLine` setting; keep the rest of the settings file
   as it is.
 - Read stdin once in the script (`input=$(cat)`) and pass `"$input"` to every command that needs it.
-- Keep the `&& [ -n "$row" ]` guard: with nothing to show, no empty row is added.
+- The script must exit 0: Claude Code blanks the whole status line on a non-zero exit. Guard
+  optional rows with `if …; then …; fi`, never with a trailing `[ … ] && printf …` (false when
+  there is nothing to show, which becomes the script's exit status). Keep `[ -n "$row" ]` so
+  that nothing to show adds no empty row.
 
 ## Add the row
 
@@ -41,7 +44,7 @@ own row to the user's command. Never replace or reorder the user's existing rows
    then append at the end:
 
    ```sh
-   row=$(printf '%s' "$input" | smllm statusline) && [ -n "$row" ] && printf '\n%s' "$row"
+   if row=$(printf '%s' "$input" | smllm statusline 2>/dev/null) && [ -n "$row" ]; then printf '\n%s' "$row"; fi
    ```
 
    If the script's last output already ends with a newline, use `printf '%s' "$row"` instead of
@@ -59,7 +62,7 @@ smllm line with a block over `--json`, for example state in bold yellow and no i
 ```sh
 s=$(printf '%s' "$input" | smllm statusline --json)
 state=$(jq -r '.state // empty' <<<"$s")
-[ -n "$state" ] && printf '\n\033[1;33m%s\033[0m' "$state"
+if [ -n "$state" ]; then printf '\n\033[1;33m%s\033[0m' "$state"; fi
 ```
 
 Fields: `session`, `idle`, `machine`, `state`, `visit`, `yielded`, `parked`, and `instance` /
@@ -68,10 +71,11 @@ show. Use `jq` only if it is installed (`command -v jq`).
 
 ## Verify
 
-Run the status line command with a sample status JSON and show the user the rows:
+Run the status line command with a sample status JSON, show the user the rows, and check that it
+exits 0:
 
 ```sh
-echo '{"session_id":"test","cwd":"'"$PWD"'","model":{"display_name":"Opus"}}' | bash ~/.claude/statusline-command.sh
+echo '{"session_id":"test","cwd":"'"$PWD"'","model":{"display_name":"Opus"}}' | bash ~/.claude/statusline-command.sh; echo " [exit $?]"
 ```
 
 An unbound `session_id` gives no smllm row; that is expected. To see a row, use this session's id:
