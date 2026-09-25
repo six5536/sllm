@@ -63,7 +63,7 @@ caller adds no row. `smllm statusline` is read-only and never fails loudly.
 | STL-2  | Session: `--session`, else the Claude Code status JSON on stdin → `session_id` → binding (HOST-4). Unknown/unbound/no config → empty row / `{}`, exit 0 |
 | STL-3  | Read-only: no store writes, no guard/action commands, no binding; < 20 ms typical (NFR-2)           |
 | STL-4  | Never blanks the host's status line: any failure → empty row / `{}`, exit 0; the reason on stderr  |
-| STL-5  | `--json` (D2-6, D2-8): `{session, idle, machine, state, visit, yielded, instance: {kind, id, ref, label, status}, suspended: {machine, kind, id, ref, label}, parked}`; `instance`/`suspended` `null` when none; one object (CLI conventions); a stable, documented contract |
+| STL-5  | `--json` (D2-6, D2-8): `{session, idle, machine, state, visit, yielded, instance, suspended, parked}`, `instance`/`suspended` each `{machine, kind, id, ref, label, status}`; `instance`/`suspended` `null` when none; one object (CLI conventions); a stable, documented contract |
 | STL-6  | Default row (D2-7): in a machine `smllm <machine> › <STATE>[ (visit n)] · <kind> <label>[ · yielded]`; in idle `smllm idle[ · n suspended][ · n parked]`, parts only when non-zero; colours: `smllm` dim, machine cyan, state bold, instance magenta, notes dim, `yielded` yellow |
 | STL-7  | Colour: `--color`, else `NO_COLOR` set → never, else always (the host captures output, so TTY detection would always say no) |
 | STL-8  | Core exposes read-only `Engine::status(key) -> Status` (no_std; used by the app and `smllm-wasm`)   |
@@ -123,7 +123,7 @@ status line, or asks to set up, change or remove it"). Steps:
 | D2-5 | No `subagentStatusLine` row: only the main agent uses smllm (D15)                            |
 | D2-6 | `--json` contract: camelCase keys, every key always present (`null` when not applicable) except `{}` for nothing-to-show; snapshot-tested; add freely, rename/remove only in a minor release pre-1.0 (NFR-6) |
 | D2-7 | Default row content and colours as STL-6; no session key, events or guard results in the row |
-| D2-8 | JSON groups instance fields under `instance` (`kind`, `id`, `ref`, `label`, `status`); `suspended` the same plus `machine` |
+| D2-8 | JSON groups instance fields under `instance` and `suspended`, one shape `{machine, kind, id, ref, label, status}` (same keys in both, D2-6) |
 | D2-9 | Rename `noun` → `kind` everywhere (`meta.instance.kind`, `InstanceSpec.kind`, examples, schema, specs), before S1; pre-release, no migration |
 | D2-10 | The skill is harness part `statusline`: default in both scopes (project `.claude/skills/`, user `~/.claude/skills/`), excluded with `--without statusline` (remembered); the plugin always ships it |
 | D2-11 | User doc at `docs/statusline.md` (reference for the JSON contract and recipes); README and the skill link to it rather than repeating it |

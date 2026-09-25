@@ -9,7 +9,7 @@ How agent harnesses reach the smllm engine: the core protocol, session keys, the
 - HARNESS: the agent runtime smllm plugs into (Claude Code first)
 - HARNESS SESSION ID: the harness's own conversation id (Claude Code `session_id`)
 - SESSION KEY: smllm's key for a session, e.g. `sm-k7f3q2`
-- PART: one piece of a harness integration: `instructions`, `mcp`, `hooks`, `permissions`
+- PART: one piece of a harness integration: `instructions`, `mcp`, `hooks`, `permissions`, `statusline` (the setup skill, STL-9)
 - ENTRY BLOCK / EVENTS LIST: the `<smllm>` texts defined in TURN-1, TURN-2
 
 ## Stakeholders

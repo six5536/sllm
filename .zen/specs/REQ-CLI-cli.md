@@ -123,6 +123,14 @@ ACCEPTANCE CRITERIA
 
 - [x] CLI-13_AC-1 [event]: WHEN the user runs `smllm compile <FILE>` THEN the system SHALL emit the validated model as compact JSON (to OUT with `-o`), or print findings on stderr and exit 1 when it has errors
 
+### CLI-14: statusline [MUST]
+
+AS AN agent user, I WANT `smllm statusline [--session KEY] [--json] [--color WHEN]`, SO THAT my status line shows smllm's state.
+
+ACCEPTANCE CRITERIA
+
+- [ ] CLI-14_AC-1 [event]: WHEN the user runs `smllm statusline` THEN the system SHALL behave as REQ-STL (STL-1..7), always exiting 0
+
 ## Assumptions
 
 - A home directory can be resolved (XDG on Linux and macOS, Known Folders on Windows); `$XDG_CONFIG_HOME` and `$XDG_STATE_HOME` are honoured
@@ -144,3 +152,4 @@ ACCEPTANCE CRITERIA
 ## Change Log
 
 - 0.1.0 (2026-09-25): Initial requirements from PLAN-001 §9
+- 0.2.0 (2026-09-25): CLI-14 statusline (PLAN-002)

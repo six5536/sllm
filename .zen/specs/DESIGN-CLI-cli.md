@@ -46,6 +46,7 @@ crates/app/smllm/src/
     ├── state.rs       # fire, session, instance (CLI-Commands)
     ├── graph.rs       # graph (CLI-Graph)
     ├── harness.rs     # HOST-Claude
+    ├── statusline.rs  # STL-Command, STL-Row, STL-Hint (DESIGN-STL)
     └── mcp.rs         # HOST-Mcp
 ```
 
@@ -104,7 +105,7 @@ pub struct Cli {
 pub enum Command {
     Init(InitArgs), New(NewArgs), Validate(ValidateArgs), Fire(FireArgs),
     Session(SessionCommand), Instance(InstanceCommand), Harness(HarnessCommand),
-    Graph(GraphArgs), Info(InfoCommand), Compile(CompileArgs),
+    Graph(GraphArgs), Info(InfoCommand), Compile(CompileArgs), Statusline(StatuslineArgs),
     Mcp /* hidden */, Completions(CompletionsArgs), Man /* hidden */,
 }
 
@@ -235,3 +236,4 @@ SOURCE: .zen/specs/REQ-CLI-cli.md
 ## Change Log
 
 - 0.1.0 (2026-09-25): Initial design
+- 0.2.0 (2026-09-25): `statusline` command (DESIGN-STL)
