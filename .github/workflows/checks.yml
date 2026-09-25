@@ -71,11 +71,47 @@ jobs:
 
       - name: Launcher test
         if: runner.os != 'Windows'
-        run: node --test packages/sllm/test/*.test.js
+        run: node --test packages/smllm/test/*.test.js
 
       - name: Version consistency
         if: runner.os != 'Windows'
         run: node scripts/verify-version.mjs
+
+  wasm:
+    # smllm-core must stay no_std and wasm-sized (NFR-1, NFR-8): `cargo test`
+    # links std and would hide a regression, so build the real target, then the
+    # npm package, then drive it from Node (TEST-3). The size lands in the job
+    # summary; build-wasm.mjs fails above the budget.
+    name: wasm (core no_std, smllm-wasm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the pinned toolchain
+        run: rustup toolchain install --profile minimal && rustup target add wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install wasm-bindgen
+        uses: taiki-e/install-action@v2.85.6
+        with:
+          tool: wasm-bindgen@0.2.128
+
+      - name: smllm-core builds no_std for wasm32
+        run: cargo build -p smllm-core --no-default-features --target wasm32-unknown-unknown --locked
+
+      - name: Build packages/smllm-wasm
+        run: |
+          npm ci
+          npm run build:wasm | tee wasm-build.log
+          grep 'smllm_wasm_bg.wasm:' wasm-build.log >> "$GITHUB_STEP_SUMMARY"
+
+      - name: JS smoke test
+        run: npm run test:wasm
 
   coverage:
     # Runs the full test suite on ubuntu under instrumentation and enforces the

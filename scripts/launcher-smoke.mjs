@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const require_ = createRequire(import.meta.url);
-const { selectPackage, binaryName } = require_("../packages/sllm/lib/binary.js");
+const { selectPackage, binaryName } = require_("../packages/smllm/lib/binary.js");
 
 function fail(message) {
   console.error(`launcher-smoke: ${message}`);
@@ -48,10 +48,10 @@ if (!existsSync(join(pkgDir, "bin", binName))) {
   );
 }
 
-const base = mkdtempSync(join(tmpdir(), "sllm-launcher-smoke-"));
+const base = mkdtempSync(join(tmpdir(), "smllm-launcher-smoke-"));
 try {
   // Pack both packages: what npm would publish, `files` manifests applied.
-  const pack = run("npm", ["pack", "./packages/sllm", `./${pkgDir}`, "--pack-destination", base]);
+  const pack = run("npm", ["pack", "./packages/smllm", `./${pkgDir}`, "--pack-destination", base]);
   if (pack.status !== 0) {
     console.error(pack.stdout);
     console.error(pack.stderr);
@@ -61,7 +61,7 @@ try {
 
   // Extract each tarball (root dir `package/`) into a node_modules layout.
   const nm = join(base, "node_modules");
-  const dests = [join(nm, "sllm"), join(nm, pkgName)];
+  const dests = [join(nm, "smllm"), join(nm, pkgName)];
   for (const [i, tgz] of tarballs.entries()) {
     const scratch = join(base, `x${i}`);
     mkdirSync(scratch, { recursive: true });
@@ -80,9 +80,9 @@ try {
     fail(`${pkgName}'s tarball does not contain bin/${binName} — check its "files" manifest`);
   }
 
-  const launcher = join(nm, "sllm", "bin", "sllm.js");
+  const launcher = join(nm, "smllm", "bin", "smllm.js");
   const version = run(process.execPath, [launcher, "--version"]);
-  if (version.status !== 0 || !/^sllm \d+\.\d+\.\d+/.test(version.stdout.trim())) {
+  if (version.status !== 0 || !/^smllm \d+\.\d+\.\d+/.test(version.stdout.trim())) {
     console.error(version.stdout);
     console.error(version.stderr);
     fail(`launcher --version failed (exit ${version.status})`);

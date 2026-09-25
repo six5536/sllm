@@ -1,0 +1,44 @@
+{
+  "name": "smllm",
+  "version": "0.1.0",
+  "description": "State machines for LLM agents: declarative workflows that drive a coding agent through its hooks and one MCP tool.",
+  "homepage": "https://github.com/six5536/smllm#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/six5536/smllm.git",
+    "directory": "packages/smllm"
+  },
+  "bugs": {
+    "url": "https://github.com/six5536/smllm/issues"
+  },
+  "author": "six5536 <10079653+six5536@users.noreply.github.com>",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "cli",
+    "command-line",
+    "rust"
+  ],
+  "bin": {
+    "smllm": "bin/smllm.js"
+  },
+  "files": [
+    "bin/",
+    "lib/"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@six5536/smllm-linux-x64": "0.1.0",
+    "@six5536/smllm-linux-arm64": "0.1.0",
+    "@six5536/smllm-darwin-x64": "0.1.0",
+    "@six5536/smllm-darwin-arm64": "0.1.0",
+    "@six5536/smllm-win32-x64": "0.1.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

@@ -1,0 +1,44 @@
+[package]
+name = "smllm"
+description = "State machines for LLM agents: declarative XState-style machines that drive a coding agent's turn loop through its hooks and one MCP tool."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+readme.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "smllm"
+path = "src/main.rs"
+
+[lints.rust]
+# `coverage_nightly` is set by cargo-llvm-cov under the nightly coverage job; it
+# is an expected cfg, not a typo, on every other toolchain.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
+
+[dependencies]
+agent-harness-kit.workspace = true
+smllm-core = { workspace = true, features = ["std", "serde"] }
+smllm-format.workspace = true
+clap = { workspace = true }
+clap_complete = { workspace = true }
+clap_mangen = { workspace = true }
+etcetera.workspace = true
+getrandom.workspace = true
+regex.workspace = true
+rmcp.workspace = true
+serde = { workspace = true, features = ["std"] }
+serde_json = { workspace = true }
+thiserror.workspace = true
+tokio.workspace = true
+toml_edit.workspace = true
+wait-timeout.workspace = true
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+insta = { workspace = true }

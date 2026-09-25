@@ -9,7 +9,7 @@
 all-features = true
 
 [licenses]
-# sllm is MIT. Permissive licences only; anything copyleft needs a decision,
+# smllm is MIT. Permissive licences only; anything copyleft needs a decision,
 # not a default.
 version = 2
 allow = [

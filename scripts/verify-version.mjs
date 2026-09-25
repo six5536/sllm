@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Assert that one version is used consistently everywhere: the Cargo workspace,
-// the internal sllm-core pin, every package.json under packages/, the
+// the internal smllm-core pin, every package.json under packages/, the
 // launcher's optionalDependencies, and both lockfiles.
 //
 // Usage: node scripts/verify-version.mjs [expected-version]
@@ -28,12 +28,17 @@ const record = (where, version) => {
   found.push({ where, version });
 };
 
-// --- Cargo.toml: workspace version + the internal sllm-core pin ------------
+// --- Cargo.toml: workspace version + the internal crate pins ----------------
 const cargo = readFileSync(join(root, "Cargo.toml"), "utf8");
 record("Cargo.toml [workspace.package] version", cargo.match(/^version = "([^"]*)"$/m)?.[1]);
+for (const [, name, version] of cargo.matchAll(/^([\w-]+) = \{ path = "crates\/lib\/[^"]+", version = "([^"]*)"/gm)) {
+  record(`Cargo.toml ${name} dependency pin`, version);
+}
+
+// --- The Claude Code plugin manifest ------------------------------------------
 record(
-  "Cargo.toml sllm-core dependency pin",
-  cargo.match(/sllm-core = \{ path = "crates\/lib\/sllm-core", version = "([^"]*)" \}/)?.[1],
+  "plugin/.claude-plugin/plugin.json version",
+  JSON.parse(readFileSync(join(root, "plugin/.claude-plugin/plugin.json"), "utf8")).version,
 );
 
 // --- packages/*/package.json + the launcher's optionalDependencies -----------
@@ -47,7 +52,7 @@ for (const name of readdirSync(join(root, "packages"))) {
   }
   record(`packages/${name}/package.json version`, json.version);
   for (const [dep, range] of Object.entries(json.optionalDependencies ?? {})) {
-    if (dep.startsWith("@six5536/sllm-")) {
+    if (dep.startsWith("@six5536/smllm-")) {
       record(`packages/${name}/package.json optionalDependencies["${dep}"]`, range);
     }
   }
@@ -55,7 +60,7 @@ for (const name of readdirSync(join(root, "packages"))) {
 
 // --- Cargo.lock -------------------------------------------------------------
 const cargoLock = readFileSync(join(root, "Cargo.lock"), "utf8");
-for (const crate of ["sllm", "sllm-core"]) {
+for (const crate of ["smllm", "smllm-core"]) {
   const re = new RegExp(`name = "${crate}"\\nversion = "([^"]*)"`);
   record(`Cargo.lock ${crate}`, cargoLock.match(re)?.[1]);
 }

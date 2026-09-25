@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a problem with sllm
+about: Report a problem with smllm
 title: ''
 labels: bug
 ---
@@ -15,9 +15,9 @@ labels: bug
 1.
 
 **Environment**
-- sllm version (`sllm --version`):
+- smllm version (`smllm --version`):
 - OS / arch:
 - Install method (npm / cargo):
 
 **Config and output**
-<!-- The relevant sllm.toml and the command output (try --json). Redact secrets. -->
+<!-- The relevant smllm.toml and the command output (try --json). Redact secrets. -->

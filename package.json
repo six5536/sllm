@@ -1,33 +1,37 @@
 {
-  "name": "@six5536/sllm-workspace",
+  "name": "@six5536/smllm-workspace",
   "private": true,
-  "description": "A skeleton Rust CLI, shipped by a complete release pipeline.",
+  "description": "smllm: state machines for LLM agents.",
   "workspaces": [
-    "packages/sllm"
+    "packages/smllm",
+    "packages/smllm-wasm"
   ],
   "scripts": {
     "build": "cargo build --workspace",
     "build:all": "npm run build:linux-x64 && npm run build:linux-arm64 && npm run build:darwin-x64 && npm run build:darwin-arm64",
-    "build:linux-x64": "rustup target add x86_64-unknown-linux-musl && mise exec -- cargo zigbuild --release --target x86_64-unknown-linux-musl -p sllm && install -m 0755 target/x86_64-unknown-linux-musl/release/sllm packages/sllm-linux-x64/bin/sllm",
-    "build:linux-arm64": "rustup target add aarch64-unknown-linux-musl && mise exec -- cargo zigbuild --release --target aarch64-unknown-linux-musl -p sllm && install -m 0755 target/aarch64-unknown-linux-musl/release/sllm packages/sllm-linux-arm64/bin/sllm",
-    "build:darwin-x64": "rustup target add x86_64-apple-darwin && mise exec -- cargo zigbuild --release --target x86_64-apple-darwin -p sllm && install -m 0755 target/x86_64-apple-darwin/release/sllm packages/sllm-darwin-x64/bin/sllm",
-    "build:darwin-arm64": "rustup target add aarch64-apple-darwin && mise exec -- cargo zigbuild --release --target aarch64-apple-darwin -p sllm && install -m 0755 target/aarch64-apple-darwin/release/sllm packages/sllm-darwin-arm64/bin/sllm",
-    "dev": "cargo run -p sllm --",
+    "build:linux-x64": "rustup target add x86_64-unknown-linux-musl && mise exec -- cargo zigbuild --release --target x86_64-unknown-linux-musl -p smllm && install -m 0755 target/x86_64-unknown-linux-musl/release/smllm packages/smllm-linux-x64/bin/smllm",
+    "build:linux-arm64": "rustup target add aarch64-unknown-linux-musl && mise exec -- cargo zigbuild --release --target aarch64-unknown-linux-musl -p smllm && install -m 0755 target/aarch64-unknown-linux-musl/release/smllm packages/smllm-linux-arm64/bin/smllm",
+    "build:darwin-x64": "rustup target add x86_64-apple-darwin && mise exec -- cargo zigbuild --release --target x86_64-apple-darwin -p smllm && install -m 0755 target/x86_64-apple-darwin/release/smllm packages/smllm-darwin-x64/bin/smllm",
+    "build:darwin-arm64": "rustup target add aarch64-apple-darwin && mise exec -- cargo zigbuild --release --target aarch64-apple-darwin -p smllm && install -m 0755 target/aarch64-apple-darwin/release/smllm packages/smllm-darwin-arm64/bin/smllm",
+    "dev": "cargo run -p smllm --",
     "test": "cargo nextest run --workspace",
     "check": "cargo check --workspace --tests",
     "lint": "cargo clippy --workspace",
     "fmt": "cargo fmt --all",
     "coverage": "cargo +nightly llvm-cov nextest --workspace --html",
     "coverage:summary": "cargo +nightly llvm-cov nextest --workspace --summary-only",
-    "coverage:check": "cargo +nightly llvm-cov clean --workspace && cargo +nightly llvm-cov nextest --workspace --no-report && cargo +nightly llvm-cov report --summary-only --ignore-filename-regex 'crates/app' --fail-under-lines 90 && cargo +nightly llvm-cov report --summary-only --ignore-filename-regex 'crates/lib' --fail-under-lines 90",
-    "test:launcher": "node --test packages/sllm/test/*.test.js",
+    "coverage:check": "cargo +nightly llvm-cov clean --workspace && cargo +nightly llvm-cov nextest --workspace --no-report && cargo +nightly llvm-cov report --summary-only --ignore-filename-regex 'crates/(app|lib/smllm-wasm)' --fail-under-lines 90 && cargo +nightly llvm-cov report --summary-only --ignore-filename-regex 'crates/lib' --fail-under-lines 90",
+    "test:launcher": "node --test packages/smllm/test/*.test.js",
     "smoke": "node scripts/release-smoke.mjs",
     "smoke:launcher": "node scripts/launcher-smoke.mjs",
     "set-version": "node scripts/set-version.mjs",
     "verify-version": "node scripts/verify-version.mjs",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "test:wasm": "node --test packages/smllm-wasm/test/*.test.mjs"
   },
   "devDependencies": {
-    "@types/node": "^26.1.2"
+    "@types/node": "^26.1.2",
+    "binaryen": "^132.0.0"
   }
 }

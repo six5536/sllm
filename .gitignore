@@ -15,8 +15,8 @@
 
 # Staged platform binaries (built by `npm run build:<platform>`); the bin/
 # dirs are kept by .gitkeep.
-/packages/sllm-*/bin/sllm
-/packages/sllm-*/bin/sllm.exe
+/packages/smllm-*/bin/smllm
+/packages/smllm-*/bin/smllm.exe
 
 /.cache/
 *.local.json

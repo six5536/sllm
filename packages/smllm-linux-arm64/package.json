@@ -1,0 +1,32 @@
+{
+  "name": "@six5536/smllm-linux-arm64",
+  "version": "0.1.0",
+  "description": "Prebuilt smllm binary for linux-arm64.",
+  "homepage": "https://github.com/six5536/smllm#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/six5536/smllm.git",
+    "directory": "packages/smllm-linux-arm64"
+  },
+  "bugs": {
+    "url": "https://github.com/six5536/smllm/issues"
+  },
+  "author": "six5536 <10079653+six5536@users.noreply.github.com>",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "cli",
+    "command-line"
+  ],
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin/"
+  ],
+  "license": "MIT"
+}

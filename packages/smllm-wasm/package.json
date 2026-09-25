@@ -1,0 +1,49 @@
+{
+  "name": "smllm-wasm",
+  "version": "0.1.0",
+  "description": "smllm's engine as WebAssembly: run smllm state machines that drive an LLM agent, in a browser or Node.",
+  "homepage": "https://github.com/six5536/smllm#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/six5536/smllm.git",
+    "directory": "packages/smllm-wasm"
+  },
+  "bugs": {
+    "url": "https://github.com/six5536/smllm/issues"
+  },
+  "author": "six5536 <10079653+six5536@users.noreply.github.com>",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "llm",
+    "agent",
+    "state-machine",
+    "xstate",
+    "wasm"
+  ],
+  "type": "module",
+  "main": "./wasm/web/smllm_wasm.js",
+  "types": "./wasm/web/smllm_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./wasm/web/smllm_wasm.d.ts",
+      "default": "./wasm/web/smllm_wasm.js"
+    },
+    "./bundler": {
+      "types": "./wasm/bundler/smllm_wasm.d.ts",
+      "default": "./wasm/bundler/smllm_wasm.js"
+    }
+  },
+  "files": [
+    "wasm/web/",
+    "wasm/bundler/"
+  ],
+  "sideEffects": [
+    "./wasm/bundler/smllm_wasm.js"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

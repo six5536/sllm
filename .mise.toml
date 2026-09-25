@@ -15,3 +15,5 @@ cargo-binstall = "1.21.0"
 "cargo:cargo-zigbuild" = "0.22.3"
 "cargo:cargo-nextest" = "0.9.137"
 "cargo:cargo-llvm-cov" = "0.8.7"
+# Must match the wasm-bindgen crate version in Cargo.lock (npm run build:wasm).
+"cargo:wasm-bindgen-cli" = "0.2.128"

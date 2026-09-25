@@ -1,5 +1,5 @@
 {
-  "name": "sllm",
+  "name": "smllm",
   "build": {
     "context": "..",
     "dockerfile": "Dockerfile"

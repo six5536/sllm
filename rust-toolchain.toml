@@ -1,3 +1,5 @@
 [toolchain]
 channel = "1.96.0"
 components = ["rustfmt", "clippy"]
+# smllm-core must build no_std for the browser (NFR-8); smllm-wasm ships it.
+targets = ["wasm32-unknown-unknown"]

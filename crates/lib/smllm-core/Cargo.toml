@@ -1,0 +1,33 @@
+[package]
+name = "smllm-core"
+description = "The smllm engine: state machines that drive an LLM agent's turn loop. no_std + alloc, host-supplied IO."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories = ["no-std", "wasm", "development-tools"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["std"]
+# Implements `std::error::Error` for the error types. Nothing else needs std.
+std = []
+# Serde derives on the model, instance, session and history types: the compiled
+# machine JSON (`smllm compile`) and the stores' file formats.
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+insta.workspace = true
+proptest.workspace = true
+serde_json.workspace = true

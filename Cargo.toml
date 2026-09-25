@@ -5,7 +5,12 @@ members = [
   "crates/lib/*",
 ]
 # Without this a bare `cargo build` fails with "the workspace has no members".
-default-members = ["crates/app/sllm", "crates/lib/sllm-core"]
+default-members = [
+  "crates/app/smllm",
+  "crates/lib/smllm-core",
+  "crates/lib/smllm-format",
+  "crates/lib/agent-harness-kit",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,9 +19,9 @@ edition = "2024"
 rust-version = "1.96.0"
 readme = "README.md"
 license = "MIT"
-repository = "https://github.com/six5536/sllm"
-homepage = "https://github.com/six5536/sllm"
-keywords = ["cli", "command-line"]
+repository = "https://github.com/six5536/smllm"
+homepage = "https://github.com/six5536/smllm"
+keywords = ["cli", "llm", "agent", "state-machine", "xstate"]
 categories = ["command-line-utilities"]
 
 [workspace.dependencies]
@@ -24,16 +29,30 @@ categories = ["command-line-utilities"]
 clap = { version = "4.6", features = ["derive"] }
 clap_complete = "4.6"
 clap_mangen = "0.3"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1.0"
+etcetera = "0.11"
+getrandom = "0.4"
+regex = "1.13"
+rmcp = { version = "3.4", default-features = false, features = ["server", "macros", "transport-io"] }
+schemars = "1.2"
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+serde-saphyr = "1.3"
+serde_json = { version = "1.0", features = ["preserve_order"] }
 thiserror = "2.0"
+tokio = { version = "1.53", default-features = false, features = ["rt", "macros", "io-std"] }
+toml = "1.1"
+toml_edit = "0.25"
+wait-timeout = "0.2"
+wasm-bindgen = "0.2"
 
 # Dev dependencies
 assert_cmd = "2.2"
 insta = "1.47"
+proptest = "1.11"
 
 # Internal crates
-sllm-core = { path = "crates/lib/sllm-core", version = "0.1.0" }
+agent-harness-kit = { path = "crates/lib/agent-harness-kit", version = "0.1.0" }
+smllm-core = { path = "crates/lib/smllm-core", version = "0.1.0", default-features = false }
+smllm-format = { path = "crates/lib/smllm-format", version = "0.1.0" }
 
 # Optimize release builds for size
 [profile.release]

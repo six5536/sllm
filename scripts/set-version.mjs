@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Set one version across the whole project in lockstep: the Cargo workspace
-// version (and the internal sllm-core dep), every package.json under
+// version (and the internal smllm-core dep), every package.json under
 // packages/, and the launcher's pinned optionalDependencies.
 //
 // Usage: node scripts/set-version.mjs <version>
@@ -18,15 +18,21 @@ if (!version || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) {
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-// Cargo.toml: workspace package version + internal sllm-core dependency pin.
+// Cargo.toml: workspace package version + every internal crate's dependency pin.
 const cargoPath = join(root, "Cargo.toml");
 let cargo = readFileSync(cargoPath, "utf8");
 cargo = cargo.replace(/^version = "[^"]*"$/m, `version = "${version}"`);
 cargo = cargo.replace(
-  /(sllm-core = \{ path = "crates\/lib\/sllm-core", version = ")[^"]*(" \})/,
+  /(= \{ path = "crates\/lib\/[^"]+", version = ")[^"]*(")/g,
   `$1${version}$2`,
 );
 writeFileSync(cargoPath, cargo);
+
+// The Claude Code plugin manifest.
+const pluginPath = join(root, "plugin/.claude-plugin/plugin.json");
+const plugin = JSON.parse(readFileSync(pluginPath, "utf8"));
+plugin.version = version;
+writeFileSync(pluginPath, `${JSON.stringify(plugin, null, 2)}\n`);
 
 // Every packages/*/package.json: version, plus the launcher's optionalDependencies.
 const pkgsDir = join(root, "packages");
@@ -41,7 +47,7 @@ for (const name of readdirSync(pkgsDir)) {
   json.version = version;
   if (json.optionalDependencies) {
     for (const dep of Object.keys(json.optionalDependencies)) {
-      if (dep.startsWith("@six5536/sllm-")) {
+      if (dep.startsWith("@six5536/smllm-")) {
         json.optionalDependencies[dep] = version;
       }
     }

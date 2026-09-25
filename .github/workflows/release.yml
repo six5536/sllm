@@ -132,24 +132,24 @@ jobs:
 
       - name: Build (zigbuild)
         if: matrix.builder == 'zigbuild'
-        run: cargo zigbuild --release --locked --target ${{ matrix.target }} -p sllm
+        run: cargo zigbuild --release --locked --target ${{ matrix.target }} -p smllm
 
       - name: Build (cargo)
         if: matrix.builder == 'cargo'
-        run: cargo build --release --locked --target ${{ matrix.target }} -p sllm
+        run: cargo build --release --locked --target ${{ matrix.target }} -p smllm
 
       - name: Stage binary into platform package
         shell: bash
         run: |
-          bin="sllm"
-          case "${{ matrix.target }}" in *windows*) bin="sllm.exe" ;; esac
+          bin="smllm"
+          case "${{ matrix.target }}" in *windows*) bin="smllm.exe" ;; esac
           install -m 0755 "target/${{ matrix.target }}/release/$bin" \
-            "packages/sllm-${{ matrix.pkg }}/bin/$bin"
+            "packages/smllm-${{ matrix.pkg }}/bin/$bin"
 
       - name: Assert Linux binaries are statically linked
         if: matrix.builder == 'zigbuild'
         run: |
-          bin="packages/sllm-${{ matrix.pkg }}/bin/sllm"
+          bin="packages/smllm-${{ matrix.pkg }}/bin/smllm"
           if readelf -l "$bin" | grep -q "program interpreter"; then
             echo "::error::$bin is dynamically linked; expected a static musl build"
             readelf -l "$bin" | grep "program interpreter"
@@ -165,7 +165,7 @@ jobs:
         if: matrix.pkg != 'linux-arm64'
         shell: bash
         run: |
-          bin="packages/sllm-${{ matrix.pkg }}/bin/sllm"
+          bin="packages/smllm-${{ matrix.pkg }}/bin/smllm"
           case "${{ matrix.target }}" in *windows*) bin="$bin.exe" ;; esac
           node scripts/release-smoke.mjs "$bin"
 
@@ -180,8 +180,8 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: sllm-${{ matrix.pkg }}
-          path: packages/sllm-${{ matrix.pkg }}/bin/sllm*
+          name: smllm-${{ matrix.pkg }}
+          path: packages/smllm-${{ matrix.pkg }}/bin/smllm*
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
@@ -206,7 +206,19 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Install the pinned toolchain
-        run: rustup toolchain install --profile minimal
+        run: rustup toolchain install --profile minimal && rustup target add wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen
+        uses: taiki-e/install-action@v2.85.6
+        with:
+          tool: wasm-bindgen@0.2.128
+
+      # packages/smllm-wasm is built here, from the tagged tree (NFR-8).
+      - name: Build smllm-wasm
+        run: |
+          npm ci
+          npm run build:wasm
+          npm run test:wasm
 
       # Trusted publishing needs npm >= 11.5.1. Printed so a runner image with an
       # older npm is obvious in the log rather than silently falling back.
@@ -221,15 +233,15 @@ jobs:
       - name: Place binaries into platform packages
         run: |
           for pkg in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
-            install -m 0755 "artifacts/sllm-$pkg/sllm" "packages/sllm-$pkg/bin/sllm"
+            install -m 0755 "artifacts/smllm-$pkg/smllm" "packages/smllm-$pkg/bin/smllm"
           done
-          install -m 0755 "artifacts/sllm-win32-x64/sllm.exe" \
-            "packages/sllm-win32-x64/bin/sllm.exe"
+          install -m 0755 "artifacts/smllm-win32-x64/smllm.exe" \
+            "packages/smllm-win32-x64/bin/smllm.exe"
 
       - name: Smoke-test the built binary
         run: |
-          actual="$(./packages/sllm-linux-x64/bin/sllm --version)"
-          expected="sllm $VERSION"
+          actual="$(./packages/smllm-linux-x64/bin/smllm --version)"
+          expected="smllm $VERSION"
           if [ "$actual" != "$expected" ]; then
             echo "::error::binary reports '$actual', expected '$expected'"
             exit 1
@@ -240,9 +252,10 @@ jobs:
         run: |
           cargo publish --workspace --locked --dry-run
           for pkg in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64; do
-            npm publish "./packages/sllm-$pkg" --dry-run --tag "$NPM_TAG"
+            npm publish "./packages/smllm-$pkg" --dry-run --tag "$NPM_TAG"
           done
-          npm publish ./packages/sllm --dry-run --tag "$NPM_TAG"
+          npm publish ./packages/smllm --dry-run --tag "$NPM_TAG"
+          npm publish ./packages/smllm-wasm --dry-run --tag "$NPM_TAG"
 
       # Authentication is npm trusted publishing (OIDC) via `id-token: write`;
       # there is no NPM_TOKEN. Provenance is generated automatically under OIDC,
@@ -254,14 +267,18 @@ jobs:
       - name: Publish platform packages to npm
         run: |
           for pkg in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64; do
-            npm publish "./packages/sllm-$pkg" --tag "$NPM_TAG"
+            npm publish "./packages/smllm-$pkg" --tag "$NPM_TAG"
           done
 
       - name: Publish launcher to npm
-        run: npm publish ./packages/sllm --tag "$NPM_TAG"
+        run: npm publish ./packages/smllm --tag "$NPM_TAG"
 
-      # `--workspace` resolves the sllm-core -> sllm ordering itself, so no
-      # sleep-and-hope between the two publishes.
+      - name: Publish smllm-wasm to npm
+        run: npm publish ./packages/smllm-wasm --tag "$NPM_TAG"
+
+      # `--workspace` resolves the internal crate ordering itself (smllm-core →
+      # smllm-format → smllm; agent-harness-kit → smllm), so no sleep-and-hope
+      # between publishes. smllm-wasm is `publish = false`: it ships on npm.
       - name: Publish crates to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -292,30 +309,30 @@ jobs:
       - name: Generate man page and completions
         run: |
           mkdir -p dist/share
-          cargo build --release --locked -p sllm
-          ./target/release/sllm man > dist/share/sllm.1
+          cargo build --release --locked -p smllm
+          ./target/release/smllm man > dist/share/smllm.1
           for shell in bash zsh fish powershell elvish; do
-            ./target/release/sllm completions "$shell" > "dist/share/sllm.$shell"
+            ./target/release/smllm completions "$shell" > "dist/share/smllm.$shell"
           done
 
       - name: Build archives and checksums
         run: |
           mkdir -p dist/out
           for pkg in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
-            stage="dist/stage/sllm-$VERSION-$pkg"
+            stage="dist/stage/smllm-$VERSION-$pkg"
             mkdir -p "$stage"
-            install -m 0755 "artifacts/sllm-$pkg/sllm" "$stage/sllm"
+            install -m 0755 "artifacts/smllm-$pkg/smllm" "$stage/smllm"
             cp README.md LICENSE CHANGELOG.md "$stage/"
             cp -r dist/share "$stage/share"
-            tar -czf "dist/out/sllm-$VERSION-$pkg.tar.gz" -C dist/stage "sllm-$VERSION-$pkg"
+            tar -czf "dist/out/smllm-$VERSION-$pkg.tar.gz" -C dist/stage "smllm-$VERSION-$pkg"
           done
           # Windows ships a .zip, the archive form its users expect.
-          stage="dist/stage/sllm-$VERSION-win32-x64"
+          stage="dist/stage/smllm-$VERSION-win32-x64"
           mkdir -p "$stage"
-          install -m 0755 "artifacts/sllm-win32-x64/sllm.exe" "$stage/sllm.exe"
+          install -m 0755 "artifacts/smllm-win32-x64/smllm.exe" "$stage/smllm.exe"
           cp README.md LICENSE CHANGELOG.md "$stage/"
           cp -r dist/share "$stage/share"
-          (cd dist/stage && zip -qr "../out/sllm-$VERSION-win32-x64.zip" "sllm-$VERSION-win32-x64")
+          (cd dist/stage && zip -qr "../out/smllm-$VERSION-win32-x64.zip" "smllm-$VERSION-win32-x64")
           cd dist/out && sha256sum ./*.tar.gz ./*.zip > SHA256SUMS && cat SHA256SUMS
 
       - name: Extract release notes from CHANGELOG
