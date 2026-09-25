@@ -1,0 +1,41 @@
+---
+source: crates/app/smllm/src/commands/statusline.rs
+assertion_line: 195
+expression: "format!(\"{}\\n{}\", json(&working(3, true)), json(&idle(true, 2)))"
+---
+{
+  "session": "sm-k7f3q2",
+  "idle": false,
+  "machine": "dev",
+  "state": "WORK",
+  "visit": 3,
+  "yielded": true,
+  "instance": {
+    "machine": "dev",
+    "kind": "issue",
+    "id": "a1b2c3",
+    "ref": "GH-123",
+    "label": "GH-123",
+    "status": "active"
+  },
+  "suspended": null,
+  "parked": 2
+}
+{
+  "session": "sm-k7f3q2",
+  "idle": true,
+  "machine": null,
+  "state": null,
+  "visit": null,
+  "yielded": false,
+  "instance": null,
+  "suspended": {
+    "machine": "dev",
+    "kind": "issue",
+    "id": "a1b2c3",
+    "ref": "GH-123",
+    "label": "GH-123",
+    "status": "suspended"
+  },
+  "parked": 2
+}

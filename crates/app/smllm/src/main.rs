@@ -22,7 +22,7 @@ use clap::{CommandFactory, Parser};
 use crate::cli::{
     Cli, Command, CompletionsArgs, HarnessCommand, InfoCommand, InstanceCommand, SessionCommand,
 };
-use crate::commands::{config, graph, harness, mcp, state};
+use crate::commands::{config, graph, harness, mcp, state, statusline};
 use crate::error::Result;
 
 fn main() -> ExitCode {
@@ -61,6 +61,7 @@ fn run() -> Result<u8> {
         Command::Graph(a) => graph::graph(&a, explicit),
         Command::Info(InfoCommand::Schema) => config::schema(),
         Command::Compile(a) => config::compile_cmd(&a),
+        Command::Statusline(a) => statusline::statusline(&a),
         Command::Mcp => mcp::serve(explicit),
         Command::Completions(a) => completions(&a),
         Command::Man => man::render()

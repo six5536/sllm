@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 /// State machines for LLM agents.
 #[derive(Debug, Parser)]
@@ -55,6 +55,9 @@ pub enum Command {
     Info(InfoCommand),
     /// Emit the validated model as compact JSON, for smllm-wasm hosts.
     Compile(CompileArgs),
+    /// Where a session is, as a status line row (or JSON); reads Claude Code's
+    /// status JSON on stdin. Always exits 0.
+    Statusline(StatuslineArgs),
     /// Run the stdio MCP server with the one `smllm` tool.
     #[command(hide = true)]
     Mcp,
@@ -186,7 +189,7 @@ pub struct HarnessArgs {
     /// project or user.
     #[arg(long, default_value = "project", value_name = "S")]
     pub scope: String,
-    /// Leave a part out (instructions, mcp, hooks, permissions); repeatable.
+    /// Leave a part out (instructions, mcp, hooks, permissions, statusline); repeatable.
     #[arg(long, value_name = "PART")]
     pub without: Vec<String>,
     /// Overwrite parts edited by hand.
@@ -238,6 +241,32 @@ pub struct CompileArgs {
     /// Write here instead of stdout.
     #[arg(short = 'o', long = "out", value_name = "OUT")]
     pub out: Option<PathBuf>,
+}
+
+/// `statusline`.
+#[derive(Debug, Args)]
+pub struct StatuslineArgs {
+    /// The session key; default the one bound to the stdin status JSON's
+    /// `session_id`.
+    #[arg(long, value_name = "KEY")]
+    pub session: Option<String>,
+    /// Emit JSON (`{}` when there is nothing to show).
+    #[arg(long)]
+    pub json: bool,
+    /// Colour the row; default always, unless NO_COLOR is set.
+    #[arg(long, value_enum, value_name = "WHEN")]
+    pub color: Option<ColorChoice>,
+}
+
+/// `--color`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ColorChoice {
+    /// Always, unless NO_COLOR is set.
+    Auto,
+    /// Always.
+    Always,
+    /// Never.
+    Never,
 }
 
 /// `completions`.

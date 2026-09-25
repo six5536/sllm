@@ -1,0 +1,13 @@
+---
+source: crates/app/smllm/src/commands/statusline.rs
+assertion_line: 176
+expression: "rows.join(\"\\n\").replace('\\x1b', \"\\\\e\")"
+---
+smllm dev › WORK · issue GH-123
+smllm dev › WORK (visit 3) · issue GH-123
+smllm dev › WORK (visit 3) · issue GH-123 · yielded
+smllm idle
+smllm idle · 1 suspended · 2 parked
+smllm idle · 1 parked
+\e[2msmllm\e[0m \e[36mdev\e[0m › \e[1mWORK\e[0m \e[2m(visit 3)\e[0m · \e[35missue GH-123\e[0m · \e[33myielded\e[0m
+\e[2msmllm\e[0m idle · \e[2m1 suspended\e[0m · \e[2m2 parked\e[0m

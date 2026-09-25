@@ -257,7 +257,7 @@ pub fn run(args: &HarnessArgs, installing: bool, explicit: Option<&Path>) -> Res
 }
 
 /// The session key bound to a Claude Code session id.
-fn bound_key(session_id: Option<&str>) -> Result<Option<String>> {
+pub(crate) fn bound_key(session_id: Option<&str>) -> Result<Option<String>> {
     let Some(sid) = session_id else {
         return Ok(None);
     };
