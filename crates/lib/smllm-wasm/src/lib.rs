@@ -178,6 +178,14 @@ impl Engine {
             .map_err(err)
     }
 
+    /// Where the session is, as the `smllm statusline --json` object (STL-8).
+    // @zen-impl: STL-8_AC-1
+    pub fn status(&mut self, key: &str) -> Result<String, JsError> {
+        self.with(|e, h| e.status(h, key))
+            .map(|s| json(&s))
+            .map_err(err)
+    }
+
     /// The events list.
     pub fn events(&mut self, key: &str) -> Result<String, JsError> {
         self.with(|e, h| e.menu(h, key))

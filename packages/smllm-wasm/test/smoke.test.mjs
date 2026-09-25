@@ -38,6 +38,10 @@ test("a scripted session runs through the JS API", () => {
   assert.throws(() => engine.fire(key, "submit", JSON.stringify({ summary: 1 })), /must be a string/);
   r = JSON.parse(engine.fire(key, "yield", "{}"));
   assert.equal(engine.stop(key, false), undefined);
+  const status = JSON.parse(engine.status(key));
+  assert.equal(status.state, "WORK");
+  assert.equal(status.yielded, true);
+  assert.equal(status.instance.label, "GH-1");
   const state = engine.exportState();
   const again = new Engine(compiled, host);
   again.importState(state);

@@ -37,6 +37,9 @@ pub mod record;
 mod render;
 mod utils;
 
-pub use engine::{BUILTINS, Bind, Engine, Error, Location, Offer, ParamView, Reply, Stop};
+pub use engine::{
+    BUILTINS, Bind, Engine, Error, InstanceStatus, Location, Offer, ParamView, Reply,
+    SessionStatus, Stop,
+};
 pub use render::{AGENT_RULES, format_utc};
 pub use utils::SmallMap;
