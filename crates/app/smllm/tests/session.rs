@@ -350,3 +350,52 @@ fn mcp_over_stdio() {
     let status = child.wait().unwrap();
     assert!(status.success(), "{status}");
 }
+
+// @zen-test: INST-10_AC-1
+// @zen-test: IDLE-6_AC-1
+#[test]
+fn the_dev_example_through_final_and_reopen() {
+    let w = World::new("dev");
+    common::copy_dir(
+        &common::repo().join("examples/dev"),
+        &w.project.join(".smllm"),
+    );
+    let key = start(&w, "cc-dev");
+    // Jump straight to an entry point with a ref.
+    let (code, out) = fire(
+        &w,
+        &key,
+        "enter",
+        &["stateMachine=dev", "issueId=GH-3", "state=REVIEW"],
+    );
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("dev › REVIEW · issue GH-3"), "{out}");
+    // approve: its command action fails here (no gh), which never blocks.
+    let (code, out) = fire(&w, &key, "approve", &[]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("Completed issue GH-3."), "{out}");
+    // Completed: enter without a state is refused; with an entry point it reopens.
+    let (code, out) = fire(&w, &key, "enter", &["stateMachine=dev", "issueId=GH-3"]);
+    assert_eq!(code, 1);
+    assert!(out.contains("is completed; to reopen it"), "{out}");
+    let (code, out) = fire(
+        &w,
+        &key,
+        "enter",
+        &["stateMachine=dev", "issueId=GH-3", "state=TRIAGE"],
+    );
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        out.contains("Reopened issue GH-3 at TRIAGE.")
+            && out.contains("enter (reopened from DONE)"),
+        "{out}"
+    );
+    // A guard that fails (no gh here) routes CHECK back to TRIAGE.
+    let (_, out) = fire(&w, &key, "accept", &[]);
+    assert!(
+        out.contains("dev › TRIAGE (visit 2)") && out.contains("via CHECK"),
+        "{out}"
+    );
+    let o = w.run(&["instance", "show", "GH-3"]);
+    assert!(o.stdout.contains("status: active"), "{}", o.stdout);
+}
