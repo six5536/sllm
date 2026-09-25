@@ -60,7 +60,7 @@ for (const name of readdirSync(join(root, "packages"))) {
 
 // --- Cargo.lock -------------------------------------------------------------
 const cargoLock = readFileSync(join(root, "Cargo.lock"), "utf8");
-for (const crate of ["smllm", "smllm-core"]) {
+for (const crate of ["smllm", "smllm-core", "smllm-format", "smllm-wasm", "agent-harness-kit"]) {
   const re = new RegExp(`name = "${crate}"\\nversion = "([^"]*)"`);
   record(`Cargo.lock ${crate}`, cargoLock.match(re)?.[1]);
 }

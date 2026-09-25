@@ -1,0 +1,25 @@
+---
+source: crates/lib/smllm-format/tests/validate.rs
+expression: "found.join(\"\\n\")"
+---
+:8: error: meta.events.bad name: event name "bad name" must be letters, digits, _ and - (CFG-7)
+:9: warning: meta.events.mk: text contains `</smllm>`, which smllm uses to fence agent text (TURN-12)
+  hint: reword it so the agent can tell smllm's text from yours
+:15: warning: meta.events.mk.params.properties.size: text contains `</smllm>`, which smllm uses to fence agent text (TURN-12)
+  hint: reword it so the agent can tell smllm's text from yours
+:15: warning: meta.events.mk.params.properties.size: enum value "huge" does not match the pattern, so it can never be given (CFG-7)
+:25: warning: states.A.on.go.actions: text contains `</smllm>`, which smllm uses to fence agent text (TURN-12)
+  hint: reword it so the agent can tell smllm's text from yours
+:26: warning: states.A.on.stay: reenter without a target does nothing: a targetless transition never re-enters (CFG-3)
+  hint: add target: <this state> to re-enter it
+:21: error: states.A.meta.paramDescriptions.go.issueId: go declares no param issueId (CFG-8)
+  hint: declare params in meta.events; paramDescriptions only rewords their prompts
+:32: warning: states.DONE: a final state that is an entry point completes the instance as soon as it is entered (CFG-12)
+  hint: drop meta.entryPoint, or make the state non-final
+:30: error: states.F2: only one state may be the fallback (also F1) (CFG-13)
+:31: error: states.F3: only one state may be the fallback (also F1) (CFG-13)
+:14: warning: meta.events.mk.params.properties.issueId: mk sets the ref, so meta.instance.ref.pattern ^GH-\d+$ applies instead of this pattern (CFG-9)
+  hint: drop this pattern, or change the instance's
+:8: warning: meta.events.bad name: event bad name is declared but no state uses it (CFG-9)
+:28: error: states.B.always: always transitions loop: B → B (DEC-2)
+  hint: an always state is never rested in; break the loop with an event

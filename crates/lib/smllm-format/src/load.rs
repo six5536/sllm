@@ -135,8 +135,9 @@ pub fn load_machine(path: &Path, inline: bool) -> (Option<Machine>, Findings) {
             return (None, findings);
         }
     };
-    let parsed: MachineFile = match serde_saphyr::from_str(&text) {
-        Ok(m) => m,
+    // YAML syntax first (one finding: the document cannot be read further).
+    let mut doc: serde_json::Value = match serde_saphyr::from_str(&text) {
+        Ok(v) => v,
         Err(e) => {
             let line = e.location().map(|l| l.line() as usize).filter(|l| *l > 0);
             let (message, hint) = parse_message(&e.to_string());
@@ -144,6 +145,22 @@ pub fn load_machine(path: &Path, inline: bool) -> (Option<Machine>, Findings) {
                 hint,
                 ..finding(Level::Error, path, line, message, "CFG-1")
             });
+            return (None, findings);
+        }
+    };
+    // Then the whole shape, every problem at once (CFG-14).
+    let mut shape = Checker::new(path, &text);
+    crate::shape::check(&mut shape, &doc);
+    if shape.findings.has_errors() {
+        findings.extend(shape.findings);
+        return (None, findings);
+    }
+    crate::shape::normalise(&mut doc);
+    let parsed: MachineFile = match serde_json::from_value(doc) {
+        Ok(m) => m,
+        Err(e) => {
+            // The shape check should have caught it; report what serde says.
+            findings.push(finding(Level::Error, path, None, e.to_string(), "CFG-1"));
             return (None, findings);
         }
     };
@@ -164,6 +181,11 @@ fn parse_message(full: &str) -> (String, Option<String>) {
         Some(i) if msg.starts_with("line ") => &msg[i + 2..],
         _ => msg,
     };
+    // serde-saphyr suggests a library option; the author needs the key.
+    if let Some(rest) = msg.strip_prefix("duplicate mapping key: ") {
+        let key = rest.split(", set ").next().unwrap_or(rest);
+        return (format!("duplicate key `{key}`"), None);
+    }
     let unsupported = [
         "`states`",
         "`parallel`",
@@ -217,8 +239,12 @@ pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded {
             }
         };
         let dir = cf.path.parent().unwrap_or(Path::new("."));
-        if let Some(i) = parsed.idle.and_then(|i| i.on_enter) {
-            idle = Some(idle_prompt(&mut out.findings, &cf.path, dir, i, inline));
+        // A later `[idle]` table replaces an earlier one, even without on-enter.
+        if let Some(i) = parsed.idle {
+            idle = Some(match i.on_enter {
+                Some(p) => idle_prompt(&mut out.findings, &cf.path, dir, p, inline),
+                None => Vec::new(),
+            });
         }
         let mut seen_here: Vec<String> = Vec::new();
         for rel in &parsed.machines.files {
@@ -249,8 +275,15 @@ pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded {
                     ),
                     "CFG-15",
                 ));
-                out.config.machines.remove(i);
-                out.machines.remove(i);
+                // Replaced in place: config order is kept.
+                out.machines[i] = MachineSource {
+                    id: machine.id.clone(),
+                    file: file.clone(),
+                    config: cf.path.clone(),
+                    state_dir: dir.join("state"),
+                };
+                out.config.machines[i] = machine;
+                continue;
             }
             out.machines.push(MachineSource {
                 id: machine.id.clone(),
@@ -276,8 +309,14 @@ fn idle_prompt(
         (Some(f), None) => {
             let full = dir.join(&f);
             match std::fs::read_to_string(&full) {
-                Ok(t) if inline => vec![ActionDef::Prompt(Prompt::Text(t))],
-                Ok(_) => vec![ActionDef::Prompt(Prompt::File(full.display().to_string()))],
+                Ok(t) => {
+                    fence_warning(findings, config, &t);
+                    if inline {
+                        vec![ActionDef::Prompt(Prompt::Text(t))]
+                    } else {
+                        vec![ActionDef::Prompt(Prompt::File(full.display().to_string()))]
+                    }
+                }
                 Err(e) => {
                     findings.push(finding(
                         Level::Error,
@@ -290,7 +329,10 @@ fn idle_prompt(
                 }
             }
         }
-        (None, Some(t)) => vec![ActionDef::Prompt(Prompt::Text(t))],
+        (None, Some(t)) => {
+            fence_warning(findings, config, &t);
+            vec![ActionDef::Prompt(Prompt::Text(t))]
+        }
         _ => {
             findings.push(finding(
                 Level::Error,
@@ -300,6 +342,21 @@ fn idle_prompt(
                 "CLI-3",
             ));
             Vec::new()
+        }
+    }
+}
+
+/// Idle text containing smllm's fences (TURN-12).
+fn fence_warning(findings: &mut Findings, config: &Path, text: &str) {
+    for f in ["</smllm>", "</instructions>", "</events>"] {
+        if text.contains(f) {
+            findings.push(finding(
+                Level::Warning,
+                config,
+                None,
+                format!("idle on-enter text contains `{f}`, which smllm uses to fence agent text"),
+                "TURN-12",
+            ));
         }
     }
 }
@@ -318,5 +375,9 @@ mod tests {
         let (m, h) = parse_message("plain");
         assert_eq!(m, "plain");
         assert!(h.is_none());
+        let (m, _) = parse_message(
+            "error: line 3 column 1: duplicate mapping key: initial, set DuplicateKeyPolicy in Options if acceptable",
+        );
+        assert_eq!(m, "duplicate key `initial`");
     }
 }

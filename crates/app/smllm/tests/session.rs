@@ -155,7 +155,10 @@ fn hooks_and_fire_through_the_showcase() {
         out.contains("Completed document docs/intro.md. You are now in idle."),
         "{out}"
     );
-    assert!(out.contains("Action failed: actions[0] command:"), "{out}");
+    assert!(
+        out.contains("Action failed: REVIEW transition actions[0] command:"),
+        "{out}"
+    );
 
     // Instance and session views.
     let o = w.run(&["instance", "list"]);
@@ -198,7 +201,7 @@ fn no_config_means_silent_hooks() {
     let o = w.run_stdin(&["harness", "hook", "claude", "nope"], "{}");
     assert_eq!(o.code, 1);
     assert!(o.stdout.is_empty() && o.stderr.starts_with("error: "));
-    assert_eq!(w.run(&["harness", "hook", "cursor", "stop"]).code, 2);
+    assert_eq!(w.run(&["harness", "hook", "cursor", "stop"]).code, 1);
 }
 
 // @zen-test: HOST-3_AC-1
@@ -284,7 +287,10 @@ fn mcp_over_stdio() {
             .unwrap()
             .contains("Only the main agent calls smllm")
     );
-    assert_eq!(tool["inputSchema"]["required"], json!(["session"]));
+    assert!(
+        tool["inputSchema"]["required"].is_null(),
+        "session is optional for a keyless enter (HOST-3)"
+    );
     let call = |rpc: &mut dyn FnMut(u64, &str, Value) -> Value, id, args: Value| {
         let r = rpc(
             id,

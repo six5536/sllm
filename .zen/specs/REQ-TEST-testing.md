@@ -22,7 +22,7 @@ AS A maintainer, I WANT unit, snapshot and property tests of the core, SO THAT e
 
 ACCEPTANCE CRITERIA
 
-- [ ] TEST-1_AC-1 [ubiquitous]: The suite SHALL unit-test the core, snapshot all agent text (entry blocks, events lists, errors, tool description, instructions block), and property-test that an invalid call never changes state, determinism, monotonic visits, and never resting in an `always` state — properties are ENG_P-1..4; tool description and instructions block are not yet snapshots
+- [ ] TEST-1_AC-1 [ubiquitous]: The suite SHALL unit-test the core, snapshot all agent text (entry blocks, events lists, errors, tool description, instructions block), and property-test that an invalid call never changes state, determinism, monotonic visits, and never resting in an `always` state — properties are ENG_P-1..4; the tool description and instructions block are snapshots in the app
 
 ### TEST-2: Scripted sessions [MUST]
 
@@ -38,7 +38,7 @@ AS A browser host author, I WANT the wasm package exercised from JavaScript, SO 
 
 ACCEPTANCE CRITERIA
 
-- [ ] TEST-3_AC-1 [ubiquitous]: CI SHALL load the built `smllm-wasm` in Node and run one scripted session through the JS API
+- [x] TEST-3_AC-1 [ubiquitous]: CI SHALL load the built `smllm-wasm` in Node and run one scripted session through the JS API
 
 ### TEST-4: Live-model test [SHOULD]
 

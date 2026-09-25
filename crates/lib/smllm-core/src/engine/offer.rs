@@ -182,6 +182,10 @@ pub(crate) fn idle_offers(config: &Config, suspended: Option<(&Machine, &Instanc
             },
         ],
     }];
+    if ref_params.is_empty() {
+        // No machines, so no id param to name.
+        offers[0].params.remove(1);
+    }
     if let Some((m, inst)) = suspended {
         offers.push(Offer {
             name: "resume".to_string(),

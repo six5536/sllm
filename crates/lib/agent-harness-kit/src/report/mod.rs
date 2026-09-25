@@ -1,3 +1,4 @@
+// Derived from sokf 9c93f37 crates/lib/sokf-core/src/report/mod.rs
 //! Findings and the report: severities error / warning / info, the text
 //! form `<path>:<line>: <level>: <message> (<authority>)` with the counts
 //! line, and the JSON form.

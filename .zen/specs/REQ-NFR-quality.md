@@ -65,7 +65,7 @@ AS A script author, I WANT failures that change nothing and interfaces that chan
 
 ACCEPTANCE CRITERIA
 
-- [ ] NFR-6_AC-1 [event]: WHEN a command exits 2 THEN every file SHALL be as it was before the command
+- [x] NFR-6_AC-1 [event]: WHEN a command exits 2 THEN every file SHALL be as it was before the command
 - [ ] NFR-6_AC-2 [ubiquitous]: Before 1.0, JSON forms, options and exit codes SHALL change only in a minor release
 
 ### NFR-7: Maintainability and release [MUST]

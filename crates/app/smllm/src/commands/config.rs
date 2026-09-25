@@ -71,8 +71,9 @@ pub fn new(args: &NewArgs, explicit: Option<&Path>) -> Result<u8> {
         return Ok(EXIT_OK);
     }
     let here = cwd()?;
-    let config = match explicit {
-        Some(p) => p.to_path_buf(),
+    // `--config` / SMLLM_CONFIG, else the nearest project config.
+    let config = match paths::explicit(explicit) {
+        Some(p) => here.join(p),
         None => paths::project_config(&here).ok_or_else(|| {
             Error::msg("no .smllm/config.toml here or above; run smllm init first")
         })?,
@@ -89,8 +90,10 @@ pub fn new(args: &NewArgs, explicit: Option<&Path>) -> Result<u8> {
             output::shown(&file)
         )));
     }
+    // Prepare the config edit first: a failure leaves every file as found (NFR-6).
+    let registered = register(&config, &config_dir, &file)?;
     write_atomic(&file, &text).map_err(|e| Error::io(&file, e))?;
-    register(&config, &config_dir, &file)?;
+    write_atomic(&config, &registered).map_err(|e| Error::io(&config, e))?;
     if args.json {
         output::json(
             &json!({ "id": args.id, "path": file.display().to_string(), "config": config.display().to_string() }),
@@ -105,8 +108,8 @@ pub fn new(args: &NewArgs, explicit: Option<&Path>) -> Result<u8> {
     Ok(EXIT_OK)
 }
 
-/// Add `file` to `[machines] files` in `config`, keeping its formatting.
-fn register(config: &Path, config_dir: &Path, file: &Path) -> Result<()> {
+/// `config` with `file` added to `[machines] files`, formatting kept.
+fn register(config: &Path, config_dir: &Path, file: &Path) -> Result<String> {
     let text = std::fs::read_to_string(config).map_err(|e| Error::io(config, e))?;
     let mut doc: toml_edit::DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| {
         Error::msg(format!("{}: {}", config.display(), e.message()))
@@ -126,7 +129,7 @@ fn register(config: &Path, config_dir: &Path, file: &Path) -> Result<()> {
     if !arr.iter().any(|v| v.as_str() == Some(&rel)) {
         arr.push(rel);
     }
-    write_atomic(config, &doc.to_string()).map_err(|e| Error::io(config, e))
+    Ok(doc.to_string())
 }
 
 /// `path` relative to `base` (both absolute), with `..` where needed.

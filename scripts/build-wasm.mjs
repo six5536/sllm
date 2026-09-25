@@ -34,4 +34,4 @@ for (const target of ["web", "bundler"]) {
     }
   }
 }
-run("cargo", ["run", "--quiet", "-p", "smllm", "--", "compile", "examples/dev/config.toml", "-o", "packages/smllm-wasm/test/dev.json"]);
+run("cargo", ["run", "--quiet", "--locked", "-p", "smllm", "--", "compile", "examples/dev/config.toml", "-o", "packages/smllm-wasm/test/dev.json"]);

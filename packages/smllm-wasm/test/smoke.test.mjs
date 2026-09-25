@@ -1,4 +1,5 @@
 // Smoke test: load the web build in Node, drive one scripted session (TEST-3).
+// @zen-test: TEST-3_AC-1
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

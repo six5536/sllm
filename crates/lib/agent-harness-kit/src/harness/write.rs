@@ -1,5 +1,5 @@
 // Derived from sokf 9c93f37 crates/lib/sokf-core/src/harness/write.rs
-//! Apply a plan: the part files, then the external parts, then the record.
+//! Apply a plan: the external parts, then the part files, then the record.
 
 use std::{
     fs,
@@ -47,17 +47,29 @@ pub fn write_if_changed(path: &Path, text: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| Error::io(parent, e))?;
     }
-    fs::write(path, text).map_err(|e| Error::io(path, e))
+    // Temp file + rename: a reader never sees half a file.
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let tmp = path.with_file_name(format!(".{name}.tmp{}", std::process::id()));
+    fs::write(&tmp, text).map_err(|e| Error::io(&tmp, e))?;
+    fs::rename(&tmp, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        Error::io(path, e)
+    })
 }
 
-/// Write the plan: files in order, then the external parts, then the
-/// record. A file whose text is already on disk is left untouched.
+/// Write the plan: the external parts first (they run other programs, the
+/// likeliest to fail, so a failure leaves every file as found), then the
+/// files in order, then the record. A file whose text is already on disk is
+/// left untouched.
 pub fn apply_plan(plan: &Plan) -> Result<()> {
-    for (path, text) in &plan.files {
-        write_if_changed(path, text)?;
-    }
     for ext in &plan.externals {
         ext.write()?;
+    }
+    for (path, text) in &plan.files {
+        write_if_changed(path, text)?;
     }
     if let Some((path, text)) = &plan.record {
         write_if_changed(path, text)?;

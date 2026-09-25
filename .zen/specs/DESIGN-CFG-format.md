@@ -10,7 +10,7 @@ AFFECTED LAYERS: smllm-format (parse, check, lower), smllm-core model (target ty
 
 ### High-Level Architecture
 
-A linear pipeline. A file that fails at serde level gets one finding and stops there. A well-formed file goes through every check, and a machine is returned only when none of its findings is an error.
+A linear pipeline. A YAML syntax error is one finding (the document cannot be read further). A readable document is then checked for shape by `shape.rs` — a walk of the generic tree against the format that reports every unknown key, wrong type and unsupported XState feature with its path and line. Only a well-shaped document is deserialised into the source types and goes through the semantic checks; a machine is returned only when none of its findings is an error.
 
 ```mermaid
 flowchart LR
@@ -141,7 +141,7 @@ pub fn compile(path: &Path) -> (Option<String>, Findings);
 
 ### CFG-Findings
 
-A plain value type that every stage appends to. It never short-circuits: stages keep checking after an error, and only the final "any error?" decision drops the machine. `render` produces the one-line text form, with the hint on an indented second line. The type is serde-serialisable (camelCase) for `--json` output.
+A plain value type that every stage appends to. It never short-circuits: stages keep checking after an error, and only the final "any error?" decision drops the machine. `render` produces the one-line text form, with the hint on an indented second line; the CLI renders through agent-harness-kit instead, with the hint inline as `… — <hint> (<rule>)`. The type is serde-serialisable (camelCase) for `--json` output.
 
 ```rust
 pub enum Level { Error, Warning, Info }
@@ -185,7 +185,7 @@ Every problem is a `Finding` whose `rule` field holds the ID of the requirement 
 
 PRINCIPLES:
 
-- Collect all findings; never stop at the first
+- Collect all findings; never stop at the first (shape problems all at once; semantic checks once the shape is valid)
 - Rendered as `<file>:<line>: <level>: <path>: <message> (<rule>)`, with the line and path left out when unknown and `  hint: <hint>` on the next line
 - The line comes from serde-saphyr for parse errors and from `locate` (block and flow YAML, falling back to the deepest ancestor found) for semantic findings
 - A machine with any error is left out of `Loaded.config`, and the other machines still load

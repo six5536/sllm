@@ -17,7 +17,7 @@ use smllm_core::host::Store as _;
 
 use crate::cli::{HarnessArgs, HookArgs};
 use crate::error::{Error, Result};
-use crate::output::{self, EXIT_FAILURE, EXIT_OK};
+use crate::output::{self, EXIT_ERRORS, EXIT_OK};
 use crate::paths::{self, CONFIG_FILE, PROJECT_DIR};
 use crate::runtime::Runtime;
 use crate::store::FsStore;
@@ -106,10 +106,21 @@ pub struct Smllm {
 }
 
 impl Smllm {
-    /// The tool for the project around `cwd`: the dir holding `.smllm/`, else `cwd`.
-    pub fn new(cwd: &Path) -> Result<Self> {
-        let project = paths::project_config(cwd)
-            .and_then(|c| c.parent().and_then(Path::parent).map(Path::to_path_buf))
+    /// The tool for a project: the dir holding the `.smllm/` of `--config` /
+    /// SMLLM_CONFIG, else of the nearest project config, else `cwd`.
+    pub fn new(cwd: &Path, explicit: Option<&Path>) -> Result<Self> {
+        let config = paths::explicit(explicit)
+            .map(|p| cwd.join(p))
+            .or_else(|| paths::project_config(cwd));
+        let project = config
+            .and_then(|c| {
+                let dir = c.parent()?;
+                if dir.file_name().is_some_and(|n| n == PROJECT_DIR) {
+                    dir.parent().map(Path::to_path_buf)
+                } else {
+                    Some(dir.to_path_buf())
+                }
+            })
             .unwrap_or_else(|| cwd.to_path_buf());
         Ok(Self {
             project,
@@ -208,9 +219,9 @@ impl Tool for Smllm {
 /// `smllm harness install|status`.
 // @zen-impl: HOST-6_AC-1
 // @zen-impl: CLI-7_AC-1
-pub fn run(args: &HarnessArgs, installing: bool) -> Result<u8> {
+pub fn run(args: &HarnessArgs, installing: bool, explicit: Option<&Path>) -> Result<u8> {
     let cwd = std::env::current_dir().map_err(|e| Error::io(Path::new("."), e))?;
-    let tool = Smllm::new(&cwd)?;
+    let tool = Smllm::new(&cwd, explicit)?;
     let scope: Scope = args.scope.parse()?;
     let result = if installing {
         let without = if args.without.is_empty() {
@@ -234,6 +245,13 @@ pub fn run(args: &HarnessArgs, installing: bool) -> Result<u8> {
         output::json(&result)?;
     } else {
         output::text(&result.to_text())?;
+        if result.parts.iter().any(|p| p.state == "edited") && !args.force {
+            eprintln!(
+                "note: parts marked edited were changed by hand and left alone; \
+                 `smllm harness install {} --force` overwrites them",
+                args.name
+            );
+        }
     }
     Ok(EXIT_OK)
 }
@@ -314,7 +332,8 @@ pub fn answer(hook: &str, input: &HookInput) -> Result<Answer> {
 pub fn hook(args: &HookArgs) -> Result<u8> {
     if args.name != "claude" {
         eprintln!("error: no harness named {} (claude)", args.name);
-        return Ok(EXIT_FAILURE);
+        // A failed hook exits 1, stderr only (HOST-7).
+        return Ok(EXIT_ERRORS);
     }
     let mut stdin = String::new();
     let _ = std::io::stdin().read_to_string(&mut stdin);

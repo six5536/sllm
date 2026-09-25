@@ -15,6 +15,7 @@ mod load;
 mod locate;
 mod lower;
 mod schema;
+mod shape;
 pub mod source;
 mod template;
 

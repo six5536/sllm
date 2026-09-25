@@ -107,13 +107,10 @@ fn unsupported_xstate_gets_a_hint() {
     let found = lines(&fixture("bad/xstate.smllm.yaml"));
     assert_eq!(found.len(), 1);
     assert!(
-        found[0].starts_with(":6: error: unknown field `after`"),
+        found[0].starts_with(":6: error: states.A.after: `after` is not supported (CFG-2)"),
         "{found:?}"
     );
-    assert!(
-        found[0].contains("hint: after is XState, but not in smllm v1"),
-        "{found:?}"
-    );
+    assert!(found[0].contains("not in smllm v1's subset"), "{found:?}");
 }
 
 #[test]
@@ -243,4 +240,51 @@ fn the_json_schema_describes_the_format() {
         );
     }
     assert!(s.contains("setRef") && s.contains("visits") && s.contains("entryPoint"));
+}
+
+// @zen-test: CFG-14_AC-1
+// @zen-test: CFG-2_AC-1
+#[test]
+fn every_shape_problem_is_collected_at_its_line() {
+    insta::assert_snapshot!(lines(&fixture("bad/shape.smllm.yaml")).join("\n"));
+}
+
+// @zen-test: CFG-13_AC-1
+// @zen-test: CFG-9_AC-1
+// @zen-test: CFG-7_AC-1
+// @zen-test: CFG-12_AC-1
+// @zen-test: CFG-8_AC-1
+#[test]
+fn lowering_checks_from_the_review() {
+    let found = lines(&fixture("bad/review.smllm.yaml"));
+    insta::assert_snapshot!(found.join("\n"));
+    // One fence warning per text, not two.
+    assert_eq!(
+        found
+            .iter()
+            .filter(|l| l.contains("TURN-12") && l.contains("go.actions"))
+            .count(),
+        1,
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn set_ref_with_empty_params_and_duplicate_keys() {
+    let dir = std::env::temp_dir().join(format!("smllm-misc-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let ok = dir.join("ok.smllm.yaml");
+    std::fs::write(&ok, "id: ok\ninitial: A\nmeta: {smllm: 1}\nstates:\n  A:\n    entry: {type: prompt, params: {text: hi}}\n    on:\n      named: {target: B, actions: {type: setRef, params: {}}}\n  B: {type: final}\n").unwrap();
+    let (m, f) = load_machine(&ok, false);
+    assert!(m.is_some(), "{f:?}");
+    let dup = dir.join("dup.smllm.yaml");
+    std::fs::write(
+        &dup,
+        "id: d\ninitial: A\ninitial: B\nmeta: {smllm: 1}\nstates: {A: {}}\n",
+    )
+    .unwrap();
+    let found = lines(&dup);
+    assert!(found[0].contains("duplicate key `initial`"), "{found:?}");
+    assert!(!found[0].contains("DuplicateKeyPolicy"));
+    std::fs::remove_dir_all(dir).ok();
 }

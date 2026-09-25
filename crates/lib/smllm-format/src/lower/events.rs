@@ -4,6 +4,7 @@
 use smllm_core::model::{EventDef, InstanceSpec, ParamSpec};
 use smllm_core::{BUILTINS, SmallMap};
 
+use crate::lower::actions::check_fences;
 use crate::lower::checker::Checker;
 use crate::source::{InstanceMeta, MachineMeta, ParamsSchema};
 use crate::ypath;
@@ -33,11 +34,15 @@ pub(crate) fn lower_instance(c: &mut Checker<'_>, src: Option<&InstanceMeta>) ->
     let mut spec = InstanceSpec::default();
     let Some(src) = src else { return spec };
     if let Some(n) = &src.noun {
+        check_fences(c, &ypath!["meta", "instance", "noun"], n);
         spec.noun = n.clone();
     }
     if let Some(r) = &src.r#ref {
         if let Some(p) = &r.param {
             spec.ref_param = p.clone();
+        }
+        if let Some(d) = &r.description {
+            check_fences(c, &ypath!["meta", "instance", "ref", "description"], d);
         }
         spec.ref_description = r.description.clone();
         if let Some(pat) = &r.pattern
@@ -61,7 +66,7 @@ pub(crate) fn lower_instance(c: &mut Checker<'_>, src: Option<&InstanceMeta>) ->
         c.error(
             &ypath!["meta", "instance", "ref", "param"],
             format!(
-                "ref param {:?} must be letters, digits and _",
+                "ref param {:?} must be letters, digits, _ and -",
                 spec.ref_param
             ),
             None,
@@ -87,6 +92,17 @@ pub(crate) fn lower_events(c: &mut Checker<'_>, meta: &MachineMeta) -> SmallMap<
     };
     for (name, ev) in events.iter() {
         let path = ypath!["meta", "events", name];
+        if !is_name(name) {
+            c.error(
+                &path,
+                format!("event name {name:?} must be letters, digits, _ and -"),
+                None,
+                "CFG-7",
+            );
+        }
+        if let Some(d) = &ev.description {
+            check_fences(c, &path, d);
+        }
         if BUILTINS.contains(&name) && ev.params.is_some() {
             c.error(
                 &path,
@@ -153,11 +169,26 @@ fn lower_params(c: &mut Checker<'_>, path: &[String], schema: &ParamsSchema) -> 
         if prop.enum_values.as_ref().is_some_and(Vec::is_empty) {
             c.error(&pp, "enum is empty".to_string(), None, "CFG-7");
         }
+        if let Some(d) = &prop.description {
+            check_fences(c, &pp, d);
+        }
         let pattern = prop.pattern.as_ref().filter(|pat| {
             let mut ppp = pp.clone();
             ppp.push("pattern".into());
             valid_pattern(c, &ppp, pat)
         });
+        if let Some(re) = pattern.and_then(|p| regex::Regex::new(p).ok()) {
+            for v in enum_values.iter().filter(|v| !re.is_match(v)) {
+                c.warning(
+                    &pp,
+                    format!(
+                        "enum value {v:?} does not match the pattern, so it can never be given"
+                    ),
+                    None,
+                    "CFG-7",
+                );
+            }
+        }
         out.push(ParamSpec {
             name: name.to_string(),
             description: prop.description.clone(),
@@ -183,13 +214,29 @@ fn lower_params(c: &mut Checker<'_>, path: &[String], schema: &ParamsSchema) -> 
 
 /// A `setRef` transition makes the ref param required on its event (CFG-9).
 // @zen-impl: CFG-9_AC-1
-pub(crate) fn require_ref(events: &mut SmallMap<EventDef>, event: &str, spec: &InstanceSpec) {
+pub(crate) fn require_ref(
+    c: &mut Checker<'_>,
+    events: &mut SmallMap<EventDef>,
+    event: &str,
+    spec: &InstanceSpec,
+) {
     let mut def = events.remove(event).unwrap_or_default();
     match def.params.iter_mut().find(|p| p.name == spec.ref_param) {
         Some(p) => {
             p.required = true;
-            if p.pattern.is_none() {
-                p.pattern = spec.ref_pattern.clone();
+            // The instance's ref pattern always applies to the ref it sets.
+            if let Some(pat) = &spec.ref_pattern {
+                if p.pattern.as_ref().is_some_and(|own| own != pat) {
+                    c.warning(
+                        &ypath!["meta", "events", event, "params", "properties", spec.ref_param],
+                        format!(
+                            "{event} sets the ref, so meta.instance.ref.pattern {pat} applies instead of this pattern"
+                        ),
+                        Some("drop this pattern, or change the instance's"),
+                        "CFG-9",
+                    );
+                }
+                p.pattern = Some(pat.clone());
             }
             if p.description.is_none() {
                 p.description = spec.ref_description.clone();

@@ -295,6 +295,7 @@ impl<'a, 'h> Turn<'a, 'h> {
             None => false,
             Some(tg) => tg != source || t.reenter,
         };
+        let what = format!("{source} transition actions");
         let label = |what| ListLabel {
             what,
             state: source,
@@ -302,12 +303,12 @@ impl<'a, 'h> Turn<'a, 'h> {
             to: target,
         };
         if !external {
-            self.run(inst, &t.actions, &label("actions"));
+            self.run(inst, &t.actions, &label(&what));
             return;
         }
         let target = target.unwrap_or(source);
         self.exit(machine, inst, source, Some(target));
-        self.run(inst, &t.actions, &label("actions"));
+        self.run(inst, &t.actions, &label(&what));
         self.enter(machine, inst, target, Some(source));
     }
 

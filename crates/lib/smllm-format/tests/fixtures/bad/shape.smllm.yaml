@@ -1,0 +1,23 @@
+id: shape
+initial: A
+meta:
+  smllm: "1"
+  sharedActions:
+    - states: [A]
+      position: sideways
+states:
+  A:
+    foo: 1
+    on:
+      go: NOPE
+      check:
+        guard: isOk
+        target: B
+      run:
+        target: B
+        actions: { type: command, params: { run: 5 } }
+      ask: { target: B, actions: { type: shout } }
+  B:
+    bar: 2
+    type: parallel
+    states: {}

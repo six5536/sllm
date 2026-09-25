@@ -1,4 +1,5 @@
-# Fix an issue end to end: the plan's example (PLAN-001 §3).
+# Fix an issue end to end: based on the plan's example (PLAN-001 §3), with
+# prompts and an issueCreated description added.
 id: dev
 description: Fix an issue end to end.
 initial: TRIAGE

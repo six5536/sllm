@@ -113,7 +113,8 @@ pub struct PropSchema {
     /// Allowed values.
     #[serde(default, rename = "enum")]
     pub enum_values: Option<Vec<String>>,
-    /// Pattern (ECMA-262 regex, as JSON Schema).
+    /// Pattern, in Rust `regex` syntax: the common subset of JSON Schema's ECMA-262
+    /// patterns (no lookaround or backreferences).
     #[serde(default)]
     pub pattern: Option<String>,
 }

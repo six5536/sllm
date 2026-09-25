@@ -3,7 +3,7 @@
 //! that keeps `[harness.<name>] without = [...]` in the tool's config file,
 //! edited in place with its comments kept.
 
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
 use toml_edit::{Array, DocumentMut, Item, Table, TableLike, Value};
 
@@ -93,10 +93,7 @@ impl DeclinedStore for TomlDeclined {
         let Some(out) = set_declined_text(text.as_deref(), harness, parts, &self.display)? else {
             return Ok(());
         };
-        if let Some(dir) = self.path.parent() {
-            fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
-        }
-        fs::write(&self.path, out).map_err(|e| Error::io(&self.path, e))
+        crate::harness::write_if_changed(&self.path, &out)
     }
 }
 

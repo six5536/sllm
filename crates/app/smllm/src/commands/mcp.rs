@@ -36,15 +36,14 @@ pub fn input_schema() -> Map<String, Value> {
     let v = json!({
         "type": "object",
         "properties": {
-            "session": { "type": "string", "description": "The session key from the latest <smllm> header, e.g. sm-k7f3q2." },
+            "session": { "type": "string", "description": "The session key from the latest <smllm> header, e.g. sm-k7f3q2. Omit only to start a session with event enter." },
             "event": { "type": "string", "description": "The event to fire; omit to see where you are." },
             "params": {
                 "type": "object",
                 "description": "The event's params.",
                 "additionalProperties": { "type": "string" }
             }
-        },
-        "required": ["session"]
+        }
     });
     match v {
         Value::Object(m) => m,

@@ -579,3 +579,142 @@ fn unsupported_kinds_are_listed() {
     let mut f = fake();
     assert!(f.with(|h| e.unsupported(h.guards, h.actions)).is_empty());
 }
+
+// Regressions from the implementation double-check.
+
+// @zen-test: IDLE-2_AC-1
+#[test]
+fn the_fallback_state_keeps_its_way_back_across_a_suspend() {
+    let (e, mut f) = (engine(), fake());
+    let k = key_of(&f.bind(&e, None));
+    f.fire(&e, &k, "enter", &[("stateMachine", "help")]);
+    let r = f.fire(&e, &k, "unmatched", &[]);
+    assert_eq!(r.location.state.as_deref(), Some("ASIDE"));
+    // unmatched in the fallback state suspends to idle; resume comes back
+    // to ASIDE, which still offers resume → ASK.
+    f.fire(&e, &k, "unmatched", &[]);
+    let r = f.fire(&e, &k, "resume", &[]);
+    assert_eq!(r.location.state.as_deref(), Some("ASIDE"), "{}", r.text);
+    let r = f.fire(&e, &k, "resume", &[]);
+    assert_eq!(r.location.state.as_deref(), Some("ASK"), "{}", r.text);
+}
+
+// @zen-test: INST-7_AC-1
+#[test]
+fn the_stop_hook_tells_a_superseded_session_once() {
+    let (e, mut f) = (engine(), fake());
+    let a = key_of(&f.bind(&e, Some("a")));
+    let b = key_of(&f.bind(&e, Some("b")));
+    f.fire(
+        &e,
+        &a,
+        "enter",
+        &[("stateMachine", "dev"), ("issueId", "GH-5")],
+    );
+    f.fire(
+        &e,
+        &b,
+        "enter",
+        &[("stateMachine", "dev"), ("issueId", "GH-5")],
+    );
+    let Stop::Block(text) = f.stop(&e, &a, false) else {
+        panic!("expected block")
+    };
+    assert!(text.contains(&format!("moved to session {b}")), "{text}");
+    assert_eq!(
+        f.stop(&e, &a, false),
+        Stop::Allow,
+        "reported once, then idle"
+    );
+}
+
+// @zen-test: ENG-5_AC-1
+#[test]
+fn a_view_never_drops_the_session_even_if_its_machine_is_missing() {
+    let (e, mut f) = (engine(), fake());
+    let k = key_of(&f.bind(&e, None));
+    f.fire(
+        &e,
+        &k,
+        "enter",
+        &[("stateMachine", "dev"), ("issueId", "GH-1")],
+    );
+    // The config briefly lacks `dev` (e.g. an invalid file).
+    let broken = smllm_core::Engine::new(smllm_core::model::Config {
+        machines: vec![helpdesk()],
+        idle: vec![],
+    });
+    let before = f.store.clone();
+    let r = f.view(&broken, &k);
+    assert!(
+        r.text.contains("state machine dev is not configured"),
+        "{}",
+        r.text
+    );
+    assert_eq!(f.stop(&broken, &k, false), Stop::Allow);
+    let r = f.fire(&broken, &k, "park", &[]);
+    assert!(!r.ok);
+    assert_eq!(f.store, before, "nothing written");
+    // Fixed config: the session is still where it was.
+    assert_eq!(f.view(&e, &k).location.state.as_deref(), Some("TRIAGE"));
+}
+
+#[test]
+fn the_suspended_slot_never_parks_another_sessions_instance() {
+    let (e, mut f) = (engine(), fake());
+    let a = key_of(&f.bind(&e, Some("a")));
+    let b = key_of(&f.bind(&e, Some("b")));
+    f.fire(
+        &e,
+        &a,
+        "enter",
+        &[("stateMachine", "dev"), ("issueId", "GH-1")],
+    );
+    f.fire(&e, &a, "unmatched", &[]);
+    // b takes GH-1 over and suspends it itself.
+    f.fire(
+        &e,
+        &b,
+        "enter",
+        &[("stateMachine", "dev"), ("issueId", "GH-1")],
+    );
+    f.fire(&e, &b, "unmatched", &[]);
+    // a's idle list no longer shows GH-1 as its suspended instance.
+    let r = f.view(&e, &a);
+    assert!(!r.text.contains("Suspended:"), "{}", r.text);
+    f.fire(
+        &e,
+        &a,
+        "enter",
+        &[("stateMachine", "dev"), ("issueId", "GH-2")],
+    );
+    let r = f.fire(&e, &a, "unmatched", &[]);
+    assert!(
+        !r.text.contains("Parked the previously suspended"),
+        "{}",
+        r.text
+    );
+    let r = f.fire(&e, &b, "resume", &[]);
+    assert!(r.ok, "{}", r.text);
+}
+
+#[test]
+fn a_rejected_keyless_enter_leaves_no_session() {
+    let e = engine();
+    let mut f = fake();
+    let r = f.with(|h| {
+        e.fire(
+            h,
+            None,
+            "enter",
+            &[("stateMachine".into(), "nope".into())],
+            &smllm_core::Bind {
+                harness: "none",
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    });
+    assert!(!r.ok);
+    assert!(f.store.sessions.is_empty());
+}

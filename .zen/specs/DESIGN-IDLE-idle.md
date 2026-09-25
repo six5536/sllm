@@ -10,7 +10,7 @@ AFFECTED LAYERS: smllm-core (engine), app validate
 
 ### High-Level Architecture
 
-`enter` resolves the machine, validates params, finds or creates the instance, classifies the arrival, then `start`s it (active, held, `interrupted` cleared, enter target, settle) and reuses ENG-Machine's `commit`.
+`enter` resolves the machine, validates params, finds or creates the instance, classifies the arrival, then `start`s it (active, held, `interrupted` cleared unless the target is the fallback state, which keeps its way back per IDLE-2, enter target, settle) and reuses ENG-Machine's `commit`.
 
 ```mermaid
 flowchart TD

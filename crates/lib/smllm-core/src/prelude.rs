@@ -4,6 +4,7 @@
 #![allow(unused_imports)] // a prelude: not every module needs every name
 
 pub use alloc::borrow::ToOwned;
+pub use alloc::boxed::Box;
 pub use alloc::format;
 pub use alloc::string::{String, ToString};
 pub use alloc::vec;

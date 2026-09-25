@@ -1,3 +1,4 @@
+// Derived from sokf 9c93f37 crates/lib/sokf-core/src/harness/mod.rs
 //! Harness integration: profiles of parts the tool supplies, the state of
 //! each part, the write kinds (`file`, `region`, `merge`, `external`), the
 //! record, the declined parts, and `install` / `status`.

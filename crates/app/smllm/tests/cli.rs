@@ -343,3 +343,67 @@ fn the_published_schema_is_current() {
         committed.replace("\r\n", "\n")
     );
 }
+
+// @zen-test: NFR-6_AC-1
+#[test]
+fn failures_leave_every_file_as_found() {
+    // `new --write` into a config that does not parse writes nothing.
+    let w = World::new("nfr6");
+    w.run(&["init"]);
+    let broken = format!("{}files = [\n", w.read(".smllm/config.toml"));
+    w.write(".smllm/config.toml", &broken);
+    assert_eq!(w.run(&["new", "plan", "--write"]).code, 2);
+    assert!(!w.project.join(".smllm/plan.smllm.yaml").exists());
+    assert_eq!(w.read(".smllm/config.toml"), broken);
+    // A user-scope install whose `claude mcp` fails writes no file.
+    let o = w
+        .cmd()
+        .args(["harness", "install", "claude", "--scope", "user"])
+        .env("PATH", "/nonexistent")
+        .output()
+        .unwrap();
+    assert_eq!(o.status.code(), Some(2));
+    assert!(
+        !w.root.join("home/.claude").exists(),
+        "no part file written before the refusal"
+    );
+}
+
+#[test]
+fn smllm_config_selects_the_config_for_new_and_harness() {
+    let w = World::new("envcfg");
+    let other = w.root.join("other");
+    std::fs::create_dir_all(other.join(".smllm")).unwrap();
+    std::fs::write(other.join(".smllm/config.toml"), "[machines]\nfiles = []\n").unwrap();
+    let cfg = other.join(".smllm/config.toml");
+    let o = w
+        .cmd()
+        .args(["new", "zz", "--write"])
+        .env("SMLLM_CONFIG", &cfg)
+        .output()
+        .unwrap();
+    assert_eq!(
+        o.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    assert!(other.join(".smllm/zz.smllm.yaml").is_file());
+    assert!(
+        std::fs::read_to_string(&cfg)
+            .unwrap()
+            .contains("zz.smllm.yaml")
+    );
+    let o = w
+        .cmd()
+        .args(["harness", "install", "claude", "--without", "mcp"])
+        .env("SMLLM_CONFIG", &cfg)
+        .output()
+        .unwrap();
+    assert_eq!(o.status.code(), Some(0));
+    assert!(
+        other.join("CLAUDE.md").is_file(),
+        "installed into the configured project"
+    );
+    assert!(!w.project.join("CLAUDE.md").exists());
+}

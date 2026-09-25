@@ -27,7 +27,11 @@ pub fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
     if let Some(d) = path.parent() {
         fs::create_dir_all(d)?;
     }
-    let tmp = path.with_extension(format!("tmp{}", std::process::id()));
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let tmp = path.with_file_name(format!(".{name}.tmp{}", std::process::id()));
     fs::write(&tmp, text)?;
     fs::rename(&tmp, path)
 }
@@ -44,15 +48,16 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>, H
 
 /// A file name from arbitrary text (harness session ids).
 fn safe(name: &str) -> String {
-    name.chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
+    // Injective: `_` and other bytes are %-escaped, so `a/b` and `a_b` differ.
+    let mut out = String::with_capacity(name.len());
+    for b in name.bytes() {
+        if b.is_ascii_alphanumeric() || b == b'-' {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }
 
 impl FsStore {
@@ -293,6 +298,11 @@ mod tests {
         s.put_binding("claude", "a/b", "sm-1").unwrap();
         assert_eq!(s.binding("claude", "a/b").unwrap().as_deref(), Some("sm-1"));
         assert!(s.binding("claude", "zz").unwrap().is_none());
+        assert!(
+            s.binding("claude", "a_b").unwrap().is_none(),
+            "a/b and a_b are distinct"
+        );
+        assert_eq!(safe("sm-1"), "sm-1");
         let sess = Session {
             key: "sm-1".into(),
             ..Default::default()

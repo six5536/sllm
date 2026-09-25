@@ -118,6 +118,11 @@ impl ExternalPart for FakeMcp {
     }
 
     fn write(&self) -> Result<()> {
+        // External parts are written before the part files, so nothing else
+        // has created the directory yet.
+        if let Some(dir) = self.file.parent() {
+            fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
+        }
         fs::write(&self.file, self.expected()).map_err(|e| Error::io(&self.file, e))
     }
 }

@@ -45,9 +45,10 @@ pub(crate) fn check(c: &mut Checker<'_>, m: &Machine) {
         .map(|s| {
             (
                 s.name.as_str(),
+                // A targetless `always` stays put and fires again: a self-loop.
                 s.always
                     .iter()
-                    .filter_map(|t| t.target.as_deref())
+                    .map(|t| t.target.as_deref().unwrap_or(s.name.as_str()))
                     .collect(),
             )
         })

@@ -1,3 +1,4 @@
+// Derived from sokf 9c93f37 crates/lib/sokf-core/src/harness/hook/mod.rs
 //! Hook adapters: Claude Code's hook input and answers, the writer that
 //! keeps a failing hook from wedging the agent, and the loop guard.
 

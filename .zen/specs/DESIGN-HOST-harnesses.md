@@ -90,7 +90,7 @@ Hooks: `hook` reads stdin into `HookInput::parse` (bad JSON = empty input), call
 Install/status: `Smllm` implements the kit's `Tool`; `run` parses the scope and calls `install` or `status`, printing text or `--json`. The project root is the directory holding `.smllm/` (else cwd); the user root is `~/.claude`. Parts per scope:
 
 - `instructions`: region part with `INSTRUCTIONS_BLOCK`; the kit picks `AGENTS.md`/`CLAUDE.md` (HOST-10) and applies the `<!-- smllm:harness -->` region rules (HOST-11)
-- `mcp`: project → merge `mcpServers.smllm = {command: "smllm", args: ["mcp"]}` into `.mcp.json`; user → external part `ClaudeMcpUser` (write = `claude mcp remove` then `claude mcp add-json --scope user smllm <json>`; observe = read `/mcpServers/smllm` from `~/.claude.json`)
+- `mcp`: project → merge `mcpServers.smllm = {command: "smllm", args: ["mcp"]}` into `.mcp.json`; user → external part `ClaudeMcpUser` (write = `claude mcp remove` then `claude mcp add-json --scope user smllm <json>`; observe = read `/mcpServers/smllm` from `~/.claude.json`). The kit writes external parts before any file, so a failing `claude mcp` leaves every file as found (NFR-6); files are written atomically (temp + rename)
 - `hooks`: merge into `.claude/settings.json` / `~/.claude/settings.json`: one own group per event (`SessionStart`, `UserPromptSubmit`, `Stop`) keyed by the command prefix `smllm harness hook `
 - `permissions`: add `mcp__smllm__smllm` to `permissions.allow` in the same settings file
 
@@ -118,7 +118,7 @@ pub fn hook(args: &HookArgs) -> Result<u8>;
 
 ### HOST-Mcp
 
-`serve` builds a current-thread tokio runtime and serves `Server` over `rmcp::transport::stdio()`. `get_info` enables tools and sets `AGENT_RULES` as server instructions. `list_tools` returns one `Tool` named `smllm` with `description()` (AGENT_RULES plus call shapes) and `input_schema()` (`session` required string; `event` optional string; `params` object with string values). `call_tool` rejects other names with `invalid_params`, then runs `call` in `spawn_blocking`. `call` validates argument types (non-string param → "param X must be a string"), picks `Runtime::for_session(key)` (or lookup from the server's cwd when keyless), then `view` when there is no event, else `fire` with a `Bind { harness: "mcp" }` for keyless `enter`. A rejected event or error returns `isError: true` with the text.
+`serve` builds a current-thread tokio runtime and serves `Server` over `rmcp::transport::stdio()`. `get_info` enables tools and sets `AGENT_RULES` as server instructions. `list_tools` returns one `Tool` named `smllm` with `description()` (AGENT_RULES plus call shapes) and `input_schema()` (`session` optional string — omitted only for a keyless `enter`, HOST-3; `event` optional string; `params` object with string values). `call_tool` rejects other names with `invalid_params`, then runs `call` in `spawn_blocking`. `call` validates argument types (non-string param → "param X must be a string"), picks `Runtime::for_session(key)` (or lookup from the server's cwd when keyless), then `view` when there is no event, else `fire` with a `Bind { harness: "mcp" }` for keyless `enter`. A rejected event or error returns `isError: true` with the text.
 
 IMPLEMENTS: HOST-12_AC-1, CFG-16_AC-1, CLI-9_AC-1
 
@@ -206,7 +206,7 @@ pub struct HookInput {
 ### Hook failures
 
 - UNKNOWN HOOK: `error: no hook named …` on stderr, exit 1
-- UNKNOWN HARNESS: `error: no harness named …`, exit 2 (usage)
+- UNKNOWN HARNESS: `error: no harness named …`, exit 1 (a failed hook, HOST-7)
 - STORE OR ENGINE ERROR: exit 1, stderr only
 
 ### MCP call failures

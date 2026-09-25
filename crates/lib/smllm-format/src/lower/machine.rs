@@ -4,9 +4,7 @@
 use std::collections::{HashMap, HashSet};
 
 use smllm_core::BUILTINS;
-use smllm_core::model::{
-    ActionDef, Machine, On, Position, Prompt, SharedAction, State, Transition,
-};
+use smllm_core::model::{ActionDef, Machine, On, Position, SharedAction, State, Transition};
 
 use crate::finding::Level;
 use crate::lower::actions::{Files, check_fences, default_prompt, lower_actions, lower_guard};
@@ -84,6 +82,14 @@ pub(crate) fn lower(c: &mut Checker<'_>, files: &Files<'_>, file: &MachineFile) 
                 "CFG-12",
             );
         }
+        if is_final && meta.entry_point {
+            c.warning(
+                &sp,
+                "a final state that is an entry point completes the instance as soon as it is entered".to_string(),
+                Some("drop meta.entryPoint, or make the state non-final"),
+                "CFG-12",
+            );
+        }
         if meta.fallback {
             fallbacks.push(name);
             if is_final {
@@ -117,6 +123,15 @@ pub(crate) fn lower(c: &mut Checker<'_>, files: &Files<'_>, file: &MachineFile) 
         if let Some(src) = &node.on {
             for (event, ts) in src.iter() {
                 let ep = [sp.clone(), ypath!["on", event]].concat();
+                if !is_name(event) {
+                    c.error(
+                        &ep,
+                        format!("event name {event:?} must be letters, digits, _ and -"),
+                        None,
+                        "CFG-7",
+                    );
+                    continue;
+                }
                 if BUILTINS.contains(&event) {
                     c.error(
                         &ep,
@@ -176,8 +191,15 @@ pub(crate) fn lower(c: &mut Checker<'_>, files: &Files<'_>, file: &MachineFile) 
                 }
                 let mut m = smllm_core::SmallMap::new();
                 for (param, text) in prompts.iter() {
+                    // The ref param is implied only on events that set the ref.
+                    let sets_ref = on.iter().any(|o| {
+                        o.event == event
+                            && o.transitions
+                                .iter()
+                                .any(|t| t.actions.contains(&ActionDef::SetRef))
+                    });
                     let declared = events.get(event).is_some_and(|d| d.param(param).is_some())
-                        || param == instance.ref_param;
+                        || (param == instance.ref_param && sets_ref);
                     if !declared {
                         c.error(
                             &[pp.clone(), ypath![param]].concat(),
@@ -186,6 +208,7 @@ pub(crate) fn lower(c: &mut Checker<'_>, files: &Files<'_>, file: &MachineFile) 
                             "CFG-8",
                         );
                     }
+                    check_fences(c, &[pp.clone(), ypath![param]].concat(), text);
                     m.insert(param, text.clone());
                 }
                 param_descriptions.insert(event, m);
@@ -205,9 +228,9 @@ pub(crate) fn lower(c: &mut Checker<'_>, files: &Files<'_>, file: &MachineFile) 
             param_descriptions,
         });
     }
-    if fallbacks.len() > 1 {
+    for extra in fallbacks.iter().skip(1) {
         c.error(
-            &ypath!["states", fallbacks[1]],
+            &ypath!["states", extra],
             format!("only one state may be the fallback (also {})", fallbacks[0]),
             None,
             "CFG-13",
@@ -251,7 +274,7 @@ pub(crate) fn lower(c: &mut Checker<'_>, files: &Files<'_>, file: &MachineFile) 
     }
 
     for e in set_ref_events {
-        require_ref(&mut events, &e, &instance);
+        require_ref(c, &mut events, &e, &instance);
     }
     for (name, _) in events.iter() {
         if !BUILTINS.contains(&name) && !used_events.contains(name) {
@@ -357,10 +380,14 @@ fn lower_transitions(
         if let Some(d) = &lowered.description {
             check_fences(c, &p, d);
         }
-        for a in &lowered.actions {
-            if let ActionDef::Prompt(Prompt::Text(t)) = a {
-                check_fences(c, &p, t);
-            }
+        if lowered.reenter && lowered.target.is_none() {
+            c.warning(
+                &p,
+                "reenter without a target does nothing: a targetless transition never re-enters"
+                    .to_string(),
+                Some("add target: <this state> to re-enter it"),
+                "CFG-3",
+            );
         }
         out.push(lowered);
     }

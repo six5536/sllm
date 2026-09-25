@@ -81,7 +81,7 @@ AS A machine author, I WANT to declare each event type once, SO THAT its guidanc
 
 ACCEPTANCE CRITERIA
 
-- [ ] CFG-7_AC-1 [ubiquitous]: The system SHALL read `meta.events.<name>` with `description` (default guidance) and `params` as a JSON Schema subset: `type: object`, `properties` of `type: string` with `description`, `enum`, `pattern`, and `required`
+- [x] CFG-7_AC-1 [ubiquitous]: The system SHALL read `meta.events.<name>` with `description` (default guidance) and `params` as a JSON Schema subset: `type: object`, `properties` of `type: string` with `description`, `enum`, `pattern`, and `required`
 
 ### CFG-8: Per-state overrides [SHOULD]
 
@@ -89,7 +89,7 @@ AS A machine author, I WANT to reword guidance and param prompts per state, SO T
 
 ACCEPTANCE CRITERIA
 
-- [ ] CFG-8_AC-1 [ubiquitous]: The system SHALL take per-state event guidance from a transition's `description` and per-state param prompts from the state's `meta.paramDescriptions`, which SHALL only reword declared params and never define new ones
+- [x] CFG-8_AC-1 [ubiquitous]: The system SHALL take per-state event guidance from a transition's `description` and per-state param prompts from the state's `meta.paramDescriptions`, which SHALL only reword declared params and never define new ones
 
 DEPENDS ON: CFG-7
 
@@ -127,7 +127,7 @@ AS A machine author, I WANT `type: final` states, SO THAT instances can complete
 
 ACCEPTANCE CRITERIA
 
-- [ ] CFG-12_AC-1 [ubiquitous]: The system SHALL treat final states as optional, SHALL report an error for a final state with `on` or `always`, a finding for each unreachable final state, and an info finding when a machine has no final state
+- [x] CFG-12_AC-1 [ubiquitous]: The system SHALL treat final states as optional, SHALL report an error for a final state with `on` or `always`, a finding for each unreachable final state, and an info finding when a machine has no final state
 
 ### CFG-13: Structural checks [MUST]
 

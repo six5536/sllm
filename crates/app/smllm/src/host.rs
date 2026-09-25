@@ -2,8 +2,9 @@
 //! the clock and randomness (DEC-4..9, ACT-4).
 // @zen-component: DEC-CommandRunner
 
-use std::io::Read as _;
+use std::io::Read;
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use smllm_core::host::{Action, Call, Clock, Guard, Ids, InstructionSource, Matcher, Outcome};
@@ -69,6 +70,9 @@ pub fn run_command(call: &Call<'_>) -> Outcome {
         cmd.current_dir(cwd);
     }
     cmd.envs(call.env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+    // Its own process group, so a timeout kills what it started too.
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -88,33 +92,43 @@ pub fn run_command(call: &Call<'_>) -> Outcome {
         }
     };
     // Drain both pipes on threads so a chatty command cannot fill a pipe and
-    // stall before the timeout.
-    let drain = |r: Option<Box<dyn std::io::Read + Send>>| {
+    // stall before the timeout. Output is collected as it arrives: a
+    // background process the command left running keeps the pipes open, and
+    // must not hold smllm hostage after the command itself exits (DEC-5).
+    let collected = Arc::new(Mutex::new(Vec::new()));
+    let drain = |r: Option<Box<dyn Read + Send>>| {
+        let sink = Arc::clone(&collected);
         std::thread::spawn(move || {
-            let mut s = String::new();
-            if let Some(mut r) = r {
-                let _ = r.read_to_string(&mut s);
+            let Some(mut r) = r else { return };
+            let mut buf = [0u8; 4096];
+            while let Ok(n) = r.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                if let Ok(mut v) = sink.lock() {
+                    v.extend_from_slice(&buf[..n]);
+                }
             }
-            s
         })
     };
-    let out = drain(
-        child
-            .stdout
-            .take()
-            .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
-    );
-    let err = drain(
-        child
-            .stderr
-            .take()
-            .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
-    );
+    let readers = [
+        drain(
+            child
+                .stdout
+                .take()
+                .map(|s| Box::new(s) as Box<dyn Read + Send>),
+        ),
+        drain(
+            child
+                .stderr
+                .take()
+                .map(|s| Box::new(s) as Box<dyn Read + Send>),
+        ),
+    ];
     let status = match child.wait_timeout(Duration::from_secs(secs)) {
         Ok(Some(s)) => s,
         Ok(None) => {
-            let _ = child.kill();
-            let _ = child.wait();
+            kill_tree(&mut child);
             return Outcome {
                 ok: false,
                 detail: format!("timed out after {secs}s"),
@@ -127,8 +141,15 @@ pub fn run_command(call: &Call<'_>) -> Outcome {
             };
         }
     };
-    let mut text = out.join().unwrap_or_default();
-    text.push_str(&err.join().unwrap_or_default());
+    // Give the readers a moment to reach end-of-file, then take what arrived.
+    let deadline = std::time::Instant::now() + Duration::from_millis(200);
+    while readers.iter().any(|r| !r.is_finished()) && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let text = collected
+        .lock()
+        .map(|v| String::from_utf8_lossy(&v).into_owned())
+        .unwrap_or_default();
     let t = tail(&text);
     if status.success() {
         return Outcome {
@@ -148,6 +169,17 @@ pub fn run_command(call: &Call<'_>) -> Outcome {
             format!("{code}: {t}")
         },
     }
+}
+
+/// Kill a timed-out command and, on unix, its whole process group.
+fn kill_tree(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    let _ = Command::new("kill")
+        .args(["-KILL", &format!("-{}", child.id())])
+        .stderr(Stdio::null())
+        .status();
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 impl Guard for Commands {
@@ -243,6 +275,11 @@ mod tests {
                 .detail
                 .starts_with("could not start")
         );
+        // A background process holding the pipes does not stall the result.
+        p.insert("run", Value::Str("sleep 5 & exit 0".into()));
+        let t0 = std::time::Instant::now();
+        assert!(run_command(&call(&p, &env)).ok);
+        assert!(t0.elapsed() < std::time::Duration::from_secs(3));
         p.insert("run", Value::Str("sleep 5".into()));
         p.insert("timeoutSecs", Value::Int(1));
         assert_eq!(run_command(&call(&p, &env)).detail, "timed out after 1s");

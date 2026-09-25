@@ -124,7 +124,12 @@ fn list(turn: &mut Turn<'_, '_>, b: &mut Block, error: Option<String>) -> Result
             turn.config.machine(&k.machine),
             turn.host.store.instance(&k.machine, &k.id)?,
         ) {
-            (Some(m), Some(i)) if i.status == Status::Suspended => Some((m, i)),
+            (Some(m), Some(i))
+                if i.status == Status::Suspended
+                    && i.holder.as_deref() == Some(&turn.session.key) =>
+            {
+                Some((m, i))
+            }
             _ => None,
         },
         None => None,
@@ -359,7 +364,10 @@ fn start(
     }
     inst.status = Status::Active;
     inst.holder = Some(turn.session.key.clone());
-    inst.interrupted = None;
+    // Entering the fallback state keeps its way back (IDLE-2).
+    if !machine.state(target).is_some_and(|s| s.fallback) {
+        inst.interrupted = None;
+    }
     turn.session.holding = Some(key);
     turn.enter(machine, inst, target, from);
     turn.settle(machine, inst);

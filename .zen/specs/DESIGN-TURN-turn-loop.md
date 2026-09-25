@@ -177,7 +177,7 @@ Fire one event: smllm({ session: "sm-n0zmmz", event, params })
 
 - YIELD REPLY: header + `Yielded: staying in <STATE>. You may end your turn.`; no menu
 
-- DIFFERENCES FROM THE PLAN §7 SKETCH: `yield`'s `note` is an indented param line, not inline text; the idle list layout above is new (the plan only lists its contents); a final state's block and the idle list share one fence; `Guard:` trace lines and `via <STATE>` in `Arrived by` show branching; failed actions read `Action failed: <STATE> entry[i] <kind>: <detail>` (plan: `Action failed: entry[i] …`); a `Fire one event:` line precedes `<events>` in error blocks too; events without guidance show only their name; header notes (takeover, reopen, park, suspend) sit between `Params:` and the trace
+- DIFFERENCES FROM THE PLAN §7 SKETCH: `yield`'s `note` is an indented param line, not inline text; the idle list layout above is new (the plan only lists its contents); a final state's block and the idle list share one fence; `Guard:` trace lines and `via <STATE>` in `Arrived by` show branching; failed actions read `Action failed: <STATE> entry[i] <kind>: <detail>` (or `<STATE> exit[i]`, `<SOURCE> transition actions[i]`, `sharedActions[n] entry[i]`; plan: `Action failed: entry[i] …`); a `Fire one event:` line precedes `<events>` in error blocks too; events without guidance show only their name; header notes (takeover, reopen, park, suspend) sit between `Params:` and the trace
 
 ## Correctness Properties
 

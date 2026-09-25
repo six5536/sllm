@@ -105,6 +105,9 @@ jobs:
         run: cargo build -p smllm-core --no-default-features --target wasm32-unknown-unknown --locked
 
       - name: Build packages/smllm-wasm
+        # `shell: bash` adds pipefail, so an over-budget build fails the job
+        # despite the `tee`.
+        shell: bash
         run: |
           npm ci
           npm run build:wasm | tee wasm-build.log

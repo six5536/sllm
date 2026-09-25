@@ -44,6 +44,10 @@ smllm harness install claude          # CLAUDE.md/AGENTS.md block, .mcp.json, ho
 claude plugin marketplace add six5536/smllm && claude plugin install smllm@smllm
 ```
 
+Use one or the other, not both: with both, the hooks and the MCP server run twice. With the
+plugin, the tool is named `mcp__plugin_smllm_smllm__smllm`. `harness install` pre-approves it
+in the project settings; with the plugin, Claude Code asks for permission the first time instead.
+
 ## Usage
 
 ```sh

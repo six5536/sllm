@@ -1,0 +1,16 @@
+---
+source: crates/lib/smllm-format/tests/validate.rs
+expression: "lines(&fixture(\"bad/shape.smllm.yaml\")).join(\"\\n\")"
+---
+:4: error: meta.smllm: expected a whole number, found a string (CFG-1)
+:7: error: meta.sharedActions[0].position: `sideways` is not one of: before, after (CFG-11)
+:10: error: states.A.foo: unknown key `foo` (expected one of: description, type, meta, entry, exit, on, always) (CFG-1)
+:14: error: states.A.on.check.guard: a guard is written as {type, params} (CFG-5)
+  hint: guard types: command { run }, visits { state, atLeast }
+:18: error: states.A.on.run.actions.params.run: run must be a string (shell) or a list of strings (no shell) (DEC-4)
+:19: error: states.A.on.ask.actions.type: unknown action type `shout` (expected one of: prompt, command, setRef) (CFG-4)
+:21: error: states.B.bar: unknown key `bar` (expected one of: description, type, meta, entry, exit, on, always) (CFG-1)
+:23: error: states.B.states: `states` is not supported (CFG-2)
+  hint: XState, but not in smllm v1's subset: flat atomic/final states; no delays, invocations, context
+:22: error: states.B.type: `type: parallel` is not supported (CFG-2)
+  hint: XState, but not in smllm v1's subset: flat atomic/final states

@@ -251,11 +251,9 @@ impl Engine {
     ) -> Result<Reply, Error> {
         let session = match key {
             Some(k) => self.session(host, k)?,
-            None if event == "enter" => {
-                let s = self.new_session(host, bind)?;
-                host.store.put_session(&s)?;
-                s
-            }
+            // Saved only if the enter succeeds: a rejected keyless call
+            // leaves nothing behind (TURN-3).
+            None if event == "enter" => self.new_session(host, bind)?,
             None => return Err(Error::MissingSession),
         };
         let mut turn = Turn::new(&self.config, host, session, event);
@@ -284,14 +282,18 @@ impl Engine {
         if session.yielded || session.holding.is_none() {
             return Ok(Stop::Allow);
         }
-        let reply = self.menu(host, key)?;
-        if reply.location.machine.is_none() {
-            return Ok(Stop::Allow);
-        }
+        let mut turn = Turn::new(&self.config, host, session, "");
+        // A moved instance is reported once, here, and the session drops to
+        // idle (INST-7); an unconfigured machine lets the agent stop.
+        let text = match machine::held(&mut turn, true)? {
+            Ok(_) => machine::view(&mut turn, false)?.text,
+            Err(machine::Gone::Moved(r)) => r.text,
+            Err(machine::Gone::Unconfigured(_)) => return Ok(Stop::Allow),
+        };
         Ok(if stop_hook_active {
-            Stop::Runaway(reply.text)
+            Stop::Runaway(text)
         } else {
-            Stop::Block(reply.text)
+            Stop::Block(text)
         })
     }
 

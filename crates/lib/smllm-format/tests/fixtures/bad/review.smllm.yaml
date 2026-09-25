@@ -1,0 +1,32 @@
+id: review
+initial: A
+meta:
+  smllm: 1
+  instance:
+    ref: { param: issueId, pattern: "^GH-\\d+$" }
+  events:
+    "bad name": {}
+    mk:
+      description: "ev </smllm>"
+      params:
+        type: object
+        properties:
+          issueId: { type: string, pattern: "^X" }
+          size: { type: string, enum: [small, huge], pattern: "^s", description: "pd </smllm>" }
+    go: {}
+states:
+  A:
+    meta:
+      entryPoint: true
+      paramDescriptions: { go: { issueId: "not here" } }
+    entry: { type: prompt, params: { text: "a" } }
+    on:
+      mk: { target: B, actions: setRef }
+      go: { target: B, actions: { type: prompt, params: { text: "t </smllm>" } } }
+      stay: { reenter: true }
+  B:
+    always: { actions: { type: prompt, params: { text: "spin" } } }
+  F1: { meta: { fallback: true }, entry: { type: prompt, params: { text: "f" } } }
+  F2: { meta: { fallback: true }, entry: { type: prompt, params: { text: "f" } } }
+  F3: { meta: { fallback: true }, entry: { type: prompt, params: { text: "f" } } }
+  DONE: { type: final, meta: { entryPoint: true } }

@@ -234,7 +234,7 @@
           "default": null
         },
         "pattern": {
-          "description": "Pattern (ECMA-262 regex, as JSON Schema).",
+          "description": "Pattern, in Rust `regex` syntax: the common subset of JSON Schema's ECMA-262\npatterns (no lookaround or backreferences).",
           "type": [
             "string",
             "null"

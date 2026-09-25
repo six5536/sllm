@@ -12,10 +12,30 @@ use crate::prelude::*;
 use crate::record::{HistoryEntry, Instance, Status};
 use crate::render::{Block, format_utc, header, quote};
 
-/// The held instance, or the reply telling the agent it moved (INST-7).
+/// Why the held instance cannot be used.
+pub(crate) enum Gone {
+    /// Its machine is not in the (current) config: reported, never saved, so
+    /// a briefly broken file does not lose the session's place.
+    Unconfigured(Box<Reply>),
+    /// Another session holds it, or it is no longer active or present (INST-7).
+    Moved(Box<Reply>),
+}
+
+impl Gone {
+    pub(crate) fn reply(self) -> Reply {
+        match self {
+            Gone::Unconfigured(r) | Gone::Moved(r) => *r,
+        }
+    }
+}
+
+/// The held instance, or why not. `persist`: drop the session to idle in the
+/// store when it moved (event calls and the stop hook); views never write
+/// (ENG-5).
 pub(crate) fn held<'c>(
     turn: &mut Turn<'c, '_>,
-) -> Result<Result<(&'c Machine, Instance), Reply>, Error> {
+    persist: bool,
+) -> Result<Result<(&'c Machine, Instance), Gone>, Error> {
     let key = turn
         .session
         .holding
@@ -23,10 +43,10 @@ pub(crate) fn held<'c>(
         .expect("caller checked holding");
     let Some(machine) = turn.config.machine(&key.machine) else {
         let msg = format!(
-            "state machine {} is no longer configured; you are in idle",
+            "state machine {} is not configured (is its file valid?); fix the config, or park",
             key.machine
         );
-        return moved(turn, msg).map(Err);
+        return idle::reply(turn, false, Some(msg)).map(|r| Err(Gone::Unconfigured(Box::new(r))));
     };
     let inst = turn.host.store.instance(&key.machine, &key.id)?;
     match inst {
@@ -45,14 +65,27 @@ pub(crate) fn held<'c>(
                     i.status.as_str()
                 ),
             };
-            moved(turn, msg).map(Err)
+            gone(turn, msg, persist)
         }
-        None => moved(
+        None => gone(
             turn,
             format!("instance {} no longer exists; you are in idle", key.id),
-        )
-        .map(Err),
+            persist,
+        ),
     }
+}
+
+fn gone(
+    turn: &mut Turn<'_, '_>,
+    msg: String,
+    persist: bool,
+) -> Result<Result<(&'static Machine, Instance), Gone>, Error> {
+    let r = if persist {
+        moved(turn, msg)?
+    } else {
+        idle::reply(turn, false, Some(msg))?
+    };
+    Ok(Err(Gone::Moved(Box::new(r))))
 }
 
 /// Drop to idle with an error (INST-7).
@@ -65,9 +98,9 @@ pub(crate) fn moved(turn: &mut Turn<'_, '_>, msg: String) -> Result<Reply, Error
 
 /// No event: entry block (optionally) + events list (ENG-5).
 pub(crate) fn view(turn: &mut Turn<'_, '_>, entry: bool) -> Result<Reply, Error> {
-    let (machine, mut inst) = match held(turn)? {
+    let (machine, mut inst) = match held(turn, false)? {
         Ok(p) => p,
-        Err(reply) => return Ok(reply),
+        Err(gone) => return Ok(gone.reply()),
     };
     if entry && let Some(state) = machine.state(&inst.state) {
         // Re-render the state's entry prompts only; commands are not re-run.
@@ -202,9 +235,9 @@ fn reject(
 /// Fire an event in a machine state.
 // @zen-impl: ENG-2_AC-1
 pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Result<Reply, Error> {
-    let (machine, mut inst) = match held(turn)? {
+    let (machine, mut inst) = match held(turn, true)? {
         Ok(p) => p,
-        Err(reply) => return Ok(reply),
+        Err(gone) => return Ok(gone.reply()),
     };
     let state = machine.state(&inst.state);
     let offers = machine_offers(machine, state, &inst);
@@ -265,7 +298,12 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
         "resume" => {
             let back = inst.interrupted.take().unwrap_or_default();
             if machine.state(&back).is_none() {
-                let msg = format!("the interrupted state {back} no longer exists");
+                let all: Vec<&str> = machine.states.iter().map(|s| s.name.as_str()).collect();
+                let msg = format!(
+                    "the interrupted state {back} no longer exists; leave with one of this state's events, or park and enter with a state: {}",
+                    all.join(", ")
+                );
+                inst.interrupted = Some(back);
                 return reject(turn, machine, &mut inst, msg);
             }
             turn.exit(machine, &mut inst, &from, Some(&back));
@@ -275,15 +313,18 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
         }
         _ => {
             let on = state.and_then(|s| s.on(&event)).expect("offered");
-            let Some(t) = turn.pick(&inst, &from, &on.transitions) else {
-                let msg = format!("no transition of {event} matched in {from}; nothing changed");
-                return reject(turn, machine, &mut inst, msg);
-            };
-            if t.actions.iter().any(|a| matches!(a, ActionDef::SetRef))
+            // setRef is checked before guards run, so a rejected call has no
+            // side effects (TURN-3).
+            let sets_ref = |t: &crate::model::Transition| t.actions.contains(&ActionDef::SetRef);
+            if on.transitions.iter().any(sets_ref)
                 && let Err(msg) = check_set_ref(turn, machine, &inst)
             {
                 return reject(turn, machine, &mut inst, msg);
             }
+            let Some(t) = turn.pick(&inst, &from, &on.transitions) else {
+                let msg = format!("no transition of {event} matched in {from}; nothing changed");
+                return reject(turn, machine, &mut inst, msg);
+            };
             if machine.state(&inst.state).is_some_and(|s| s.fallback) && t.target.is_some() {
                 inst.interrupted = None;
             }
@@ -365,14 +406,20 @@ fn unmatched(
         && old != key
         && let Some(mut o) = turn.host.store.instance(&old.machine, &old.id)?
         && o.status == Status::Suspended
+        && o.holder.as_deref() == Some(&turn.session.key)
     {
         o.status = Status::Parked;
         o.holder = None;
         o.version += 1;
         o.updated = turn.now;
-        turn.host.store.put_instance(&o)?;
-        turn.notes
-            .push(format!("Parked the previously suspended {}.", o.label()));
+        // A conflict means another session changed it meanwhile: leave it.
+        match turn.host.store.put_instance(&o) {
+            Ok(()) => turn
+                .notes
+                .push(format!("Parked the previously suspended {}.", o.label())),
+            Err(HostError::Conflict) => {}
+            Err(e) => return Err(e.into()),
+        }
     }
     turn.session.holding = None;
     turn.notes.push(format!(

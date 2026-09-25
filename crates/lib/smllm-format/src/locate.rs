@@ -1,25 +1,38 @@
 //! Find the line of a YAML path in block- or flow-style YAML, for findings
 //! about well-formed files (serde reports its own locations).
+//!
+//! Keys match only as direct children of their parent: in block style at the
+//! parent's child indentation, in a flow map `{…}` at its top nesting level.
+//! So `states` never matches `- states: [...]` inside `meta.sharedActions`,
+//! and a state's `description` never matches a transition's.
+
+/// Where a located node is written.
+#[derive(Debug, Clone, Copy)]
+struct Node {
+    line: usize,
+    /// Column of the key, or of the `-` of a list item.
+    col: usize,
+    /// Column where the node's value (or item content) starts on `line`.
+    value_col: usize,
+    /// A block list item: its content may hold the first key on this line.
+    item: bool,
+}
 
 /// The 1-based line where `path` (keys; `[n]` list items) is written, or the
 /// deepest ancestor found.
 pub fn locate(text: &str, path: &[&str]) -> Option<usize> {
     let lines: Vec<&str> = text.lines().collect();
-    let mut line = 0usize; // search start
-    let mut indent: isize = -1; // parent's indentation
+    let mut cur: Option<Node> = None;
     let mut found = None;
     for seg in path {
-        let hit = if let Some(idx) = seg.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
-            let n: usize = idx.parse().ok()?;
-            find_item(&lines, line, indent, n)
-        } else {
-            find_key(&lines, line, indent, seg)
+        let next = match seg.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+            Some(idx) => idx.parse().ok().and_then(|n| item(&lines, cur, n)),
+            None => key(&lines, cur, seg),
         };
-        match hit {
-            Some((l, ind)) => {
-                found = Some(l + 1);
-                line = l;
-                indent = ind;
+        match next {
+            Some(n) => {
+                found = Some(n.line + 1);
+                cur = Some(n);
             }
             None => break,
         }
@@ -27,8 +40,8 @@ pub fn locate(text: &str, path: &[&str]) -> Option<usize> {
     found
 }
 
-fn indent_of(l: &str) -> isize {
-    (l.len() - l.trim_start().len()) as isize
+fn indent_of(l: &str) -> usize {
+    l.len() - l.trim_start().len()
 }
 
 fn is_blank(l: &str) -> bool {
@@ -36,78 +49,196 @@ fn is_blank(l: &str) -> bool {
     t.is_empty() || t.starts_with('#')
 }
 
-/// A `key:` below the parent at `start` (same line counts, for flow maps).
-fn find_key(lines: &[&str], start: usize, parent: isize, key: &str) -> Option<(usize, isize)> {
-    let needles = [
+/// The key forms `key:`, `"key":`, `'key':`, followed by a space or the end.
+fn key_len_at(text: &str, key: &str) -> Option<usize> {
+    for needle in [
         format!("{key}:"),
         format!("\"{key}\":"),
         format!("'{key}':"),
-    ];
+    ] {
+        if let Some(rest) = text.strip_prefix(needle.as_str())
+            && (rest.is_empty() || rest.starts_with([' ', '\t']))
+        {
+            return Some(needle.len());
+        }
+    }
+    None
+}
+
+/// A key directly under `parent` (`None` = the document root).
+fn key(lines: &[&str], parent: Option<Node>, key: &str) -> Option<Node> {
+    let Some(p) = parent else {
+        return block_key(lines, 0, None, key);
+    };
+    let line = lines.get(p.line)?;
+    let rest = line.get(p.value_col..).unwrap_or("");
+    if p.item {
+        // `- key: v` — the item's first key is on its own line, at value_col.
+        if let Some(len) = key_len_at(rest, key) {
+            return Some(Node {
+                line: p.line,
+                col: p.value_col,
+                value_col: p.value_col + len,
+                item: false,
+            });
+        }
+        let t = rest.trim_start();
+        if t.starts_with('{') {
+            return flow_key(line, p.value_col + (rest.len() - t.len()), p.line, key);
+        }
+        return block_key_at(lines, p.line + 1, p.value_col, key);
+    }
+    let t = rest.trim_start();
+    if t.starts_with('{') {
+        return flow_key(line, p.value_col + (rest.len() - t.len()), p.line, key);
+    }
+    // A one-item list is written without its `[0]` in finding paths
+    // (OneOrMany): look inside the first item.
+    if t.is_empty()
+        && let Some(first) = (p.line + 1..lines.len()).find(|&i| !is_blank(lines[i]))
+        && lines[first].trim_start().starts_with('-')
+    {
+        let first_item = item(lines, Some(p), 0)?;
+        return self::key(lines, Some(first_item), key);
+    }
+    block_key(lines, p.line + 1, Some(p.col), key)
+}
+
+/// A block key below a parent at `parent_col`: the first content line sets
+/// the child indentation; only keys there match.
+fn block_key(lines: &[&str], start: usize, parent_col: Option<usize>, key: &str) -> Option<Node> {
+    let first = (start..lines.len()).find(|&i| !is_blank(lines[i]))?;
+    let col = indent_of(lines[first]);
+    if parent_col.is_some_and(|pc| col <= pc) || lines[first].trim_start().starts_with('-') {
+        return None;
+    }
+    block_key_at(lines, first, col, key)
+}
+
+/// A key at exactly `col`, from `start` until the block ends (a line
+/// indented less than `col`).
+fn block_key_at(lines: &[&str], start: usize, col: usize, key: &str) -> Option<Node> {
     for (i, l) in lines.iter().enumerate().skip(start) {
         if is_blank(l) {
             continue;
         }
         let ind = indent_of(l);
-        if i > start && ind <= parent {
+        if ind < col {
             return None;
         }
-        let body = if i == start && parent >= 0 {
-            &l[(parent as usize).min(l.len())..]
-        } else {
-            l
-        };
-        for n in &needles {
-            if let Some(pos) = find_token(body, n) {
-                let offset = l.len() - body.len();
-                return Some((i, (offset + pos) as isize));
-            }
+        if ind == col
+            && let Some(len) = key_len_at(&l[ind..], key)
+        {
+            return Some(Node {
+                line: i,
+                col: ind,
+                value_col: ind + len,
+                item: false,
+            });
         }
     }
     None
 }
 
-/// `n`th `- ` item below the parent.
-fn find_item(lines: &[&str], start: usize, parent: isize, n: usize) -> Option<(usize, isize)> {
+/// A key at the top level of the flow map opening at `open` on `line`.
+fn flow_key(line: &str, open: usize, line_no: usize, key: &str) -> Option<Node> {
+    let bytes = line.as_bytes();
+    let mut depth = 0usize;
+    let mut quote: Option<u8> = None;
+    let mut expect_key = true;
+    let mut i = open + 1;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if let Some(q) = quote {
+            if c == q {
+                quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        match c {
+            b'{' | b'[' => depth += 1,
+            b'}' | b']' => {
+                if depth == 0 {
+                    return None;
+                }
+                depth -= 1;
+            }
+            b',' if depth == 0 => {
+                expect_key = true;
+                i += 1;
+                continue;
+            }
+            b' ' | b'\t' => {
+                i += 1;
+                continue;
+            }
+            _ => {}
+        }
+        if depth == 0 && expect_key {
+            if let Some(len) = key_len_at(&line[i..], key) {
+                return Some(Node {
+                    line: line_no,
+                    col: i,
+                    value_col: i + len,
+                    item: false,
+                });
+            }
+            expect_key = false;
+        }
+        if c == b'"' || c == b'\'' {
+            quote = Some(c);
+        }
+        i += 1;
+    }
+    None
+}
+
+/// The `n`th item of the list under `parent`.
+fn item(lines: &[&str], parent: Option<Node>, n: usize) -> Option<Node> {
+    let p = parent?;
+    let line = lines.get(p.line)?;
+    if line
+        .get(p.value_col..)
+        .unwrap_or("")
+        .trim_start()
+        .starts_with('[')
+    {
+        // A flow list: its items share the line.
+        return Some(Node {
+            line: p.line,
+            col: p.value_col,
+            value_col: p.value_col,
+            item: false,
+        });
+    }
+    let mut item_col = None;
     let mut seen = 0;
-    let mut item_indent = None;
-    for (i, l) in lines.iter().enumerate().skip(start + 1) {
+    for (i, l) in lines.iter().enumerate().skip(p.line + 1) {
         if is_blank(l) {
             continue;
         }
         let ind = indent_of(l);
-        if ind <= parent && !l.trim_start().starts_with("- ") {
-            return None;
+        let t = l.trim_start();
+        let dash = t == "-" || t.starts_with("- ");
+        match item_col {
+            None if dash && ind >= p.col => item_col = Some(ind),
+            None => return None,
+            Some(c) if ind < c || (ind == c && !dash) => return None,
+            _ => {}
         }
-        if l.trim_start().starts_with("- ") || l.trim() == "-" {
-            match item_indent {
-                None => item_indent = Some(ind),
-                Some(ii) if ii != ind => continue,
-                _ => {}
-            }
+        if dash && Some(ind) == item_col {
             if seen == n {
-                return Some((i, ind + 1));
+                let content = ind + 1 + t[1..].len() - t[1..].trim_start().len();
+                return Some(Node {
+                    line: i,
+                    col: ind,
+                    value_col: content,
+                    item: true,
+                });
             }
             seen += 1;
         }
-    }
-    None
-}
-
-/// Position of `needle` as a key token (start of text, or after `{`, `,`,
-/// `- `, whitespace).
-fn find_token(hay: &str, needle: &str) -> Option<usize> {
-    let mut from = 0;
-    while let Some(p) = hay[from..].find(needle) {
-        let at = from + p;
-        let before = hay[..at].trim_end();
-        if before.is_empty()
-            || before.ends_with('{')
-            || before.ends_with(',')
-            || before.ends_with('-')
-        {
-            return Some(at);
-        }
-        from = at + needle.len();
     }
     None
 }
@@ -127,10 +258,37 @@ mod tests {
             locate(Y, &["states", "A", "on", "stay", "[0]", "guard"]),
             Some(7)
         );
+        assert_eq!(
+            locate(Y, &["states", "A", "on", "stay", "[0]", "target"]),
+            Some(8)
+        );
         assert_eq!(locate(Y, &["states", "B", "entry"]), Some(10));
+        assert_eq!(locate(Y, &["states", "B", "entry", "type"]), Some(10));
         // Missing → deepest ancestor.
         assert_eq!(locate(Y, &["states", "A", "exit"]), Some(3));
         assert_eq!(locate(Y, &["nope"]), None);
         assert_eq!(locate(Y, &["states", "A", "on", "stay", "[7]"]), Some(6));
+    }
+
+    #[test]
+    fn keys_match_only_as_direct_children() {
+        // sharedActions items carry a `states:` key before the real one.
+        let y = "id: x\nmeta:\n  sharedActions:\n    - states: [A]\n      position: before\nstates:\n  A:\n    on:\n      go: { description: t, target: A }\n    description: d\n";
+        assert_eq!(locate(y, &["states"]), Some(6));
+        assert_eq!(locate(y, &["states", "A", "on", "go"]), Some(9));
+        assert_eq!(locate(y, &["states", "A", "description"]), Some(10));
+        assert_eq!(locate(y, &["states", "A", "on", "go", "target"]), Some(9));
+        assert_eq!(
+            locate(y, &["meta", "sharedActions", "[0]", "position"]),
+            Some(5)
+        );
+        // A nested flow map's keys are not the outer map's.
+        let f = "a: { b: { c: 1 }, c: 2 }\n";
+        assert_eq!(locate(f, &["a", "c"]), Some(1));
+        assert_eq!(locate(f, &["a", "b", "c"]), Some(1));
+        assert_eq!(locate("a:\n- x\n", &["a", "[0]"]), Some(2));
+        // A one-item list without its index: the key inside the item.
+        let l = "on:\n  go:\n    - guard: g\n      target: B\n";
+        assert_eq!(locate(l, &["on", "go", "target"]), Some(4));
     }
 }

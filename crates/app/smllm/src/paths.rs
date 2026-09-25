@@ -40,16 +40,20 @@ pub fn project_config(from: &Path) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// `--config`, else a non-empty `SMLLM_CONFIG`.
+pub fn explicit(flag: Option<&Path>) -> Option<PathBuf> {
+    flag.map(Path::to_path_buf).or_else(|| {
+        std::env::var_os("SMLLM_CONFIG")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    })
+}
+
 /// Configs to load: `--config`/`SMLLM_CONFIG` alone, else the user config
 /// then the nearest project config (D26). Empty when none exists (HOST-8).
 // @zen-impl: CLI-3_AC-2
 pub fn lookup(explicit: Option<&Path>, from: &Path) -> Result<Vec<ConfigFile>> {
-    let explicit = explicit.map(Path::to_path_buf).or_else(|| {
-        std::env::var_os("SMLLM_CONFIG")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from)
-    });
-    if let Some(p) = explicit {
+    if let Some(p) = self::explicit(explicit) {
         let p = if p.is_relative() { from.join(p) } else { p };
         if !p.is_file() {
             return Err(Error::msg(format!("config {} does not exist", p.display())));
