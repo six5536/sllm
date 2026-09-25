@@ -3,4 +3,4 @@
 files = ["plan.smllm.yaml", "gauntlet.smllm.yaml", "quest.smllm.yaml", "wordle.smllm.yaml"]
 
 [idle]
-on-enter = { text = "For a PLAN-nnn, enter plan (new plans start at DRAFT; an existing one at GRILL or IMPLEMENT). For small changes, just work in idle. Before a release, run the gauntlet with the version. For a break, the user can play the quest, or watch you play wordle." }
+on-enter = { text = "For a PLAN-nnn, enter plan (new plans start at DRAFT; an existing one at GRILL or IMPLEMENT). For small changes, just work in idle. Before a release, run the gauntlet with the version. For a break, the user can play the quest or wordle; you narrate or host, they play." }
