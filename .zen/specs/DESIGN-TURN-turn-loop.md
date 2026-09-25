@@ -72,7 +72,7 @@ impl Block {
     pub(crate) fn events(&mut self, key: &str, offers: &[Offer]) -> &mut Self;
     pub(crate) fn close(&mut self) -> String;             // + "</smllm>\n"
 }
-pub(crate) fn header(key: &str, machine: &str, state: &str, visit: u32, noun: &str, label: &str) -> String;
+pub(crate) fn header(key: &str, machine: &str, state: &str, visit: u32, kind: &str, label: &str) -> String;
 pub(crate) fn idle_header(key: &str) -> String;
 pub(crate) fn quote(value: &str) -> String;
 pub fn format_utc(ms: u64) -> String;                     // "YYYY-MM-DD HH:MM UTC"
@@ -85,7 +85,7 @@ The stop and prompt entry points are ENG-Engine (DESIGN-ENG-engine.md).
 
 ### Core Types
 
-- HEADER: `session <key> · <machine> › <STATE>[ (visit n)] · <noun> <label>`; `(visit n)` only when n ≥ 2; idle: `session <key> · idle`
+- HEADER: `session <key> · <machine> › <STATE>[ (visit n)] · <kind> <label>`; `(visit n)` only when n ≥ 2; idle: `session <key> · idle`
 
 - MACHINE BLOCK LINE ORDER: header, `Arrived by: …`, `Params: …`, notes, `Guard: …` trace, `Action failed:`/`Prompt failed:`/always failures, `error: …`, `<instructions>`, call line + `<events>`
 
@@ -146,7 +146,7 @@ Fire one event: smllm({ session: "sm-n0zmmz", event, params })
 */
 ```
 
-- IDLE LIST: idle header, notes/errors, `[idle] on-enter` text as `<instructions>`, `State machines:` (or `No state machines are configured.`), per machine `- <id>[ — <description>]`, `    <noun> id param: <param>[ — <description>][ (pattern: P)]`, `    starts at: <initial>[; entry points: A, B]`; then `Suspended: <noun> <label> (<machine>) at <STATE>`; `Parked:` + `- <noun> <label> (<machine>) at <STATE>` sorted by machine then label; then the events list (`enter`, plus `resume` when suspended)
+- IDLE LIST: idle header, notes/errors, `[idle] on-enter` text as `<instructions>`, `State machines:` (or `No state machines are configured.`), per machine `- <id>[ — <description>]`, `    <kind> id param: <param>[ — <description>][ (pattern: P)]`, `    starts at: <initial>[; entry points: A, B]`; then `Suspended: <kind> <label> (<machine>) at <STATE>`; `Parked:` + `- <kind> <label> (<machine>) at <STATE>` sorted by machine then label; then the events list (`enter`, plus `resume` when suspended)
 
 ```rust
 /*
@@ -173,7 +173,7 @@ Fire one event: smllm({ session: "sm-n0zmmz", event, params })
 */
 ```
 
-- FINAL STATE: the final state's block (header, `Arrived by`, params, notes, trace, failures, `<instructions>`), then `Completed <noun> <label>. You are now in idle.`, then the idle list body (without a second header) in the same fence
+- FINAL STATE: the final state's block (header, `Arrived by`, params, notes, trace, failures, `<instructions>`), then `Completed <kind> <label>. You are now in idle.`, then the idle list body (without a second header) in the same fence
 
 - YIELD REPLY: header + `Yielded: staying in <STATE>. You may end your turn.`; no menu
 

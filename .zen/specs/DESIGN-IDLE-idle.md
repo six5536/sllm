@@ -85,16 +85,16 @@ fn resume(turn: &mut Turn<'_, '_>) -> Result<Reply, Error>;
 
 ### Core Types
 
-- ARRIVED-BY TEXT: `enter (new <noun>)`, `enter`, `enter (jump from <S>)`, `enter (reopened from <S>)`, `enter (saved state <S> no longer exists)`, `resume`, `unmatched from <S>`; ` via <A>, <B>` is appended when `always` states were passed
+- ARRIVED-BY TEXT: `enter (new <kind>)`, `enter`, `enter (jump from <S>)`, `enter (reopened from <S>)`, `enter (saved state <S> no longer exists)`, `resume`, `unmatched from <S>`; ` via <A>, <B>` is appended when `always` states were passed
 
 ```rust
 // Header notes added by idle/built-ins:
 // "Took over from session <K> (last active YYYY-MM-DD HH:MM UTC)"
-// "Reopened <noun> <label> at <STATE>."
-// "Parked <noun> <label> at <STATE>."
-// "Suspended <noun> <label> at <STATE>. Handle the request, then fire resume from idle."
+// "Reopened <kind> <label> at <STATE>."
+// "Parked <kind> <label> at <STATE>."
+// "Suspended <kind> <label> at <STATE>. Handle the request, then fire resume from idle."
 // "Parked the previously suspended <label>."
-// "Completed <noun> <label>. You are now in idle."
+// "Completed <kind> <label>. You are now in idle."
 ```
 
 The idle list layout is in DESIGN-TURN-turn-loop.md.
@@ -114,7 +114,7 @@ The idle list layout is in DESIGN-TURN-turn-loop.md.
 - UNKNOWN_PARAM: `enter has no param <k> for <machine> (params: stateMachine, <ref param>, state)`
 - BAD_REF: pattern mismatch on a new ref
 - NOT_ENTRY_POINT: `<S> is not an entry point of <machine> (entry points: …)`
-- SAVED_STATE_MISSING: `saved state <S> of <noun> <label> no longer exists; fire enter with state: one of <all states>` (IDLE-3)
+- SAVED_STATE_MISSING: `saved state <S> of <kind> <label> no longer exists; fire enter with state: one of <all states>` (IDLE-3)
 - NO_SUCH_STATE: `<machine> has no state <S>` (repair with an unknown state)
 - RESUME_STALE: moved to another session, or no longer suspended; the slot is cleared
 

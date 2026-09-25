@@ -6,7 +6,7 @@ initial: TRIAGE
 meta:
   smllm: 1
   instance:
-    noun: issue
+    kind: issue
     ref:
       param: issueId
       description: "The GitHub issue id, e.g. GH-123."

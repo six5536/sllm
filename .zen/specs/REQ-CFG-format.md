@@ -73,7 +73,7 @@ AS A machine author, I WANT to name an instance and its ref, SO THAT generated t
 
 ACCEPTANCE CRITERIA
 
-- [ ] CFG-6_AC-1 [ubiquitous]: The system SHALL read `meta.instance` with `noun` and `ref` (`param`, `description`, `pattern`), defaulting the noun to `instance` and the ref param to `ref`
+- [ ] CFG-6_AC-1 [ubiquitous]: The system SHALL read `meta.instance` with `kind` and `ref` (`param`, `description`, `pattern`), defaulting the kind to `instance` and the ref param to `ref`
 
 ### CFG-7: Event declarations [MUST]
 

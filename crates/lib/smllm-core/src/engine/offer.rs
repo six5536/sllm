@@ -66,7 +66,7 @@ pub(crate) fn machine_offers(
     inst: &Instance,
 ) -> Vec<Offer> {
     let mut offers = Vec::new();
-    let noun = &machine.instance.noun;
+    let kind = &machine.instance.kind;
     let label = inst.label();
     if let Some(state) = state {
         if state.is_final {
@@ -121,7 +121,7 @@ pub(crate) fn machine_offers(
         description: builtin_description(
             Some(machine),
             "park",
-            format!("Put {noun} {label} aside and return to idle."),
+            format!("Put {kind} {label} aside and return to idle."),
         ),
         params: Vec::new(),
     });
@@ -194,7 +194,7 @@ pub(crate) fn idle_offers(config: &Config, suspended: Option<(&Machine, &Instanc
                 "resume",
                 format!(
                     "Return to {} {} ({}) at {}.",
-                    m.instance.noun,
+                    m.instance.kind,
                     inst.label(),
                     m.id,
                     inst.state

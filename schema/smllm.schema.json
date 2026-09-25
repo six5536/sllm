@@ -89,8 +89,8 @@
       "description": "`meta.instance`.",
       "type": "object",
       "properties": {
-        "noun": {
-          "description": "What an instance is called in generated text (default `instance`).",
+        "kind": {
+          "description": "The kind of instance, used in generated text (`issue`; default `instance`).",
           "type": [
             "string",
             "null"

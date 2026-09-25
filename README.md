@@ -64,7 +64,7 @@ id: dev
 initial: TRIAGE
 meta:
   smllm: 1
-  instance: { noun: issue, ref: { param: issueId, pattern: "^GH-\\d+$" } }
+  instance: { kind: issue, ref: { param: issueId, pattern: "^GH-\\d+$" } }
 states:
   TRIAGE:
     meta: { entryPoint: true }

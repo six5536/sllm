@@ -43,7 +43,7 @@ pub(crate) fn after_final(
         &machine.id,
         &inst.state,
         inst.visits(&inst.state),
-        &machine.instance.noun,
+        &machine.instance.kind,
         inst.label(),
     ));
     b.line(&format!("Arrived by: {arrived}"));
@@ -65,7 +65,7 @@ pub(crate) fn after_final(
     turn.failures.clear();
     b.line(&format!(
         "Completed {} {}. You are now in idle.",
-        machine.instance.noun,
+        machine.instance.kind,
         inst.label()
     ));
     list(turn, &mut b, None)?;
@@ -103,7 +103,7 @@ fn list(turn: &mut Turn<'_, '_>, b: &mut Block, error: Option<String>) -> Result
             Some(d) => b.line(&format!("- {} — {d}", m.id)),
             None => b.line(&format!("- {}", m.id)),
         };
-        let mut id_line = format!("    {} id param: {}", m.instance.noun, m.instance.ref_param);
+        let mut id_line = format!("    {} id param: {}", m.instance.kind, m.instance.ref_param);
         if let Some(d) = &m.instance.ref_description {
             id_line.push_str(&format!(" — {d}"));
         }
@@ -137,7 +137,7 @@ fn list(turn: &mut Turn<'_, '_>, b: &mut Block, error: Option<String>) -> Result
     if let Some((m, i)) = &suspended {
         b.line(&format!(
             "Suspended: {} {} ({}) at {}",
-            m.instance.noun,
+            m.instance.kind,
             i.label(),
             m.id,
             i.state
@@ -157,7 +157,7 @@ fn list(turn: &mut Turn<'_, '_>, b: &mut Block, error: Option<String>) -> Result
         for (m, i) in &parked {
             b.line(&format!(
                 "- {} {} ({}) at {}",
-                m.instance.noun,
+                m.instance.kind,
                 i.label(),
                 m.id,
                 i.state
@@ -236,7 +236,7 @@ fn enter(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Result<Reply, 
             return reply(turn, false, Some(msg));
         }
     }
-    let noun = machine.instance.noun.as_str();
+    let kind = machine.instance.kind.as_str();
     let state_param = get("state");
     let id_value = get(ref_param);
 
@@ -276,7 +276,7 @@ fn enter(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Result<Reply, 
                 (None, Status::Completed, _) => {
                     let eps: Vec<&str> = machine.entry_points().map(|s| s.name.as_str()).collect();
                     let msg = format!(
-                        "{noun} {} is completed; to reopen it, fire enter with state: one of {}",
+                        "{kind} {} is completed; to reopen it, fire enter with state: one of {}",
                         inst.label(),
                         if eps.is_empty() {
                             "(none: no state is an entry point)".to_string()
@@ -289,7 +289,7 @@ fn enter(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Result<Reply, 
                 (None, _, false) => {
                     let all: Vec<&str> = machine.states.iter().map(|s| s.name.as_str()).collect();
                     let msg = format!(
-                        "saved state {} of {noun} {} no longer exists; fire enter with state: one of {}",
+                        "saved state {} of {kind} {} no longer exists; fire enter with state: one of {}",
                         inst.state,
                         inst.label(),
                         all.join(", ")
@@ -331,12 +331,12 @@ fn enter(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Result<Reply, 
     }
     let target = state_param.clone().unwrap_or_else(|| inst.state.clone());
     let (from, arrived) = match &arrival {
-        Arrival::New => (None, format!("enter (new {noun})")),
+        Arrival::New => (None, format!("enter (new {kind})")),
         Arrival::Saved => (Some(inst.state.clone()), "enter".to_string()),
         Arrival::Jump(f) => (Some(f.clone()), format!("enter (jump from {f})")),
         Arrival::Reopen(f) => {
             turn.notes
-                .push(format!("Reopened {noun} {} at {target}.", inst.label()));
+                .push(format!("Reopened {kind} {} at {target}.", inst.label()));
             (Some(f.clone()), format!("enter (reopened from {f})"))
         }
         Arrival::Repair(f) => (

@@ -50,9 +50,9 @@ pub struct MachineMeta {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct InstanceMeta {
-    /// What an instance is called in generated text (default `instance`).
+    /// The kind of instance, used in generated text (`issue`; default `instance`).
     #[serde(default)]
-    pub noun: Option<String>,
+    pub kind: Option<String>,
     /// The instance's external id.
     #[serde(default, rename = "ref")]
     pub r#ref: Option<RefMeta>,

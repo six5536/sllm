@@ -13,7 +13,7 @@ meta:
   # This machine reviews documents, so all smllm text calls an instance a
   # document, and its ref (the external id) is the document's path.
   instance:
-    noun: document
+    kind: document
     ref:
       param: documentPath
       description: "The document's path, relative to the project, e.g. docs/intro.md."

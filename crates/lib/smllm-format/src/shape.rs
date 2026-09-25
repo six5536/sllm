@@ -190,8 +190,8 @@ impl Walk<'_, '_> {
         self.uint(&at(&p, "smllm"), m.get("smllm"));
         if let Some(i) = m.get("instance") {
             let ip = at(&p, "instance");
-            if let Some(im) = self.map(&ip, i, &["noun", "ref"], &[]) {
-                self.string(&at(&ip, "noun"), im.get("noun"));
+            if let Some(im) = self.map(&ip, i, &["kind", "ref"], &[]) {
+                self.string(&at(&ip, "kind"), im.get("kind"));
                 if let Some(r) = im.get("ref") {
                     let rp = at(&ip, "ref");
                     if let Some(rm) = self.map(&rp, r, &["param", "description", "pattern"], &[]) {

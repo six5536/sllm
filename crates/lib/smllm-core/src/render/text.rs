@@ -18,21 +18,21 @@ next state's instructions.
 - Call smllm with no event to see where you are and what you may fire.
 - Only the main agent calls smllm. Never pass the session key to subagents.";
 
-/// `session K · machine › STATE (visit n) · noun label` (TURN-1).
+/// `session K · machine › STATE (visit n) · kind label` (TURN-1).
 // @zen-impl: TURN-1_AC-1
 pub(crate) fn header(
     key: &str,
     machine: &str,
     state: &str,
     visit: u32,
-    noun: &str,
+    kind: &str,
     label: &str,
 ) -> String {
     let mut h = format!("session {key} · {machine} › {state}");
     if visit >= 2 {
         h.push_str(&format!(" (visit {visit})"));
     }
-    h.push_str(&format!(" · {noun} {label}"));
+    h.push_str(&format!(" · {kind} {label}"));
     h
 }
 

@@ -57,7 +57,7 @@ fn the_examples_load_cleanly() {
 fn the_showcase_lowers_as_written() {
     let (m, _) = load_machine(&root().join("examples/showcase/showcase.smllm.yaml"), false);
     let m = m.unwrap();
-    assert_eq!(m.instance.noun, "document");
+    assert_eq!(m.instance.kind, "document");
     assert_eq!(m.instance.ref_param, "documentPath");
     // setRef made the ref param required on `named`.
     let named = m.events.get("named").unwrap();

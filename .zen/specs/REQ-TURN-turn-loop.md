@@ -10,7 +10,7 @@ The agent interaction loop (TURN): what the agent sees on entering a state, what
 - EVENTS LIST: The menu: header, the call line, `<events>`
 - ERROR BLOCK: Header, `error:` line, events list; returned for an invalid call
 - IDLE LIST: Idle's entry block (REQ-IDLE)
-- HEADER: The first line of every block: session key, machine › state, visit, noun + id/ref
+- HEADER: The first line of every block: session key, machine › state, visit, kind + id/ref
 - YIELDED FLAG: Set by `yield`, cleared by a user prompt or any transition
 - STOP HOOK: The harness hook run when the agent tries to end its turn
 
@@ -28,7 +28,7 @@ AS AN agent, I WANT a fixed header, SO THAT I always know where I am.
 
 ACCEPTANCE CRITERIA
 
-- [x] TURN-1_AC-1 [ubiquitous]: The system SHALL start every block with `session <key> · <machine> › <STATE>`, then ` (visit n)` from the second visit, then ` · <noun> <id or ref>`; followed by the arriving event, params, notes, transition trace and failed actions, each on its own line
+- [x] TURN-1_AC-1 [ubiquitous]: The system SHALL start every block with `session <key> · <machine> › <STATE>`, then ` (visit n)` from the second visit, then ` · <kind> <id or ref>`; followed by the arriving event, params, notes, transition trace and failed actions, each on its own line
 
 ### TURN-2: Events list [MUST]
 

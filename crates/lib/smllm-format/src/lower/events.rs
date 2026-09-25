@@ -33,9 +33,9 @@ pub(crate) fn valid_pattern(c: &mut Checker<'_>, path: &[String], pattern: &str)
 pub(crate) fn lower_instance(c: &mut Checker<'_>, src: Option<&InstanceMeta>) -> InstanceSpec {
     let mut spec = InstanceSpec::default();
     let Some(src) = src else { return spec };
-    if let Some(n) = &src.noun {
-        check_fences(c, &ypath!["meta", "instance", "noun"], n);
-        spec.noun = n.clone();
+    if let Some(n) = &src.kind {
+        check_fences(c, &ypath!["meta", "instance", "kind"], n);
+        spec.kind = n.clone();
     }
     if let Some(r) = &src.r#ref {
         if let Some(p) = &r.param {

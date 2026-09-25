@@ -104,13 +104,13 @@ STO-Records (`Session`: key, harness, host session, cwd, configs, `holding`, `su
 
 ### Instance errors (returned as replies)
 
-- REF_ALREADY_SET: `<noun> <id> already has its ref <r>; it is set once` (INST-3)
-- REF_TAKEN: `another <noun> of <machine> already has ref <v>` (INST-3)
-- MOVED: `<noun> <label> moved to session <K>; you are in idle` (INST-7)
-- NOT_ACTIVE: `<noun> <label> is <status>; you are in idle` (INST-7)
+- REF_ALREADY_SET: `<kind> <id> already has its ref <r>; it is set once` (INST-3)
+- REF_TAKEN: `another <kind> of <machine> already has ref <v>` (INST-3)
+- MOVED: `<kind> <label> moved to session <K>; you are in idle` (INST-7)
+- NOT_ACTIVE: `<kind> <label> is <status>; you are in idle` (INST-7)
 - GONE: `instance <id> no longer exists; you are in idle`
-- CONFLICT: `<noun> <label> was changed by another session; you are in idle` (INST-8)
-- COMPLETED_NEEDS_STATE: `<noun> <label> is completed; to reopen it, fire enter with state: one of <entry points>` (INST-10)
+- CONFLICT: `<kind> <label> was changed by another session; you are in idle` (INST-8)
+- COMPLETED_NEEDS_STATE: `<kind> <label> is completed; to reopen it, fire enter with state: one of <entry points>` (INST-10)
 
 ### Strategy
 

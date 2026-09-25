@@ -11,7 +11,7 @@ initial: START
 meta:
   smllm: 1
   instance:
-    noun: task
+    kind: task
     ref:
       param: taskId
       description: "The task's id."

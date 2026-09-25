@@ -370,7 +370,7 @@ pub fn dev() -> Machine {
         description: Some("Fix an issue end to end.".into()),
         initial: "TRIAGE".into(),
         instance: InstanceSpec {
-            noun: "issue".into(),
+            kind: "issue".into(),
             ref_param: "issueId".into(),
             ref_description: Some("The GitHub issue id, e.g. GH-123.".into()),
             ref_pattern: Some("^GH-\\d+$".into()),

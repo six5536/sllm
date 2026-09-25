@@ -54,13 +54,13 @@ pub(crate) fn held<'c>(
             Ok(Ok((machine, i)))
         }
         Some(i) => {
-            let noun = &machine.instance.noun;
+            let kind = &machine.instance.kind;
             let msg = match &i.holder {
                 Some(h) if *h != turn.session.key => {
-                    format!("{noun} {} moved to session {h}; you are in idle", i.label())
+                    format!("{kind} {} moved to session {h}; you are in idle", i.label())
                 }
                 _ => format!(
-                    "{noun} {} is {}; you are in idle",
+                    "{kind} {} is {}; you are in idle",
                     i.label(),
                     i.status.as_str()
                 ),
@@ -167,7 +167,7 @@ fn block(
         &machine.id,
         &inst.state,
         visit,
-        &machine.instance.noun,
+        &machine.instance.kind,
         inst.label(),
     ));
     if let Some(a) = arrived {
@@ -269,7 +269,7 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
                 &machine.id,
                 &from,
                 inst.visits(&from),
-                &machine.instance.noun,
+                &machine.instance.kind,
                 inst.label(),
             ));
             b.line(&format!(
@@ -289,7 +289,7 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
             turn.session.holding = None;
             turn.notes.push(format!(
                 "Parked {} {} at {from}.",
-                machine.instance.noun,
+                machine.instance.kind,
                 inst.label()
             ));
             leave_to_idle(turn, machine, inst, &from)
@@ -348,10 +348,10 @@ fn check_set_ref(
     machine: &Machine,
     inst: &Instance,
 ) -> Result<(), String> {
-    let noun = &machine.instance.noun;
+    let kind = &machine.instance.kind;
     if let Some(r) = &inst.r#ref {
         return Err(format!(
-            "{noun} {} already has its ref {r}; it is set once",
+            "{kind} {} already has its ref {r}; it is set once",
             inst.id
         ));
     }
@@ -368,7 +368,7 @@ fn check_set_ref(
         .any(|i| i.id != inst.id && (i.r#ref.as_deref() == Some(value) || i.id == *value));
     if taken {
         return Err(format!(
-            "another {noun} of {} already has ref {value}",
+            "another {kind} of {} already has ref {value}",
             machine.id
         ));
     }
@@ -424,7 +424,7 @@ fn unmatched(
     turn.session.holding = None;
     turn.notes.push(format!(
         "Suspended {} {} at {from}. Handle the request, then fire resume from idle.",
-        machine.instance.noun,
+        machine.instance.kind,
         inst.label()
     ));
     leave_to_idle(turn, machine, inst, from)
@@ -459,7 +459,7 @@ pub(crate) fn save(
         Err(HostError::Conflict) => {
             let msg = format!(
                 "{} {} was changed by another session; you are in idle",
-                machine.instance.noun,
+                machine.instance.kind,
                 inst.label()
             );
             return moved(turn, msg).map(Err);

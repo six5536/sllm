@@ -80,8 +80,8 @@ impl Machine {
     serde(rename_all = "camelCase")
 )]
 pub struct InstanceSpec {
-    /// Used in all generated text (`issue`).
-    pub noun: String,
+    /// The kind of instance, used in all generated text (`issue`).
+    pub kind: String,
     /// The ref's param name (`issueId`).
     pub ref_param: String,
     /// The ref param's prompt.
@@ -93,7 +93,7 @@ pub struct InstanceSpec {
 impl Default for InstanceSpec {
     fn default() -> Self {
         Self {
-            noun: "instance".to_string(),
+            kind: "instance".to_string(),
             ref_param: "ref".to_string(),
             ref_description: None,
             ref_pattern: None,
