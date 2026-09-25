@@ -46,7 +46,7 @@ AS A human reviewer, I WANT an opt-in test with a real model, SO THAT the full l
 
 ACCEPTANCE CRITERIA
 
-- [ ] TEST-4_AC-1 [complex]: The project SHALL provide `scripts/live-e2e.mjs`, which drives `claude -p` through a machine and checks the recorded history; it SHALL refuse to run unless `SMLLM_LIVE=1` and SHALL run only on explicit human request, never in CI or hooks — script exists; not yet run
+- [x] TEST-4_AC-1 [complex]: The project SHALL provide `scripts/live-e2e.mjs`, which drives `claude -p` through a machine and checks the recorded history; it SHALL refuse to run unless `SMLLM_LIVE=1` and SHALL run only on explicit human request, never in CI or hooks — run once on request 2026-09-25 (haiku), passed
 
 ## Constraints
 

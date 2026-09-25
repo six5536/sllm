@@ -5,7 +5,8 @@
 // ONLY RUN ON EXPLICIT HUMAN REQUEST. It spends model tokens, needs a logged-in
 // `claude` CLI, and is never part of CI or any hook.
 //
-// Usage: node scripts/live-e2e.mjs [path/to/smllm]   (default target/release/smllm)
+// Usage: SMLLM_LIVE=1 node scripts/live-e2e.mjs [path/to/smllm]   (default target/release/smllm)
+// SMLLM_LIVE_MODEL picks the model (default haiku).
 
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
@@ -71,6 +72,14 @@ const out = run(
     "Enter the hello state machine with smllm and follow its instructions until it completes.",
     "--permission-mode",
     "acceptEdits",
+    // `claude -p` loads the project .mcp.json only when named explicitly
+    // (seen in the HOST-9 spike).
+    "--mcp-config",
+    ".mcp.json",
+    "--model",
+    process.env.SMLLM_LIVE_MODEL ?? "haiku",
+    "--max-turns",
+    "20",
     "--allowedTools",
     "mcp__smllm__smllm,Write,Edit,Read,Bash",
   ],
