@@ -1,0 +1,38 @@
+id: rules
+initial: A
+meta:
+  smllm: 1
+  instance:
+    ref: { param: state, pattern: "(" }
+  events:
+    park: { params: { type: object, properties: { x: { type: string } } } }
+    go:
+      params:
+        type: object
+        properties:
+          n: { type: integer }
+          e: { type: string, enum: [] }
+        required: [missing]
+    unused: {}
+states:
+  A:
+    entry: setRef
+    on:
+      park: B
+      go:
+        - guard: { type: visits, params: { state: NOPE, atLeast: 1 } }
+          target: B
+      loose: { target: Z }
+    meta:
+      paramDescriptions: { go: { ghost: "x" } }
+  B:
+    always: C
+  C:
+    always: B
+  F1:
+    type: final
+    meta: { fallback: true }
+    on: { x: A }
+  F2:
+    meta: { fallback: true }
+    entry: { type: prompt, params: { text: "a </smllm> b" } }

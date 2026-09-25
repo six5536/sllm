@@ -1,0 +1,25 @@
+[package]
+name = "smllm-format"
+description = "Parser, validator, JSON Schema and compiler for smllm state machine files (an XState v5 subset in YAML)."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories = ["parser-implementations", "development-tools"]
+
+[dependencies]
+smllm-core = { workspace = true, features = ["std", "serde"] }
+regex.workspace = true
+schemars.workspace = true
+serde = { workspace = true, features = ["std"] }
+serde-saphyr.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+insta.workspace = true

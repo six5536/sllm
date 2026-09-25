@@ -1,0 +1,6 @@
+# The showcase config: `smllm --config examples/showcase/config.toml validate`.
+[machines]
+files = ["showcase.smllm.yaml"]
+
+[idle]
+on-enter = { text = "Pick a document to work on, or start a new one." }

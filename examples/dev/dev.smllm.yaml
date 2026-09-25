@@ -1,0 +1,78 @@
+# Fix an issue end to end: the plan's example (PLAN-001 §3).
+id: dev
+description: Fix an issue end to end.
+initial: TRIAGE
+meta:
+  smllm: 1
+  instance:
+    noun: issue
+    ref:
+      param: issueId
+      description: "The GitHub issue id, e.g. GH-123."
+      pattern: "^GH-\\d+$"
+  events:
+    issueCreated:
+      description: Select once the issue exists.
+    reject:
+      description: Select when the work needs changes.
+      params:
+        type: object
+        properties:
+          reason: { type: string, description: "What is missing." }
+          severity: { type: string, enum: [minor, major], description: "How much rework." }
+        required: [reason]
+    submit:
+      params:
+        type: object
+        properties:
+          summary: { type: string, description: "One-line commit message for the change." }
+        required: [summary]
+  sharedActions:
+    - states: [WORK, REVIEW]
+      position: before
+      entry: { type: prompt, params: { text: "Work on one issue at a time." } }
+
+states:
+  TRIAGE:
+    description: Decide whether the issue is real.
+    meta: { entryPoint: true }
+    entry: { type: prompt, params: { file: triage.md } }
+    on:
+      issueCreated: { target: WORK, actions: setRef }
+      accept: CHECK
+  CHECK:
+    always:
+      - guard: { type: command, params: { run: 'gh issue view "$SMLLM_REF"' } }
+        target: WORK
+      - target: TRIAGE
+  WORK:
+    entry:
+      - { type: command, params: { run: 'git switch "issue/$SMLLM_REF" 2>/dev/null || git switch -c "issue/$SMLLM_REF"' } }
+      - { type: prompt, params: { file: work.md } }
+    on:
+      submit:
+        - guard: { type: command, params: { run: "cargo test --quiet", timeoutSecs: 300 } }
+          target: REVIEW
+          actions: { type: command, params: { run: 'git commit -am "$SMLLM_PARAM_SUMMARY"' } }
+        - guard: { type: visits, params: { state: WORK, atLeast: 3 } }
+          target: ESCALATE
+        - target: WORK
+          reenter: true
+  REVIEW:
+    meta:
+      entryPoint: true
+      paramDescriptions: { reject: { reason: "Which checklist item failed." } }
+    on:
+      approve:
+        target: DONE
+        actions:
+          - { type: command, params: { run: "gh pr merge --auto" } }
+          - { type: prompt, params: { text: "Confirm the PR merged." } }
+      reject:
+        target: WORK
+        description: "Select when a review checklist item fails."
+  ESCALATE:
+    entry: { type: prompt, params: { text: "Three attempts failed. Ask the user for help, then fire yield." } }
+    on: { resolved: WORK }
+  DONE:
+    type: final

@@ -1,0 +1,29 @@
+---
+source: crates/lib/smllm-format/tests/validate.rs
+expression: "found.join(\"\\n\")"
+---
+:6: error: meta.instance.ref.pattern: bad pattern (: error: unclosed group (CFG-7)
+:6: error: meta.instance.ref.param: ref param state clashes with enter's own param (CFG-13)
+  hint: pick another name, e.g. issueId
+:8: error: meta.events.park: built-in event park may override only its description, not its params (IDLE-1)
+:13: error: meta.events.go.params.properties.n: param n has type integer; v1 params are strings (CFG-16)
+  hint: use type: string, with enum or pattern to constrain it
+:14: error: meta.events.go.params.properties.e: enum is empty (CFG-7)
+:15: error: meta.events.go.params.required: required param missing is not in properties (CFG-7)
+:19: error: states.A.entry: setRef runs only in a transition's actions under `on` (CFG-4)
+  hint: it takes the ref from the event's ref param, which entry, exit and always have none of
+:21: error: states.A.on.park: park is a built-in event; its name is reserved (CFG-13)
+:23: error: states.A.on.go.guard: visits counts unknown state NOPE (CFG-5)
+:22: error: states.A.on.go: the last transition has a guard, so nothing happens when every guard fails (CFG-13)
+  hint: end the list with an unguarded transition (e.g. back to this state)
+:25: error: states.A.on.loose: target state Z does not exist (CFG-3)
+:27: error: states.A.meta.paramDescriptions.go.ghost: go declares no param ghost (CFG-8)
+  hint: declare params in meta.events; paramDescriptions only rewords their prompts
+:32: error: states.F1: a final state has no on or always (CFG-12)
+:32: error: states.F1: the fallback state must not be final (CFG-13)
+:38: warning: states.F2.entry: text contains `</smllm>`, which smllm uses to fence agent text (TURN-12)
+  hint: reword it so the agent can tell smllm's text from yours
+:36: error: states.F2: only one state may be the fallback (also F1) (CFG-13)
+:16: warning: meta.events.unused: event unused is declared but no state uses it (CFG-9)
+:29: error: states.B.always: always transitions loop: B → C → B (DEC-2)
+  hint: an always state is never rested in; break the loop with an event

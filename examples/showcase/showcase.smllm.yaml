@@ -1,0 +1,123 @@
+# Every feature smllm's format accepts, in one small graph: the superdev
+# showcase, converted. A draft is written, checked, reviewed, and either
+# approved or sent back. Everything else is mechanism, not workflow advice.
+#
+# The file is an XState v5 machine config (a strict subset); smllm's own data
+# lives under `meta`. Stately's editor can open it.
+id: showcase
+description: Write a document, check it, review it.
+initial: DRAFT
+
+meta:
+  smllm: 1
+  # This machine reviews documents, so all smllm text calls an instance a
+  # document, and its ref (the external id) is the document's path.
+  instance:
+    noun: document
+    ref:
+      param: documentPath
+      description: "The document's path, relative to the project, e.g. docs/intro.md."
+      pattern: "^[\\w./-]+\\.md$"
+
+  # Event types, declared once. An event with nothing to declare needs no entry.
+  events:
+    named:
+      description: Select once the draft has a file.
+    submit:
+      description: Select when the draft is ready for review.
+      params:
+        type: object
+        properties:
+          summary: { type: string, description: "One line: what the draft now says." }
+        required: [summary]
+    reject:
+      description: Select when the draft needs work.
+      params:
+        type: object
+        properties:
+          reason: { type: string, description: "What is missing." }
+          severity: { type: string, enum: [minor, major], description: "How much rework." }
+        required: [reason]
+    # Built-ins keep their params; a machine may reword their guidance.
+    yield:
+      description: Select when this turn ended before the work did. Say what remains.
+    unmatched:
+      description: Select when the work fits none of the other events.
+
+  # Ordered, applied to each named state before or after its own entry. Every
+  # occurrence is kept, in this order.
+  sharedActions:
+    - states: [DRAFT, REVIEW]
+      position: before
+      entry: { type: prompt, params: { text: "Work on one document at a time." } }
+    - states: [REVIEW]
+      position: after
+      entry: { type: prompt, params: { file: shared/review-checklist.md } }
+
+states:
+  DRAFT:
+    meta:
+      entryPoint: true   # may be entered directly from idle
+      paramDescriptions:
+        submit: { summary: "One line for the reviewer: what changed since the last review." }
+    # A prompt file may live in a subdirectory. Edits reach the next request
+    # without a reload; editing this YAML needs one.
+    entry: { type: prompt, params: { file: instructions/draft.md } }
+    on:
+      # setRef records the ref once; the event's documentPath param is implied.
+      named: { actions: setRef }
+      # A self transition re-enters (re-runs entry, counts a visit) only with
+      # reenter: true.
+      refine: { target: DRAFT, reenter: true }
+      # Per-state guidance replaces the event's default description.
+      submit:
+        target: CHECK
+        description: Select when every section of the draft is written.
+
+  # Eventless: the machine decides, the agent never rests here.
+  CHECK:
+    always:
+      - guard: { type: command, params: { run: 'test -s "$SMLLM_REF"', timeoutSecs: 10 } }
+        target: REVIEW
+      - guard: { type: visits, params: { state: DRAFT, atLeast: 5 } }
+        target: STUCK
+      - target: DRAFT
+        actions: { type: prompt, params: { text: "The document file is missing or empty." } }
+
+  REVIEW:
+    # Inline text, preserved exactly. Braces are literal: nothing here is a
+    # template.
+    entry:
+      type: prompt
+      params:
+        text: |
+          Review the draft against its stated goal.
+          Report what you checked, not whether you approve of the author.
+    on:
+      approve:
+        target: DONE
+        description: Select when the draft is complete and correct.
+        actions: { type: command, params: { run: ["git", "add", "--all"] } }
+      reject:
+        target: DRAFT
+        description: Select when the draft needs work. Name what is missing.
+
+  STUCK:
+    entry: { type: prompt, params: { text: "Five drafts in: ask the user how to proceed, then fire yield." } }
+    on:
+      retry: DRAFT
+
+  # The fallback state: `unmatched` comes here, and `resume` goes back.
+  DETOUR:
+    meta: { fallback: true }
+    entry: { type: prompt, params: { text: "Handle the request that fitted nothing, then fire resume." } }
+
+  # A state may declare no transitions at all; it still offers yield, park and
+  # unmatched.
+  PARKED:
+    meta: { entryPoint: true }
+    entry: { type: prompt, params: { text: "Nothing to do here; park when ready." } }
+
+  DONE:
+    type: final
+    entry: { type: prompt, params: { text: "Tell the user the document is approved." } }

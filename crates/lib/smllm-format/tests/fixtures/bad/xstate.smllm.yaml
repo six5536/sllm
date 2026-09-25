@@ -1,0 +1,7 @@
+id: xs
+initial: A
+meta: { smllm: 1 }
+states:
+  A:
+    after: { 1000: B }
+  B: {}

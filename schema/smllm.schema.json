@@ -1,0 +1,746 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "smllm state machine",
+  "description": "A strict subset of an XState v5 machine config, written in YAML; smllm data lives under `meta`.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "description": "Unique within the config.",
+      "type": "string"
+    },
+    "description": {
+      "description": "Shown in the idle list.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "initial": {
+      "description": "Where a new instance starts.",
+      "type": "string"
+    },
+    "meta": {
+      "description": "smllm data.",
+      "$ref": "#/$defs/MachineMeta"
+    },
+    "states": {
+      "description": "States (flat: nested `states` are not supported in v1).",
+      "$ref": "#/$defs/Map_of_StateNode"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "initial",
+    "meta",
+    "states"
+  ],
+  "$defs": {
+    "MachineMeta": {
+      "description": "Machine `meta` (CFG-10).",
+      "type": "object",
+      "properties": {
+        "smllm": {
+          "description": "smllm format version: 1.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "instance": {
+          "description": "Instance vocabulary (CFG-6).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InstanceMeta"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "events": {
+          "description": "Event types, declared once (CFG-7). Built-in names may set only `description`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Map_of_EventMeta"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sharedActions": {
+          "description": "Actions added to several states' `entry`/`exit` (CFG-11).",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/SharedActionSrc"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "smllm"
+      ]
+    },
+    "InstanceMeta": {
+      "description": "`meta.instance`.",
+      "type": "object",
+      "properties": {
+        "noun": {
+          "description": "What an instance is called in generated text (default `instance`).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "ref": {
+          "description": "The instance's external id.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RefMeta"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RefMeta": {
+      "description": "`meta.instance.ref`.",
+      "type": "object",
+      "properties": {
+        "param": {
+          "description": "The ref's param name (default `ref`), used by `enter` and `setRef`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "description": {
+          "description": "Prompt for the ref.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "pattern": {
+          "description": "Pattern the ref must match.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    },
+    "Map_of_EventMeta": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/EventMeta"
+      }
+    },
+    "EventMeta": {
+      "description": "`meta.events.<name>`.",
+      "type": "object",
+      "properties": {
+        "description": {
+          "description": "Default guidance.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "params": {
+          "description": "Params: a JSON Schema object of string properties (CFG-7).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParamsSchema"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ParamsSchema": {
+      "description": "`type: object` JSON Schema subset.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "description": "Always `object`.",
+          "type": "string"
+        },
+        "properties": {
+          "description": "Params.",
+          "$ref": "#/$defs/Map_of_PropSchema"
+        },
+        "required": {
+          "description": "Required param names.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ]
+    },
+    "Map_of_PropSchema": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/PropSchema"
+      }
+    },
+    "PropSchema": {
+      "description": "One param's schema.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "description": "Always `string` in v1 (CFG-16).",
+          "type": "string"
+        },
+        "description": {
+          "description": "Prompt.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "enum": {
+          "description": "Allowed values.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "default": null
+        },
+        "pattern": {
+          "description": "Pattern (ECMA-262 regex, as JSON Schema).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ]
+    },
+    "SharedActionSrc": {
+      "description": "One `meta.sharedActions` entry.",
+      "type": "object",
+      "properties": {
+        "states": {
+          "description": "States it applies to.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "position": {
+          "description": "Before or after the state's own `entry`/`exit`.",
+          "$ref": "#/$defs/PositionSrc"
+        },
+        "entry": {
+          "description": "Added to `entry`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneOrMany_StringOr_ActionSrc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exit": {
+          "description": "Added to `exit`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneOrMany_StringOr_ActionSrc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "states",
+        "position"
+      ]
+    },
+    "PositionSrc": {
+      "description": "Before or after a state's own actions.",
+      "oneOf": [
+        {
+          "description": "Before.",
+          "type": "string",
+          "const": "before"
+        },
+        {
+          "description": "After.",
+          "type": "string",
+          "const": "after"
+        }
+      ]
+    },
+    "OneOrMany_StringOr_ActionSrc": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StringOr_ActionSrc"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StringOr_ActionSrc"
+          }
+        }
+      ]
+    },
+    "StringOr_ActionSrc": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/ActionSrc"
+        }
+      ]
+    },
+    "ActionSrc": {
+      "description": "`{type, params}` actions (CFG-4).",
+      "oneOf": [
+        {
+          "description": "Text for the agent.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "prompt"
+            },
+            "params": {
+              "$ref": "#/$defs/PromptParams"
+            }
+          },
+          "required": [
+            "type",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "Run a command.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "command"
+            },
+            "params": {
+              "$ref": "#/$defs/CommandParams"
+            }
+          },
+          "required": [
+            "type",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "Set the instance's ref from the event's ref param.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "setRef"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "PromptParams": {
+      "description": "`prompt` params: exactly one of `text`, `file`.",
+      "type": "object",
+      "properties": {
+        "text": {
+          "description": "Inline text.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "file": {
+          "description": "A file, relative to the machine file, read at request time.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    },
+    "CommandParams": {
+      "description": "`command` params (DEC-4..7).",
+      "type": "object",
+      "properties": {
+        "run": {
+          "description": "A shell string, or an argv list (no shell).",
+          "$ref": "#/$defs/Run"
+        },
+        "timeoutSecs": {
+          "description": "Timeout, default 60.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0,
+          "default": null
+        },
+        "cwd": {
+          "description": "Working dir, relative to the machine file; default the session's.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "run"
+      ]
+    },
+    "Run": {
+      "description": "A command: a shell string, or an argv list run without a shell (DEC-4).",
+      "anyOf": [
+        {
+          "description": "`sh -c` / `cmd /C`.",
+          "type": "string"
+        },
+        {
+          "description": "Exec, no shell (DEC-9).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "Map_of_StateNode": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/StateNode"
+      }
+    },
+    "StateNode": {
+      "description": "One state.",
+      "type": "object",
+      "properties": {
+        "description": {
+          "description": "Description.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "type": {
+          "description": "`final` finishes the instance.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StateType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "description": "smllm data.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StateMeta"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "entry": {
+          "description": "Entry actions; default prompt file `enter-<STATE>.md`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneOrMany_StringOr_ActionSrc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exit": {
+          "description": "Exit actions.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneOrMany_StringOr_ActionSrc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "on": {
+          "description": "Event → transitions.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Map_of_OneOrMany_StringOr_TransitionSrc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "always": {
+          "description": "Eventless transitions: the state is left at once (DEC-2).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneOrMany_StringOr_TransitionSrc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "StateType": {
+      "description": "State `type`.",
+      "oneOf": [
+        {
+          "description": "The default.",
+          "type": "string",
+          "const": "atomic"
+        },
+        {
+          "description": "Finishes the instance (CFG-12).",
+          "type": "string",
+          "const": "final"
+        }
+      ]
+    },
+    "StateMeta": {
+      "description": "State `meta` (CFG-10).",
+      "type": "object",
+      "properties": {
+        "entryPoint": {
+          "description": "May be entered directly from idle.",
+          "type": "boolean",
+          "default": false
+        },
+        "fallback": {
+          "description": "Where `unmatched` goes (IDLE-2); at most one per machine.",
+          "type": "boolean",
+          "default": false
+        },
+        "paramDescriptions": {
+          "description": "Per-state param prompts: event → param → prompt (CFG-8).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Map_of_Map_of_string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    },
+    "Map_of_Map_of_string": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Map_of_string"
+      }
+    },
+    "Map_of_string": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "Map_of_OneOrMany_StringOr_TransitionSrc": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/OneOrMany_StringOr_TransitionSrc"
+      }
+    },
+    "OneOrMany_StringOr_TransitionSrc": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StringOr_TransitionSrc"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StringOr_TransitionSrc"
+          }
+        }
+      ]
+    },
+    "StringOr_TransitionSrc": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/TransitionSrc"
+        }
+      ]
+    },
+    "TransitionSrc": {
+      "description": "A transition object.",
+      "type": "object",
+      "properties": {
+        "target": {
+          "description": "Target state; omit for a targetless (internal) transition.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "guard": {
+          "description": "Guard.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuardSrc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "actions": {
+          "description": "Transition actions.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneOrMany_StringOr_ActionSrc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reenter": {
+          "description": "Re-enter the state on a self transition (XState).",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "description": {
+          "description": "Per-state guidance for the event.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    },
+    "GuardSrc": {
+      "description": "`{type, params}` guards (CFG-5).",
+      "oneOf": [
+        {
+          "description": "Exit 0 = true.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "command"
+            },
+            "params": {
+              "$ref": "#/$defs/CommandParams"
+            }
+          },
+          "required": [
+            "type",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "True when `state` has been entered at least `atLeast` times.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "visits"
+            },
+            "params": {
+              "$ref": "#/$defs/VisitsParams"
+            }
+          },
+          "required": [
+            "type",
+            "params"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "VisitsParams": {
+      "description": "`visits` params.",
+      "type": "object",
+      "properties": {
+        "state": {
+          "description": "The state whose entries are counted.",
+          "type": "string"
+        },
+        "atLeast": {
+          "description": "Threshold (counting the current entry).",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "atLeast"
+      ]
+    }
+  }
+}

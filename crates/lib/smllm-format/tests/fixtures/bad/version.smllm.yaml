@@ -1,0 +1,6 @@
+id: v
+initial: A
+meta: { smllm: 2 }
+states:
+  A:
+    entry: { type: prompt, params: { file: nowhere.md } }
