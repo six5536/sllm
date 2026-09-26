@@ -10,6 +10,11 @@ sudo chown -R vscode:vscode ${CONTAINER_WORKSPACE_FOLDER} 2>/dev/null || true
 
 
 mise install
+
+# mise pins RUSTUP_TOOLCHAIN, which overrides rust-toolchain.toml — so its
+# `targets` are never applied and the wasm build fails. Add it as CI does.
+mise exec -- rustup target add wasm32-unknown-unknown
+
 mise exec -- npm install
 
 

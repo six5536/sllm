@@ -1,19 +1,19 @@
 [tools]
-node = "24"
+node = "26"
 
 python = '3.14'
-# 1.96 is the project toolchain; nightly is used only by the coverage
+# 1.98 is the project toolchain; nightly is used only by the coverage
 # subcommand (cargo +nightly llvm-cov), which needs `coverage(off)` markers.
-rust = ['1.96', 'nightly']
-sccache = '0.15'
+rust = ['1.98', 'nightly']
+sccache = '0.18'
 zig = "0.16.0"
-cargo-binstall = "1.21.0"
+cargo-binstall = "1.24.0"
 
 "npm:@anthropic-ai/claude-code" = { version = "latest", npm_args = "--ignore-scripts=false" }
-"github:rtk-ai/rtk" = "0.43.0"
+"github:rtk-ai/rtk" = "0.50.0"
 
-"cargo:cargo-zigbuild" = "0.22.3"
-"cargo:cargo-nextest" = "0.9.137"
-"cargo:cargo-llvm-cov" = "0.8.7"
+"cargo:cargo-zigbuild" = "0.23.4"
+"cargo:cargo-nextest" = "0.9.146"
+"cargo:cargo-llvm-cov" = "0.9.1"
 # Must match the wasm-bindgen crate version in Cargo.lock (npm run build:wasm).
-"cargo:wasm-bindgen-cli" = "0.2.128"
+"cargo:wasm-bindgen-cli" = "0.2.129"

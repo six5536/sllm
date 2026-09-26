@@ -9,7 +9,7 @@ How to get set up, what to run before you push, and how a release is cut.
 
 Toolchains are pinned and managed with [mise](https://mise.jdx.dev/):
 
-- `rust-toolchain.toml` pins the project toolchain (`1.96.0`, with `rustfmt` and
+- `rust-toolchain.toml` pins the project toolchain (`1.98.1`, with `rustfmt` and
   `clippy`).
 - `.mise.toml` pins everything else: Node, a `nightly` Rust used only by the
   coverage job, `zig` (the cross C compiler behind `cargo-zigbuild`, whose

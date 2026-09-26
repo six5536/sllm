@@ -28,7 +28,7 @@ smllm (state machines for LLM agents) puts declarative state machines, written a
 - `getrandom 0`, `wait-timeout 0`, `thiserror 2` — session keys, command timeouts, errors
 - `wasm-bindgen 0` — JavaScript bindings; `wasm-bindgen-cli` + `binaryen` (`wasm-opt`) at build time
 - `proptest 1`, `insta 1`, `assert_cmd 2` — property, snapshot and end-to-end tests
-- `Node 24` — npm packages, build/release/smoke scripts, wasm smoke test
+- `Node 26` — npm packages, build/release/smoke scripts, wasm smoke test
 - `cargo-nextest`, `cargo-llvm-cov`, `cargo-deny`, `cargo-zigbuild` — CI and release tooling
 
 ## High-Level Architecture

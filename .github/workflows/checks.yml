@@ -42,7 +42,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2.85.6
@@ -94,12 +94,12 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
 
       - name: Install wasm-bindgen
         uses: taiki-e/install-action@v2.85.6
         with:
-          tool: wasm-bindgen@0.2.128
+          tool: wasm-bindgen@0.2.129
 
       - name: smllm-core builds no_std for wasm32
         run: cargo build -p smllm-core --no-default-features --target wasm32-unknown-unknown --locked
@@ -137,7 +137,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
 
       - name: Install cargo-llvm-cov and cargo-nextest
         uses: taiki-e/install-action@v2.85.6
