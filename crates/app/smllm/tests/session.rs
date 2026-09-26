@@ -351,6 +351,78 @@ fn mcp_over_stdio() {
     assert!(status.success(), "{status}");
 }
 
+// A 2026-07-28 client (Claude Code) skips `initialize`: it sends
+// `server/discover`, then carries the version in each request's `_meta`, and
+// rejects a `tools/list` without the cache hints.
+// @zen-test: HOST-5_AC-1
+// @zen-test: CLI-9_AC-1
+#[test]
+fn mcp_over_stdio_at_2026_07_28() {
+    let w = World::showcase("mcp-2026");
+    let key = start(&w, "cc-10");
+    let mut child = Command::new(assert_cmd::cargo::cargo_bin("smllm"))
+        .arg("mcp")
+        .current_dir(&w.project)
+        .env("XDG_STATE_HOME", w.root.join("state"))
+        .env("XDG_CONFIG_HOME", w.root.join("config"))
+        .env("HOME", w.root.join("home"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+    let meta = json!({
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": { "name": "t", "version": "1" }
+    });
+    // `move`: dropping `rpc` must close stdin so the server exits.
+    let mut rpc = move |id: u64, method: &str, mut params: Value| {
+        params["_meta"] = meta.clone();
+        let msg = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
+        writeln!(stdin, "{msg}").unwrap();
+        stdin.flush().unwrap();
+        loop {
+            let v: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+            if v["id"] == id {
+                return v;
+            }
+        }
+    };
+    let discover = rpc(1, "server/discover", json!({}));
+    assert!(
+        discover["result"]["supportedVersions"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("2026-07-28")),
+        "{discover}"
+    );
+    let tools = rpc(2, "tools/list", json!({}));
+    let result = &tools["result"];
+    assert_eq!(result["tools"][0]["name"], "smllm", "{tools}");
+    assert!(result["ttlMs"].is_u64(), "{tools}");
+    assert!(
+        result["cacheScope"] == "private" || result["cacheScope"] == "public",
+        "{tools}"
+    );
+    let call = rpc(
+        3,
+        "tools/call",
+        json!({ "name": "smllm", "arguments": { "session": key } }),
+    );
+    let text = call["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        call["result"]["isError"] != true && text.contains("· idle"),
+        "{call}"
+    );
+    drop(rpc);
+    let status = child.wait().unwrap();
+    assert!(status.success(), "{status}");
+}
+
 // @zen-test: INST-10_AC-1
 // @zen-test: IDLE-6_AC-1
 #[test]
