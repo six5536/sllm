@@ -1,7 +1,6 @@
-pla---
+---
 name: double-check
 description: Double-check the last work, whether it be a plan, design, or implementation, ensuring all aspects have been fully considered. Use when user wants to check work, or mentions "double check".
-
 ---
 
 Double-check the last work, whether it be a plan, design, or implementation, ensuring all aspects have been fully considered.
