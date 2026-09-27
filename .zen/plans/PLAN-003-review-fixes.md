@@ -137,6 +137,7 @@ None (all resolved in §6).
 | P10 | e48a20c: `npm install --no-audit --no-fund` in CI and release; clean clone: `npm ci` exits 1, the new step 0 |
 | P11 | 4972627 (D2–D4, D6, D7), 96becd8 (D5) |
 | P12 | this commit: CHANGELOG, ARCHITECTURE change log, this section |
+| Check | double-check: F25 (bounded output buffer, readers stop when the command is done) had been left out of P9, now done with a 1 MB-output test; `validate` reporting a corrupt instance file now tested end to end (F5) |
 
 Changes from §2–§5 while implementing:
 

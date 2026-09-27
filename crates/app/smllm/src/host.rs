@@ -5,6 +5,7 @@
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -16,6 +17,9 @@ use wait_timeout::ChildExt as _;
 pub const DEFAULT_TIMEOUT_SECS: u64 = 60;
 /// Output tail kept for the trace.
 const TAIL_CHARS: usize = 400;
+/// Output bytes buffered while a command runs: enough for [`TAIL_CHARS`]
+/// of any UTF-8 text.
+const KEPT_BYTES: usize = TAIL_CHARS * 4 + 4096;
 
 /// Runs `command` guards and actions.
 #[derive(Debug, Default, Clone, Copy)]
@@ -84,18 +88,24 @@ pub fn run_command(call: &Call<'_>) -> Outcome {
     // stall before the timeout. Output is collected as it arrives: a
     // background process the command left running keeps the pipes open, and
     // must not hold smllm hostage after the command itself exits (DEC-5).
+    // Only the tail is kept, and once the command is done the readers stop
+    // at their next read, so such a process cannot grow smllm's memory.
     let collected = Arc::new(Mutex::new(Vec::new()));
+    let done = Arc::new(AtomicBool::new(false));
     let drain = |r: Option<Box<dyn Read + Send>>| {
         let sink = Arc::clone(&collected);
+        let done = Arc::clone(&done);
         std::thread::spawn(move || {
             let Some(mut r) = r else { return };
             let mut buf = [0u8; 4096];
             while let Ok(n) = r.read(&mut buf) {
-                if n == 0 {
+                if n == 0 || done.load(Ordering::Relaxed) {
                     break;
                 }
                 if let Ok(mut v) = sink.lock() {
                     v.extend_from_slice(&buf[..n]);
+                    let over = v.len().saturating_sub(KEPT_BYTES);
+                    v.drain(..over);
                 }
             }
         })
@@ -114,9 +124,11 @@ pub fn run_command(call: &Call<'_>) -> Outcome {
                 .map(|s| Box::new(s) as Box<dyn Read + Send>),
         ),
     ];
-    let status = match child.wait_timeout(Duration::from_secs(secs)) {
+    let waited = child.wait_timeout(Duration::from_secs(secs));
+    let status = match waited {
         Ok(Some(s)) => s,
         Ok(None) => {
+            done.store(true, Ordering::Relaxed);
             kill_tree(&mut child);
             return Outcome {
                 ok: false,
@@ -124,6 +136,7 @@ pub fn run_command(call: &Call<'_>) -> Outcome {
             };
         }
         Err(e) => {
+            done.store(true, Ordering::Relaxed);
             return Outcome {
                 ok: false,
                 detail: format!("wait failed: {e}"),
@@ -135,6 +148,7 @@ pub fn run_command(call: &Call<'_>) -> Outcome {
     while readers.iter().any(|r| !r.is_finished()) && std::time::Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(5));
     }
+    done.store(true, Ordering::Relaxed);
     let text = collected
         .lock()
         .map(|v| String::from_utf8_lossy(&v).into_owned())
@@ -297,6 +311,17 @@ mod tests {
             run_command(&call(&p, &env))
                 .detail
                 .starts_with("could not start")
+        );
+        // A megabyte of output is buffered only as its tail (PLAN-003 F25).
+        p.insert(
+            "run",
+            Value::Str("head -c 1000000 /dev/zero | tr '\\0' x; echo END; exit 4".into()),
+        );
+        let o = run_command(&call(&p, &env));
+        assert!(
+            o.detail.starts_with("exited 4: …x") && o.detail.ends_with("xEND"),
+            "{}",
+            &o.detail[..40]
         );
         // A background process holding the pipes does not stall the result.
         p.insert("run", Value::Str("sleep 5 & exit 0".into()));

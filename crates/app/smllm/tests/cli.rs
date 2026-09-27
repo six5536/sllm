@@ -282,6 +282,15 @@ fn new_forms_and_validate_paths() {
         "{}",
         o.stdout
     );
+    // A corrupt instance file is skipped everywhere else, and reported here
+    // (PLAN-003 F5).
+    w.write(".smllm/state/other/i-bad.json", "{ nope");
+    let o = w.run(&["validate", "--warnings"]);
+    assert!(
+        o.stdout.contains("i-bad.json") && o.stdout.contains("cannot be read"),
+        "{}",
+        o.stdout
+    );
     // An explicit config that does not exist.
     assert_eq!(w.run(&["--config", "nope.toml", "validate"]).code, 2);
     w.write(".smllm/config.toml", "[machines]\nfiles = 3\n");
