@@ -235,6 +235,21 @@ pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded {
                     e.message().to_string(),
                     "CLI-3",
                 ));
+                // It may replace any of the machines so far: use none of them.
+                let ids: Vec<String> = out.machines.drain(..).map(|m| m.id).collect();
+                out.config.machines.clear();
+                if !ids.is_empty() {
+                    out.findings.push(finding(
+                        Level::Warning,
+                        &cf.path,
+                        None,
+                        format!(
+                            "machines {} from earlier configs are not loaded until this file is fixed (it may replace them)",
+                            ids.join(", ")
+                        ),
+                        "CFG-15",
+                    ));
+                }
                 continue;
             }
         };
@@ -251,13 +266,35 @@ pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded {
             let file = dir.join(rel);
             let (machine, findings) = load_machine(&file, inline);
             out.findings.extend(findings);
-            let Some(machine) = machine else { continue };
+            let Some(machine) = machine else {
+                withdraw_replaced(&mut out, &file, &cf.path);
+                continue;
+            };
             if seen_here.contains(&machine.id) {
                 out.findings.push(finding(
                     Level::Error,
                     &cf.path,
                     None,
                     format!("two machines have id {}", machine.id),
+                    "CFG-1",
+                ));
+                continue;
+            }
+            // Instances live in `state/<id>/` beside this config: on a
+            // case-insensitive file system (macOS, Windows) `Dev` and `dev`
+            // would share it.
+            if let Some(other) = seen_here
+                .iter()
+                .find(|o| o.eq_ignore_ascii_case(&machine.id))
+            {
+                out.findings.push(finding(
+                    Level::Error,
+                    &file,
+                    None,
+                    format!(
+                        "machine id {} differs from {other} only in case; they would share a state directory on macOS and Windows",
+                        machine.id
+                    ),
                     "CFG-1",
                 ));
                 continue;
@@ -296,6 +333,42 @@ pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded {
     }
     out.config.idle = idle.unwrap_or_default();
     out
+}
+
+/// A machine file that failed to load may be meant to replace a machine an
+/// earlier config gave: that one is not used in its place, so its id stays
+/// unconfigured (and sessions holding it wait, INST-7) until the file is
+/// fixed. The id is read from the file's top-level `id:` line.
+fn withdraw_replaced(out: &mut Loaded, file: &Path, config: &Path) {
+    let Some(id) = declared_id(file) else { return };
+    let Some(i) = out
+        .machines
+        .iter()
+        .position(|m| m.id == id && m.config != config)
+    else {
+        return;
+    };
+    let earlier = out.machines.remove(i);
+    out.config.machines.remove(i);
+    out.findings.push(finding(
+        Level::Warning,
+        file,
+        None,
+        format!(
+            "machine {id} in {} is not used while this file, which replaces it, has errors",
+            earlier.file.display()
+        ),
+        "CFG-15",
+    ));
+}
+
+/// The value of a machine file's top-level `id:` line, if any.
+fn declared_id(file: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(file).ok()?;
+    let value = text.lines().find_map(|l| l.strip_prefix("id:"))?;
+    let value = value.split(" #").next().unwrap_or(value).trim();
+    let value = value.trim_matches(['"', '\'']);
+    (!value.is_empty()).then(|| value.to_string())
 }
 
 fn idle_prompt(

@@ -10,7 +10,7 @@ AFFECTED LAYERS: smllm-format (parse, check, lower), smllm-core model (target ty
 
 ### High-Level Architecture
 
-A linear pipeline. A YAML syntax error is one finding (the document cannot be read further). A readable document is then checked for shape by `shape.rs` — a walk of the generic tree against the format that reports every unknown key, wrong type and unsupported XState feature with its path and line. Only a well-shaped document is deserialised into the source types and goes through the semantic checks; a machine is returned only when none of its findings is an error.
+A linear pipeline. A YAML syntax error is one finding (the document cannot be read further). A readable document is then checked for shape by `shape.rs` — a walk of the generic tree against the format that reports every unknown key, wrong type and unsupported XState feature with its path and line. A null value (`key:` / `key: ~`) counts as absent, as in the JSON Schema, and `normalise` drops it before serde reads the document; a `prompt` action needs exactly one of `text`, `file` (reported at its line). Only a well-shaped document is deserialised into the source types and goes through the semantic checks; a machine is returned only when none of its findings is an error.
 
 ```mermaid
 flowchart LR
@@ -125,7 +125,7 @@ pub fn locate(text: &str, path: &[&str]) -> Option<usize>;
 
 `load_machine` reads the file and parses it with `serde_saphyr::from_str`. On a parse error it records one `CFG-1` finding with serde-saphyr's line. `parse_message` strips the `line N column M:` prefix and adds a v1 hint when the unknown field or variant is an unsupported XState feature. On success it builds a `Checker` over the source text and calls `lower`.
 
-`load_configs` takes the config files in order (user, then project, or a single explicit file). Each TOML file is parsed with `deny_unknown_fields` and kebab-case keys, and a TOML error's span is turned into a line number. It loads every listed machine relative to that config and reports duplicate ids within one config as errors. A machine whose id is already loaded from an earlier config replaces it, with an info finding. The last `[idle] on-enter` seen wins. Each machine's `MachineSource.state_dir` is `state/` beside the config that lists it.
+`load_configs` takes the config files in order (user, then project, or a single explicit file). Each TOML file is parsed with `deny_unknown_fields` and kebab-case keys, and a TOML error's span is turned into a line number. It loads every listed machine relative to that config and reports duplicate ids within one config as errors, and ids that differ only in case too (their `state/<id>/` directories would be one on macOS and Windows). A machine whose id is already loaded from an earlier config replaces it, with an info finding. A later config that does not parse withdraws every machine loaded so far, and a machine file of it that does not load withdraws the earlier machine with the id on its top-level `id:` line (warning findings): a broken override leaves the id unconfigured rather than silently using the earlier machine and its state directory (PLAN-003 F8). The last `[idle] on-enter` seen wins. Each machine's `MachineSource.state_dir` is `state/` beside the config that lists it.
 
 IMPLEMENTS: CFG-2_AC-1, CFG-14_AC-1, CFG-15_AC-2
 

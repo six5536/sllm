@@ -1,7 +1,9 @@
 //! Structural pre-pass: walk the YAML as a generic tree against the format's
 //! shape and report EVERY unknown key, wrong type and unsupported XState
 //! feature, each with its YAML path and line (CFG-2, CFG-14). serde stops at
-//! the first problem; this pass does not.
+//! the first problem; this pass does not. A key whose value is null (`key:`
+//! or `key: ~`) counts as absent, as in the JSON Schema; [`normalise`]
+//! removes it before serde reads the document.
 // @zen-component: CFG-Source
 
 use serde_json::{Map, Value};
@@ -88,7 +90,7 @@ impl Walk<'_, '_> {
             }
         }
         for r in required {
-            if !m.contains_key(*r) {
+            if m.get(*r).is_none_or(Value::is_null) {
                 self.err(path, format!("missing key `{r}`"), None, "CFG-1");
             }
         }
@@ -96,7 +98,7 @@ impl Walk<'_, '_> {
     }
 
     fn string(&mut self, path: &[String], v: Option<&Value>) {
-        if let Some(v) = v
+        if let Some(v) = present(v)
             && !v.is_string()
         {
             self.wrong(path, "a string", v);
@@ -104,7 +106,7 @@ impl Walk<'_, '_> {
     }
 
     fn strings(&mut self, path: &[String], v: Option<&Value>) {
-        match v {
+        match present(v) {
             None => {}
             Some(Value::Array(items)) => {
                 for (i, it) in items.iter().enumerate() {
@@ -116,7 +118,7 @@ impl Walk<'_, '_> {
     }
 
     fn boolean(&mut self, path: &[String], v: Option<&Value>) {
-        if let Some(v) = v
+        if let Some(v) = present(v)
             && !v.is_boolean()
         {
             self.wrong(path, "true or false", v);
@@ -124,7 +126,7 @@ impl Walk<'_, '_> {
     }
 
     fn uint(&mut self, path: &[String], v: Option<&Value>) {
-        if let Some(v) = v
+        if let Some(v) = present(v)
             && !v.is_u64()
         {
             self.wrong(path, "a whole number", v);
@@ -132,7 +134,7 @@ impl Walk<'_, '_> {
     }
 
     fn one_of(&mut self, path: &[String], v: Option<&Value>, values: &[&str], rule: &'static str) {
-        match v {
+        match present(v) {
             None => {}
             Some(Value::String(s)) if values.contains(&s.as_str()) => {}
             Some(Value::String(s)) => self.err(
@@ -146,7 +148,7 @@ impl Walk<'_, '_> {
     }
 
     fn each<'v>(&mut self, path: &[String], v: Option<&'v Value>) -> Vec<(Path, &'v Value)> {
-        match v {
+        match present(v) {
             None => Vec::new(),
             Some(Value::Object(m)) => m.iter().map(|(k, v)| (at(path, k), v)).collect(),
             Some(v) => {
@@ -169,7 +171,7 @@ impl Walk<'_, '_> {
         for k in ["id", "description", "initial"] {
             self.string(&at(&root, k), m.get(k));
         }
-        if let Some(meta) = m.get("meta") {
+        if let Some(meta) = present(m.get("meta")) {
             self.meta(meta);
         }
         for (p, s) in self.each(&at(&root, "states"), m.get("states")) {
@@ -188,11 +190,11 @@ impl Walk<'_, '_> {
             return;
         };
         self.uint(&at(&p, "smllm"), m.get("smllm"));
-        if let Some(i) = m.get("instance") {
+        if let Some(i) = present(m.get("instance")) {
             let ip = at(&p, "instance");
             if let Some(im) = self.map(&ip, i, &["kind", "ref"], &[]) {
                 self.string(&at(&ip, "kind"), im.get("kind"));
-                if let Some(r) = im.get("ref") {
+                if let Some(r) = present(im.get("ref")) {
                     let rp = at(&ip, "ref");
                     if let Some(rm) = self.map(&rp, r, &["param", "description", "pattern"], &[]) {
                         for k in ["param", "description", "pattern"] {
@@ -205,12 +207,12 @@ impl Walk<'_, '_> {
         for (ep, e) in self.each(&at(&p, "events"), m.get("events")) {
             if let Some(em) = self.map(&ep, e, &["description", "params"], &[]) {
                 self.string(&at(&ep, "description"), em.get("description"));
-                if let Some(ps) = em.get("params") {
+                if let Some(ps) = present(em.get("params")) {
                     self.params(&at(&ep, "params"), ps);
                 }
             }
         }
-        match m.get("sharedActions") {
+        match present(m.get("sharedActions")) {
             None => {}
             Some(Value::Array(items)) => {
                 for (i, it) in items.iter().enumerate() {
@@ -284,7 +286,7 @@ impl Walk<'_, '_> {
             }
             other => self.one_of(&at(p, "type"), other, &["atomic", "final"], "CFG-12"),
         }
-        if let Some(meta) = m.get("meta") {
+        if let Some(meta) = present(m.get("meta")) {
             let mp = at(p, "meta");
             if let Some(mm) = self.map(
                 &mp,
@@ -309,7 +311,7 @@ impl Walk<'_, '_> {
         for (ep, ts) in self.each(&at(p, "on"), m.get("on")) {
             self.transitions(&ep, ts);
         }
-        if let Some(ts) = m.get("always") {
+        if let Some(ts) = present(m.get("always")) {
             self.transitions(&at(p, "always"), ts);
         }
     }
@@ -342,13 +344,13 @@ impl Walk<'_, '_> {
         self.string(&at(p, "description"), m.get("description"));
         self.boolean(&at(p, "reenter"), m.get("reenter"));
         self.actions(&at(p, "actions"), m.get("actions"));
-        if let Some(g) = m.get("guard") {
+        if let Some(g) = present(m.get("guard")) {
             self.guard(&at(p, "guard"), g);
         }
     }
 
     fn actions(&mut self, p: &[String], v: Option<&Value>) {
-        match v {
+        match present(v) {
             None => {}
             Some(Value::Array(items)) if items.len() == 1 => self.action(p, &items[0]),
             Some(Value::Array(items)) => {
@@ -375,12 +377,26 @@ impl Walk<'_, '_> {
         let Some(m) = self.map(p, v, &["type", "params"], &["type"]) else {
             return;
         };
-        let params = m.get("params");
+        let params = present(m.get("params"));
         let pp = at(p, "params");
         match m.get("type").and_then(Value::as_str) {
-            Some("prompt") => self.keys(&pp, params, &["text", "file"], &[], |w, k, v| {
-                w.string(k, Some(v))
-            }),
+            Some("prompt") => {
+                self.keys(&pp, params, &["text", "file"], &[], |w, k, v| {
+                    w.string(k, Some(v))
+                });
+                let given = ["text", "file"]
+                    .iter()
+                    .filter(|k| present(params.and_then(|m| m.get(**k))).is_some())
+                    .count();
+                if given != 1 && params.is_none_or(Value::is_object) {
+                    self.err(
+                        &pp,
+                        "a prompt needs exactly one of: text, file".to_string(),
+                        None,
+                        "CFG-4",
+                    );
+                }
+            }
             Some("command") => self.command(&pp, params),
             Some("setRef") => self.keys(&pp, params, &[], &[], |_, _, _| {}),
             Some(t) => self.err(
@@ -410,7 +426,7 @@ impl Walk<'_, '_> {
         let Some(m) = self.map(p, v, &["type", "params"], &["type", "params"]) else {
             return;
         };
-        let params = m.get("params");
+        let params = present(m.get("params"));
         let pp = at(p, "params");
         match m.get("type").and_then(Value::as_str) {
             Some("command") => self.command(&pp, params),
@@ -479,11 +495,16 @@ impl Walk<'_, '_> {
             return;
         };
         for (k, v) in m {
-            if allowed.contains(&k.as_str()) {
+            if allowed.contains(&k.as_str()) && !v.is_null() {
                 check(self, &at(p, k), v);
             }
         }
     }
+}
+
+/// `v`, unless it is absent or null (the same to the format).
+fn present(v: Option<&Value>) -> Option<&Value> {
+    v.filter(|v| !v.is_null())
 }
 
 /// Check `doc`'s shape; findings go to `c`.
@@ -491,11 +512,12 @@ pub(crate) fn check(c: &mut Checker<'_>, doc: &Value) {
     Walk { c }.machine(doc);
 }
 
-/// `{type: setRef, params: {}}` → `{type: setRef}`: serde's unit variant
-/// takes no content.
+/// Null values → absent keys, and `{type: setRef, params: {}}` →
+/// `{type: setRef}` (serde's unit variant takes no content).
 pub(crate) fn normalise(doc: &mut Value) {
     match doc {
         Value::Object(m) => {
+            m.retain(|_, v| !v.is_null());
             if m.get("type").and_then(Value::as_str) == Some("setRef")
                 && m.get("params")
                     .is_some_and(|p| p.as_object().is_some_and(Map::is_empty))

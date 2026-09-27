@@ -146,11 +146,23 @@ fn relative(base: &Path, path: &Path) -> PathBuf {
     out
 }
 
-/// Saved instances whose state no longer exists (IDLE-4).
+/// Saved instances whose state no longer exists (IDLE-4), and instance
+/// files that cannot be read (skipped everywhere else, STO-1).
 // @zen-impl: IDLE-4_AC-1
 fn saved_states(rt: &mut Runtime) -> Findings {
     let mut out = Findings::default();
     for src in rt.loaded.machines.clone() {
+        for (file, why) in rt.store.unreadable(&src.id) {
+            out.push(Finding {
+                level: Level::Warning,
+                file,
+                line: None,
+                path: None,
+                message: format!("instance file of {} cannot be read: {why}", src.id),
+                hint: Some("smllm skips it; fix or delete the file".to_string()),
+                rule: "STO-1",
+            });
+        }
         let Some(m) = rt.loaded.config.machine(&src.id) else {
             continue;
         };

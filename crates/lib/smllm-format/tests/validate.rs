@@ -185,6 +185,54 @@ fn project_wins_over_user_and_idle_is_replaced() {
         matches!(&loaded.config.idle[0], ActionDef::Prompt(Prompt::File(f)) if f.ends_with("idle.md"))
     );
 
+    // A broken override leaves the id unconfigured: the user's machine is not
+    // used in its place (PLAN-003 F8).
+    let both = [
+        ConfigFile {
+            path: user.join("config.toml"),
+            origin: Origin::User,
+        },
+        ConfigFile {
+            path: project.join("config.toml"),
+            origin: Origin::Project,
+        },
+    ];
+    std::fs::write(
+        project.join("dev.smllm.yaml"),
+        format!("{dev}\n  : [broken\n"),
+    )
+    .unwrap();
+    let broken = load_configs(&both, false);
+    assert!(broken.config.machines.is_empty(), "{:?}", broken.machines);
+    assert!(broken.findings.0.iter().any(|f| f.level == Level::Warning
+        && f.message.contains("is not used while this file")));
+    std::fs::write(project.join("dev.smllm.yaml"), &dev).unwrap();
+    // Ids that differ only in case cannot share one config (PLAN-003 F27).
+    std::fs::write(
+        project.join("dev2.smllm.yaml"),
+        dev.replace("id: dev", "id: Dev"),
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("config.toml"),
+        "[machines]\nfiles = [\"dev.smllm.yaml\", \"dev2.smllm.yaml\"]\n",
+    )
+    .unwrap();
+    let clash = load_configs(&both, false);
+    assert!(clash.findings.0.iter().any(|f| f.level == Level::Error
+        && f.message.contains("differs from dev only in case")));
+    assert_eq!(clash.config.machines.len(), 1);
+    std::fs::write(project.join("config.toml"), "[machines\n").unwrap();
+    let broken = load_configs(&both, false);
+    assert!(broken.config.machines.is_empty());
+    assert!(
+        broken
+            .findings
+            .0
+            .iter()
+            .any(|f| f.message.contains("not loaded until this file is fixed"))
+    );
+
     std::fs::write(project.join("config.toml"), "[machines]\nfile = []\n").unwrap();
     let bad = load_configs(
         &[ConfigFile {
@@ -286,5 +334,30 @@ fn set_ref_with_empty_params_and_duplicate_keys() {
     let found = lines(&dup);
     assert!(found[0].contains("duplicate key `initial`"), "{found:?}");
     assert!(!found[0].contains("DuplicateKeyPolicy"));
+    std::fs::remove_dir_all(dir).ok();
+}
+
+// Null values count as absent, as in the JSON Schema; a prompt without
+// text or file is reported at its line (PLAN-003 F26).
+// @zen-test: CFG-14_AC-1
+#[test]
+fn nulls_are_absent_and_an_empty_prompt_has_a_line() {
+    let dir = std::env::temp_dir().join(format!("smllm-nulls-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("tiny.smllm.yaml");
+    let tiny = "id: tiny\ndescription: ~\ninitial: A\nmeta:\n  smllm: 1\n  instance:\n  events: ~\nstates:\n  A:\n    description:\n    entry: ~\n    on:\n      go: B\n  B:\n    type: final\n";
+    std::fs::write(&file, tiny).unwrap();
+    let (m, f) = load_machine(&file, false);
+    assert!(!f.has_errors(), "{:?}", f.0);
+    assert_eq!(m.unwrap().id, "tiny");
+    let bad = tiny.replace("    entry: ~\n", "    entry:\n      - type: prompt\n");
+    std::fs::write(&file, bad).unwrap();
+    let (m, f) = load_machine(&file, false);
+    assert!(m.is_none());
+    let e =
+        f.0.iter()
+            .find(|f| f.message.contains("exactly one of: text, file"))
+            .unwrap();
+    assert_eq!(e.line, Some(11), "{e:?}");
     std::fs::remove_dir_all(dir).ok();
 }

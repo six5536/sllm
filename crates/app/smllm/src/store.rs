@@ -103,6 +103,38 @@ impl FsStore {
             .collect()
     }
 
+    /// Every instance file of `machine`: the readable ones by id, and the
+    /// unreadable ones with why.
+    fn scan(&self, machine: &str) -> (Vec<Instance>, Vec<(PathBuf, String)>) {
+        let (mut good, mut bad) = (Vec::new(), Vec::new());
+        let Ok(dir) = self.machine_dir(machine) else {
+            return (good, bad);
+        };
+        let Ok(rd) = fs::read_dir(&dir) else {
+            return (good, bad);
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            if !name.ends_with(".json") {
+                continue;
+            }
+            match read_json::<Instance>(&p) {
+                Ok(Some(i)) => good.push(i),
+                Ok(None) => {}
+                Err(e) => bad.push((p, e.to_string())),
+            }
+        }
+        good.sort_by(|a: &Instance, b| a.id.cmp(&b.id));
+        bad.sort();
+        (good, bad)
+    }
+
+    /// Instance files of `machine` that cannot be read, with why.
+    pub fn unreadable(&self, machine: &str) -> Vec<(PathBuf, String)> {
+        self.scan(machine).1
+    }
+
     /// Whether another instance of the machine already has `instance`'s ref,
     /// as its ref or its id (INST-3). Checked under the machine lock, so two
     /// sessions entering the same new ref cannot both create an instance.
@@ -170,26 +202,11 @@ impl Store for FsStore {
         read_json(&dir.join(format!("{}.json", safe(id))))
     }
 
+    /// The machine's readable instances. An unreadable or corrupt file is
+    /// skipped, so one bad file cannot break every idle list and status
+    /// line; `validate` reports it ([`FsStore::unreadable`]).
     fn instances(&mut self, machine: &str) -> Result<Vec<Instance>, HostError> {
-        let Ok(dir) = self.machine_dir(machine) else {
-            return Ok(Vec::new());
-        };
-        let mut out: Vec<Instance> = Vec::new();
-        let Ok(rd) = fs::read_dir(&dir) else {
-            return Ok(out);
-        };
-        for e in rd.flatten() {
-            let p = e.path();
-            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-            if name.ends_with(".json")
-                && !name.ends_with(".history.jsonl")
-                && let Some(i) = read_json(&p)?
-            {
-                out.push(i);
-            }
-        }
-        out.sort_by(|a: &Instance, b| a.id.cmp(&b.id));
-        Ok(out)
+        Ok(self.scan(machine).0)
     }
 
     // @zen-impl: INST-8_AC-2
@@ -288,6 +305,12 @@ mod tests {
         assert_eq!(s.put_instance(&b), Err(HostError::Conflict));
         b.r#ref = Some("GH-2".into());
         s.put_instance(&b).unwrap();
+        // A corrupt instance file is skipped, and reported (PLAN-003 F5).
+        fs::write(d.join("proj/state/dev/i-bad.json"), "{ nope").unwrap();
+        assert_eq!(s.instances("dev").unwrap().len(), 2);
+        let bad = s.unreadable("dev");
+        assert_eq!(bad.len(), 1);
+        assert!(bad[0].0.ends_with("i-bad.json"), "{bad:?}");
         s.append_history(
             "dev",
             "i-1",
