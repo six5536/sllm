@@ -50,6 +50,13 @@ with the gate passing; specs updated with the code.
   `SessionStatus`, `exportState()` → object), and it adapts an object-based host (`check`,
   `run` get `params` and `env` as objects). The string API stays as `smllm-wasm/raw`. The wasm
   does not change size. The smoke test runs through the wrapper, plus one raw call.
+- D6-4 (I-4): state and log apart, as in the CLI and event-sourced systems. The engine never
+  reads history (only the CLI's `instance show` does), so the WASM host keeps none: a WASM store
+  wrapping `MemoryStore` forwards each entry to a new host callback `history(machine, id, entry)`
+  (in the typed wrapper optional; without it, entries are dropped). `exportState` / `importState`
+  carry sessions, bindings and instances only. The host owns persistence and retention, as with
+  XState's persisted snapshots; no prune API (YAGNI). The core and its `Store` trait do not
+  change; `MemoryStore` keeps history for the core's tests.
 
 ## 5. Outcome
 
