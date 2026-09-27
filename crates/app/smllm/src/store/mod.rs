@@ -399,10 +399,10 @@ mod tests {
 
         // A ref's marker; one left by a failed write does not hold the ref.
         assert_eq!(
-            fs::read_to_string(dev.join("refs/r1")).unwrap(),
+            fs::read_to_string(dev.join("refs/r1.json")).unwrap(),
             r#"{"R1":"i-a"}"#
         );
-        fs::write(dev.join("refs/r9"), r#"{"R9":"i-a"}"#).unwrap();
+        fs::write(dev.join("refs/r9.json"), r#"{"R9":"i-a"}"#).unwrap();
         let mut c = inst(1);
         c.id = "i-d".into();
         c.r#ref = Some("R9".into());
@@ -438,7 +438,7 @@ mod tests {
             fs::read_dir(dev.join("refs"))
                 .unwrap()
                 .flatten()
-                .all(|e| e.file_name().len() <= 120)
+                .all(|e| e.file_name().len() <= 125)
         );
         fs::remove_dir_all(d).ok();
     }

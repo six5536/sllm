@@ -114,7 +114,8 @@ pub(super) fn find(dir: &Path, id: &str) -> Result<Option<(PathBuf, Instance)>, 
     Ok(None)
 }
 
-/// Longest ref marker name; longer ones are cut and end in a hash.
+/// Longest ref marker name, before `.json`; longer ones are cut and end in
+/// a hash.
 const MAX_MARKER: usize = 120;
 
 /// The marker file of `r#ref`: a bucket of `ref → id` entries, named by
@@ -134,7 +135,7 @@ fn marker(dir: &Path, r#ref: &str) -> PathBuf {
         name.truncate(MAX_MARKER - 17);
         name.push_str(&format!("~{hash:016x}"));
     }
-    dir.join(REFS).join(name)
+    dir.join(REFS).join(format!("{name}.json"))
 }
 
 /// Record that instance `id` has `r#ref`.

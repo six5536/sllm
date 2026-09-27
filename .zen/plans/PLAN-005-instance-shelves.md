@@ -18,7 +18,7 @@ what the live instances cost, whatever the history. Behaviour is unchanged.
 | -- | ----------- | ------ |
 | R-1 | The engine asks the store narrow questions: the instances with a status, the instance with a ref. Stores without an index answer by filtering `instances()` (default methods), so `MemoryStore` and the wasm host change nothing | NFR-1 |
 | R-2 | The file store keeps live instances (active, suspended, parked) in `<machine>/open/`, completed ones in `<machine>/done/`; a status change across the two is one `rename` under the machine lock | STO-3 |
-| R-3 | A ref is an entry `{ref: id}` in a marker file `<machine>/refs/<name>` (name: `safe(ref)` lower-cased, cut and hashed over 120 bytes, so case-only and long refs are safe), written under the lock with the instance; `instance_by_ref` reads one marker and checks the instance really has the ref (a marker left by a failed write is ignored) | INST-3, INST-4 |
+| R-3 | A ref is an entry `{ref: id}` in a marker file `<machine>/refs/<name>.json` (name: `safe(ref)` lower-cased, cut and hashed over 120 bytes, so case-only and long refs are safe), written under the lock with the instance; `instance_by_ref` reads one marker and checks the instance really has the ref (a marker left by a failed write is ignored) | INST-3, INST-4 |
 | R-4 | An old layout (`<machine>/<id>.json`) is migrated on first access, under the lock: files move to their shelf, refs get markers, and `open/` appears last (renamed from `open.new/`), so a crash mid-way resumes | STO-1 |
 | R-5 | `instance list`, `validate` and a corrupt file's report still see every instance, from both shelves | STO-1 |
 
