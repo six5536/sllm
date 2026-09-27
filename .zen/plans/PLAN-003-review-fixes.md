@@ -2,7 +2,7 @@
 
 | Meta               | Value                                                                                  |
 | ------------------ | -------------------------------------------------------------------------------------- |
-| Status             | ready to implement (grilled 2026-09-27, D3-1–D3-6)                                     |
+| Status             | completed (P0–P12 implemented 2026-09-27, §7)                                          |
 | Workflow direction | bottom-up (code findings → specs updated per phase)                                    |
 | Traces to          | TURN-4/6/12, INST-3/7/8, IDLE, STO-3, HOST-5/7/8, DEC-6, CFG, CLI-9, NFR-1/4/5/8, TEST |
 
@@ -118,7 +118,32 @@ None (all resolved in §6).
 | D3-4 | F23: wasm `stop()` returns `{decision: "block" \| "runaway" \| "allow", text?}` (`text` present for block and runaway). Breaking for JS hosts; allowed pre-1.0 (alpha), noted in the changelog and the npm README |
 | D3-5 | F30: sh-dependent tests become `#[cfg(unix)]`; `cfg(windows)` twins cover what differs there: a `command` guard passing and failing, `SMLLM_*` env, quoting (F24), timeout. F28's test env helper also sets `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`. Full Windows fixtures wait for the Windows plan |
 | D3-6 | F13: a rejected key-less `enter` shows no session key, keeping TURN-3's "a rejected keyless call leaves nothing behind" (`engine/api.rs` `fire`) |
+| D3-7 | D5: smllm-format depends on agent-harness-kit (user approved; internal crate, nothing new in the build): findings use the kit's `Severity` and `Report`, and the format tests snapshot the lines `validate` prints |
 
 ## 7. Outcome
 
-(filled in per phase)
+| Phase | Commit / result |
+| ----- | --------------- |
+| P0 | 1b493b6: `kill -s KILL -- -<pgid>` after `try_wait` and pid > 1 checks; test kills a grandchild and spares a bystander, fails without the group kill |
+| P1 | 2b91c7e: kit `fs::{read_text, write_atomic}` (symlinks followed, mode kept, unique temp, temp removed on error); the app store uses it |
+| P2 | 98f249b: MCP calls serialised; ref uniqueness checked under the machine lock; 60-call pipelined test fails without the lock |
+| P3 | 0d1fa5a: `Session.blocked`; runaway only when blocked and no event since |
+| P4 | 1d301c5: F7, F10–F17; nine tests in `smllm-core/tests/instances.rs`, all failing on the old engine |
+| P5 | 512a3ed: `Block::line` escapes line breaks and smllm's tags; the unknown-session error too |
+| P6 | 943e1ee: F5, F8, F26, F27 |
+| P7 | b3c531a: F18–F21 |
+| P8 | 1e8f735: `catch` imports, `stop()` → `{decision, text?}` JSON; wasm 261 KiB; smoke test with a throwing host (600 calls) fails on the old wrapper |
+| P9 | b92838f: `raw_arg`; `World::user_dirs` / `World::mcp`; sh-only tests `cfg(unix)`, a Windows twin; workspace clippy clean for `x86_64-pc-windows-gnu` |
+| P10 | e48a20c: `npm install --no-audit --no-fund` in CI and release; clean clone: `npm ci` exits 1, the new step 0 |
+| P11 | 4972627 (D2–D4, D6, D7), 96becd8 (D5) |
+| P12 | this commit: CHANGELOG, ARCHITECTURE change log, this section |
+
+Changes from §2–§5 while implementing:
+
+- F9 escapes in one place, `Block::line` (every engine line), rather than at each echo site.
+- F23 returns a JSON string like every other wasm method, not a JS object.
+- F13 renders `no session · idle` and a call line without a session.
+- F8 finds a broken file's id from its top-level `id:` line; a later config that does not parse withdraws every earlier machine.
+- The P6 `refusal` property test now expects a declined part's broken file not to block (F19).
+- Not verified: CI on GitHub (out of scope, §1); Windows tests only compile-checked here.
+- Commits from P8 on are unsigned: the signing agent refused (the plan machine's fallback).

@@ -254,7 +254,7 @@ sequenceDiagram
 - Exit 2 leaves every file as found (NFR-6)
 - Files ≤ 800 lines; module rules in `.zen/rules/rust-rules.md` (NFR-7)
 - No new dependency without user approval; versions hoisted to the workspace `Cargo.toml`
-- `agent-harness-kit` has no smllm dependency
+- `agent-harness-kit` has no smllm dependency; smllm-format and the app use it (findings, reports, file writes)
 - Tests: core snapshots and properties, scripted sessions, wasm smoke; the live-model test runs only on explicit human request (TEST-4)
 - CI line coverage ≥ 90% per crate group (`npm run coverage:check`)
 
@@ -287,3 +287,4 @@ Pre-0.1 release. Engine, format, store, Claude Code harness, MCP server and wasm
 
 - 0.1.0 (2026-09-25): Initial architecture (PLAN-001)
 - 0.2.0 (2026-09-25): Status line: `Engine::status`, `smllm statusline`, skill part, docs/ (PLAN-002)
+- 0.3.0 (2026-09-27): Code review fixes (PLAN-003): kit `fs` module; smllm-format reports through the kit; MCP calls serialised; `Session.blocked`; fence-safe engine lines
