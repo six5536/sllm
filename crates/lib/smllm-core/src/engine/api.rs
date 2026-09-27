@@ -287,7 +287,7 @@ impl Engine {
         let Some(session) = host.store.session(key)? else {
             return Ok(Stop::Allow);
         };
-        if session.yielded || session.holding.is_none() {
+        if session.may_stop() {
             return Ok(Stop::Allow);
         }
         // The runaway release needs both the harness's flag and no event

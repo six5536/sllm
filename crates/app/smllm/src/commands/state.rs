@@ -1,7 +1,6 @@
 //! `fire`, `session list|show`, `instance list|show` (CLI-4..6).
 // @zen-component: CLI-Commands
 
-use std::collections::HashMap;
 use std::path::Path;
 
 use serde_json::json;
@@ -45,7 +44,7 @@ pub fn fire(args: &FireArgs, explicit: Option<&Path>) -> Result<u8> {
 /// `smllm session list`.
 // @zen-impl: CLI-5_AC-1
 pub fn session_list(args: &JsonArgs) -> Result<u8> {
-    let store = FsStore::new(paths::user_state_dir()?, HashMap::new());
+    let store = FsStore::user()?;
     let sessions = store.sessions()?;
     if args.json {
         return output::json(&json!({ "sessions": sessions })).map(|()| EXIT_OK);
@@ -89,7 +88,7 @@ pub fn session_show(args: &KeyArgs) -> Result<u8> {
 pub fn instance_list(args: &JsonArgs, explicit: Option<&Path>) -> Result<u8> {
     let cwd = paths::cwd()?;
     let mut rt = Runtime::lookup(explicit, &cwd)?;
-    let ids: Vec<String> = rt.loaded.machines.iter().map(|m| m.id.clone()).collect();
+    let ids: Vec<String> = rt.sources.iter().map(|m| m.id.clone()).collect();
     let mut all = Vec::new();
     for id in ids {
         all.extend(rt.store.instances(&id)?);
@@ -124,7 +123,7 @@ pub fn instance_list(args: &JsonArgs, explicit: Option<&Path>) -> Result<u8> {
 pub fn instance_show(args: &KeyArgs, explicit: Option<&Path>) -> Result<u8> {
     let cwd = paths::cwd()?;
     let mut rt = Runtime::lookup(explicit, &cwd)?;
-    let ids: Vec<String> = rt.loaded.machines.iter().map(|m| m.id.clone()).collect();
+    let ids: Vec<String> = rt.sources.iter().map(|m| m.id.clone()).collect();
     let mut found = None;
     for id in ids {
         for i in rt.store.instances(&id)? {

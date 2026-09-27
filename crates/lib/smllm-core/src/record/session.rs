@@ -45,3 +45,11 @@ pub struct Session {
     /// Last call, unix ms.
     pub last_active: u64,
 }
+
+impl Session {
+    /// The stop hook lets the agent stop at once: it yielded, or it holds
+    /// no instance (TURN-4, TURN-5).
+    pub fn may_stop(&self) -> bool {
+        self.yielded || self.holding.is_none()
+    }
+}

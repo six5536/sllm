@@ -135,3 +135,4 @@ None; answered in §6 by the usual practice.
 | Phase | Commit / result |
 | ----- | --------------- |
 | A1 | `Mode { Run, Check, Inline }`; one compile per pattern; shape keys from one shared schema (first file 0.5 → 0.23 ms). Stage timing (per load, `z`): read 0.7 ms, YAML 2.3, shape 0.35, lower 1.0 (patterns). `graph`: 86 → 17 file accesses; `/workspaces` 11.4 → 5.4 ms; local disk 4.75 → 4.35 ms |
+| A2 | `Session::may_stop` (core, used by `Engine::stop` and the hook); hooks read the session once; user-prompt-submit and an allowed stop load no config; `Runtime::bound`, `FsStore::user`; the runtime moves the config into the engine (`sources`, `findings` fields). Idle session, `/workspaces`: user-prompt-submit 11.3 → 0.68 ms, stop 10.9 → 0.69 ms; 0 machine-file accesses |

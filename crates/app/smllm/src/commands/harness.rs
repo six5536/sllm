@@ -299,27 +299,31 @@ pub(crate) fn bound_key(session_id: Option<&str>) -> Result<Option<String>> {
     let Some(sid) = session_id else {
         return Ok(None);
     };
-    let mut store = FsStore::new(paths::user_state_dir()?, Default::default());
-    Ok(store.binding("claude", sid)?)
+    Ok(FsStore::user()?.binding("claude", sid)?)
 }
 
-/// One hook call: stdin JSON in, an answer out.
+/// One hook call: stdin JSON in, an answer out. Only a view loads the
+/// session's configs: a prompt touches the session alone, and a stop the
+/// session allows needs no more (NFR-2).
 // @zen-impl: HOST-7_AC-1
 // @zen-impl: HOST-8_AC-1
 pub fn answer(hook: &str, input: &HookInput) -> Result<Answer> {
     let allow = Answer::Allow { stderr: None };
     let key = bound_key(input.session_id.as_deref())?;
+    let session = match &key {
+        Some(k) => FsStore::user()?.session(k),
+        None => Ok(None),
+    };
     match hook {
         "session-start" => {
-            if let Some(k) = &key {
-                let mut rt = Runtime::for_session(k)?;
-                if rt.store.session(k).ok().flatten().is_some() {
-                    let reply = rt.with(|e, h| e.view(h, k))?;
-                    return Ok(Answer::Context {
-                        event: "SessionStart".into(),
-                        context: reply.text,
-                    });
-                }
+            // An unreadable session is bound afresh.
+            if let Ok(Some(s)) = &session {
+                let mut rt = Runtime::bound(Some(s))?;
+                let reply = rt.with(|e, h| e.view(h, &s.key))?;
+                return Ok(Answer::Context {
+                    event: "SessionStart".into(),
+                    context: reply.text,
+                });
             }
             let cwd = match &input.cwd {
                 Some(c) => PathBuf::from(c),
@@ -341,17 +345,18 @@ pub fn answer(hook: &str, input: &HookInput) -> Result<Answer> {
             })
         }
         "user-prompt-submit" => {
-            if let Some(k) = &key {
-                let mut rt = Runtime::for_session(k)?;
-                rt.with(|e, h| e.prompt_submitted(h, k))?;
+            if let Some(s) = session? {
+                Runtime::new(&[])?.with(|e, h| e.prompt_submitted(h, &s.key))?;
             }
             Ok(allow)
         }
         "stop" => {
-            let Some(k) = &key else { return Ok(allow) };
-            let mut rt = Runtime::for_session(k)?;
+            let Some(s) = session?.filter(|s| !s.may_stop()) else {
+                return Ok(allow);
+            };
+            let mut rt = Runtime::bound(Some(&s))?;
             let active = input.stop_hook_active.unwrap_or(false);
-            Ok(match rt.with(|e, h| e.stop(h, k, active))? {
+            Ok(match rt.with(|e, h| e.stop(h, &s.key, active))? {
                 Stop::Allow => allow,
                 Stop::Block(reason) => Answer::Block { reason },
                 Stop::Runaway(text) => Answer::Allow { stderr: Some(text) },

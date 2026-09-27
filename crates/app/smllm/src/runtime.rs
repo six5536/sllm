@@ -5,8 +5,9 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use smllm_core::host::{Host, Store};
+use smllm_core::record::Session;
 use smllm_core::{Bind, Engine, Reply};
-use smllm_format::{ConfigFile, Loaded, Mode, load_configs};
+use smllm_format::{ConfigFile, Findings, Loaded, MachineSource, Mode, load_configs};
 
 use crate::error::Result;
 use crate::host::{Commands, Files, OsIds};
@@ -15,8 +16,10 @@ use crate::store::FsStore;
 
 /// A loaded config, its engine and the store.
 pub struct Runtime {
-    /// The loaded config (findings included).
-    pub loaded: Loaded,
+    /// Where each loaded machine came from.
+    pub sources: Vec<MachineSource>,
+    /// Everything the load found.
+    pub findings: Findings,
     /// The engine.
     pub engine: Engine,
     /// The store.
@@ -37,16 +40,20 @@ impl Runtime {
     }
 
     fn load(files: &[ConfigFile], mode: Mode) -> Result<Self> {
-        let loaded = load_configs(files, mode);
-        let machines: HashMap<String, std::path::PathBuf> = loaded
-            .machines
+        let Loaded {
+            config,
+            machines: sources,
+            findings,
+        } = load_configs(files, mode);
+        let machines: HashMap<String, std::path::PathBuf> = sources
             .iter()
             .map(|m| (m.id.clone(), m.state_dir.clone()))
             .collect();
         let store = FsStore::new(paths::user_state_dir()?, machines);
         Ok(Self {
-            engine: Engine::new(loaded.config.clone()),
-            loaded,
+            engine: Engine::new(config),
+            sources,
+            findings,
             store,
             configs: files.iter().map(|f| f.path.display().to_string()).collect(),
         })
@@ -60,14 +67,13 @@ impl Runtime {
     /// The configs bound to session `key` when it was created (STO-2); none
     /// when the session is unknown.
     pub fn for_session(key: &str) -> Result<Self> {
-        let mut bare = FsStore::new(paths::user_state_dir()?, HashMap::new());
-        let configs = bare
-            .session(key)
-            .ok()
-            .flatten()
-            .map(|s| s.configs)
-            .unwrap_or_default();
-        Self::new(&paths::recorded(&configs))
+        let session = FsStore::user()?.session(key).ok().flatten();
+        Self::bound(session.as_ref())
+    }
+
+    /// The configs `session` was bound to; none without a session.
+    pub fn bound(session: Option<&Session>) -> Result<Self> {
+        Self::new(&paths::recorded(session.map_or(&[], |s| &s.configs[..])))
     }
 
     /// The runtime of a call: the configs recorded on session `key`, or for

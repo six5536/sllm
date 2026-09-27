@@ -155,7 +155,7 @@ fn relative(base: &Path, path: &Path) -> PathBuf {
 // @zen-impl: IDLE-4_AC-1
 fn saved_states(rt: &mut Runtime) -> Findings {
     let mut out = Findings::default();
-    for src in rt.loaded.machines.clone() {
+    for src in rt.sources.clone() {
         for (file, why) in rt.store.unreadable(&src.id) {
             out.push(Finding {
                 level: Severity::Warning,
@@ -167,7 +167,7 @@ fn saved_states(rt: &mut Runtime) -> Findings {
                 rule: "STO-1",
             });
         }
-        let Some(m) = rt.loaded.config.machine(&src.id) else {
+        let Some(m) = rt.engine.config().machine(&src.id) else {
             continue;
         };
         let states: Vec<String> = m.states.iter().map(|s| s.name.clone()).collect();
@@ -205,7 +205,7 @@ pub fn validate(args: &ValidateArgs, explicit: Option<&Path>) -> Result<u8> {
             ));
         }
         let mut rt = Runtime::checked(&files)?;
-        findings.extend(rt.loaded.findings.clone());
+        findings.extend(rt.findings.clone());
         findings.extend(saved_states(&mut rt));
     } else {
         for p in &args.paths {
@@ -215,7 +215,7 @@ pub fn validate(args: &ValidateArgs, explicit: Option<&Path>) -> Result<u8> {
                     path: p,
                     origin: Origin::Explicit,
                 }])?;
-                findings.extend(rt.loaded.findings.clone());
+                findings.extend(rt.findings.clone());
                 findings.extend(saved_states(&mut rt));
             } else {
                 findings.extend(load_machine(&p, Mode::Check).1);

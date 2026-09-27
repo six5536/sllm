@@ -57,6 +57,11 @@ impl FsStore {
         Self { user, machines }
     }
 
+    /// Sessions and bindings only: no machine is configured.
+    pub fn user() -> crate::error::Result<Self> {
+        Ok(Self::new(crate::paths::user_state_dir()?, HashMap::new()))
+    }
+
     fn session_path(&self, key: &str) -> PathBuf {
         self.user
             .join("sessions")

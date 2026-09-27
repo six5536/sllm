@@ -128,12 +128,12 @@ pub fn graph(args: &GraphArgs, explicit: Option<&Path>) -> Result<u8> {
     let rt = Runtime::lookup(explicit, &cwd)?;
     let machines: Vec<&Machine> = match &args.id {
         Some(id) => vec![
-            rt.loaded
-                .config
+            rt.engine
+                .config()
                 .machine(id)
                 .ok_or_else(|| Error::msg(format!("no state machine {id}")))?,
         ],
-        None => rt.loaded.config.machines.iter().collect(),
+        None => rt.engine.config().machines.iter().collect(),
     };
     if args.json {
         output::json(
