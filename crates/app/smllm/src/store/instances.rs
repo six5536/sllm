@@ -1,6 +1,7 @@
 //! Instances on disk (PLAN-005): live ones (active, suspended, parked) in
-//! `<machine>/open/`, completed ones in `<machine>/done/`, and each ref as a
-//! marker file `<machine>/refs/<ref>` holding its instance's id. The layout is
+//! `<machine>/open/`, completed ones in `<machine>/done/`, each ref in a
+//! marker file under `<machine>/refs/`, and each history in
+//! `<machine>/history/<id>.jsonl`. The layout is
 //! the index: status lines and idle lists read `open/` only, and a ref is one
 //! file, however much history `done/` keeps (INST-9).
 // @zen-component: STO-FileStore
@@ -17,6 +18,14 @@ use super::{other, read_json, safe, write};
 const OPEN: &str = "open";
 const DONE: &str = "done";
 const REFS: &str = "refs";
+const HISTORY: &str = "history";
+/// An older layout's history file: `<machine>/<id>.history.jsonl`.
+const OLD_HISTORY: &str = ".history.jsonl";
+
+/// Instance `id`'s history: `<machine>/history/<id>.jsonl`.
+pub(super) fn history_path(dir: &Path, id: &str) -> PathBuf {
+    dir.join(HISTORY).join(format!("{}.jsonl", safe(id)))
+}
 
 /// The directory an instance with `status` lives in.
 fn shelf(status: Status) -> &'static str {
@@ -67,7 +76,12 @@ fn migrate_locked(dir: &Path) -> Result<(), HostError> {
         return Ok(());
     }
     let staging = dir.join("open.new");
-    for d in [&staging, &dir.join(DONE), &dir.join(REFS)] {
+    for d in [
+        &staging,
+        &dir.join(DONE),
+        &dir.join(REFS),
+        &dir.join(HISTORY),
+    ] {
         fs::create_dir_all(d).map_err(other)?;
     }
     for e in fs::read_dir(dir).map_err(other)?.flatten() {
@@ -75,7 +89,14 @@ fn migrate_locked(dir: &Path) -> Result<(), HostError> {
         let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        if !name.ends_with(".json") || !p.is_file() {
+        if !p.is_file() {
+            continue;
+        }
+        if let Some(id) = name.strip_suffix(OLD_HISTORY) {
+            fs::rename(&p, dir.join(HISTORY).join(format!("{id}.jsonl"))).map_err(other)?;
+            continue;
+        }
+        if !name.ends_with(".json") {
             continue;
         }
         let inst = read_json::<Instance>(&p).ok().flatten();

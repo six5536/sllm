@@ -98,10 +98,10 @@ impl FsStore {
 
     /// The history of an instance.
     pub fn history(&self, machine: &str, id: &str) -> Result<Vec<HistoryEntry>, HostError> {
-        let p = self
-            .machine_dir(machine)?
-            .join(format!("{}.history.jsonl", safe(id)));
-        let Some(text) = fs_kit::read_text(&p).map_err(other)? else {
+        let dir = self.machine_dir(machine)?;
+        instances::migrate(&dir)?;
+        let Some(text) = fs_kit::read_text(&instances::history_path(&dir, id)).map_err(other)?
+        else {
             return Ok(Vec::new());
         };
         text.lines()
@@ -220,13 +220,15 @@ impl Store for FsStore {
         entry: &HistoryEntry,
     ) -> Result<(), HostError> {
         let dir = self.machine_dir(machine)?;
-        fs::create_dir_all(&dir).map_err(other)?;
+        instances::migrate(&dir)?;
+        let path = instances::history_path(&dir, id);
+        fs::create_dir_all(path.parent().unwrap_or(&dir)).map_err(other)?;
         let mut line = serde_json::to_string(entry).map_err(other)?;
         line.push('\n');
         let mut f: File = OpenOptions::new()
             .create(true)
             .append(true)
-            .open(dir.join(format!("{}.history.jsonl", safe(id))))
+            .open(path)
             .map_err(other)?;
         f.write_all(line.as_bytes()).map_err(other)
     }
@@ -370,13 +372,15 @@ mod tests {
         save(&a);
         save(&b);
         fs::write(dev.join("i-c.json"), "{ nope").unwrap();
-        fs::write(dev.join("i-a.history.jsonl"), "").unwrap();
+        let entry = serde_json::to_string(&HistoryEntry::default()).unwrap();
+        fs::write(dev.join("i-a.history.jsonl"), entry + "\n").unwrap();
 
         // The old layout moves to the shelves on first access.
         assert!(s.instances_with("dev", Status::Parked).unwrap().is_empty());
         assert!(dev.join("open/i-a.json").is_file() && dev.join("done/i-b.json").is_file());
         assert!(dev.join("open/i-c.json").is_file(), "reported by validate");
-        assert!(dev.join("i-a.history.jsonl").is_file() && !dev.join("open.new").exists());
+        assert!(dev.join("history/i-a.jsonl").is_file() && !dev.join("open.new").exists());
+        assert_eq!(s.history("dev", "i-a").unwrap().len(), 1);
         assert_eq!(s.instance_by_ref("dev", "R2").unwrap().unwrap().id, "i-b");
         assert_eq!(s.instances("dev").unwrap().len(), 2);
         assert_eq!(s.scan("dev").1.len(), 1);

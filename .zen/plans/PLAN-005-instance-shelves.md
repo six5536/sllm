@@ -37,7 +37,7 @@ trait Store {
   `put_instance`: lock → migrate → stored copy from either shelf → version check → new ref:
   clash when its marker names another instance that has the ref, or an instance's id is the ref
   → write marker → write the instance where it is, then rename it to its shelf → unlock.
-- History files stay where they are.
+- Histories live in `<machine>/history/<id>.jsonl` (moved by the migration).
 
 ## 4. Phases
 
@@ -63,3 +63,4 @@ trait Store {
 | B3 | DESIGN-STO, DESIGN-ENG, ARCHITECTURE 0.5.0, CHANGELOG (restart after upgrading) |
 | Double-check | Marker files were named by the ref as is: `GH-1` and `gh-1` would share one file on macOS and Windows (a duplicate ref could be made), and a long ref's name failed to write. Now a lower-cased, length-capped name holding a `{ref: id}` bucket. A read by id takes only the exact id (case-insensitive file systems), treats an over-long name as absent (an `enter` with a very long ref errored, in the old layout too), and re-reads `open/` after `done/` (a reopen racing a reader); full scans drop an instance seen on both shelves. Test: case-only refs, a 300-byte ref, a duplicate of `GH-1` refused |
 | Triple-check | The empty ref (allowed when no pattern forbids it) named the `refs/` directory itself as its marker, so saving it failed: its marker is now `~`, a name `safe` never yields. Test: an empty ref saves and resolves |
+| Review | Ref markers get `.json` (they are JSON); histories move to `<machine>/history/<id>.jsonl`, and an old layout's `<id>.history.jsonl` files move there in the migration. This checkout's state, migrated by an intermediate build, was fixed by hand |

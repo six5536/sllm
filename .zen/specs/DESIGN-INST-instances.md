@@ -88,7 +88,7 @@ STO-Records (`Session`: key, harness, host session, cwd, configs, `holding`, `su
 ### Core Types
 
 - INSTANCE FILE: `<config dir>/state/<machine>/<id>.json`, pretty JSON of `Instance`; `state/.gitignore` ignores everything (O6)
-- HISTORY FILE: `<config dir>/state/<machine>/<id>.history.jsonl`, one `HistoryEntry` per line
+- HISTORY FILE: `<config dir>/state/<machine>/history/<id>.jsonl`, one `HistoryEntry` per line
 
 ```rust
 // history trace order: notes, "Passed through: <STATE>" per always state,
