@@ -43,6 +43,13 @@ with the gate passing; specs updated with the code.
   (relative to the machine file), and the CLI resolves it when it loads for running. Checked:
   `cwd` is the only location-dependent value today (prompts are inlined). Test: one machine
   with a `cwd`, compiled from two folders, gives identical output.
+- D6-3 (I-3): a typed wrapper over the string core, in `packages/smllm-wasm`: hand-written
+  `index.js` + `index.d.ts` (no TypeScript build, so no new dependency), for both the `web` and
+  `bundler` builds. The package's main export is the wrapper: `Engine` methods take and return
+  objects (`fire(key, event, params)` → `Reply`, `stop()` → `{decision, text?}`, `status()` →
+  `SessionStatus`, `exportState()` → object), and it adapts an object-based host (`check`,
+  `run` get `params` and `env` as objects). The string API stays as `smllm-wasm/raw`. The wasm
+  does not change size. The smoke test runs through the wrapper, plus one raw call.
 
 ## 5. Outcome
 
