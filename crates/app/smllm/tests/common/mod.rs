@@ -42,14 +42,40 @@ impl World {
         w
     }
 
+    /// User dirs under `root` on every OS: XDG_* and HOME, and on Windows
+    /// (where etcetera uses Known Folders from the profile) USERPROFILE,
+    /// APPDATA and LOCALAPPDATA.
+    fn user_dirs(&self) -> [(&'static str, PathBuf); 6] {
+        let home = self.root.join("home");
+        [
+            ("XDG_STATE_HOME", self.root.join("state")),
+            ("XDG_CONFIG_HOME", self.root.join("config")),
+            ("HOME", home.clone()),
+            ("USERPROFILE", home.clone()),
+            ("APPDATA", home.join("AppData/Roaming")),
+            ("LOCALAPPDATA", home.join("AppData/Local")),
+        ]
+    }
+
     pub fn cmd(&self) -> Command {
         let mut c = Command::cargo_bin("smllm").unwrap();
         c.current_dir(&self.project)
-            .env("XDG_STATE_HOME", self.root.join("state"))
-            .env("XDG_CONFIG_HOME", self.root.join("config"))
-            .env("HOME", self.root.join("home"))
+            .envs(self.user_dirs())
             .env_remove("SMLLM_CONFIG");
         c
+    }
+
+    /// `smllm mcp` in this world, stdin and stdout piped.
+    pub fn mcp(&self) -> std::process::Child {
+        std::process::Command::new(assert_cmd::cargo::cargo_bin("smllm"))
+            .arg("mcp")
+            .current_dir(&self.project)
+            .envs(self.user_dirs())
+            .env_remove("SMLLM_CONFIG")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap()
     }
 
     pub fn run(&self, args: &[&str]) -> Out {

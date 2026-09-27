@@ -131,7 +131,7 @@ TEST-1: `smllm-core/tests/engine.rs` with insta snapshots of entry blocks, idle 
 
 ### Integration Testing
 
-TEST-2: `crates/app/smllm/tests/session.rs` (fake agent over hooks, `fire`, MCP stdio, showcase example) and `cli.rs`, via `common::World` with isolated `HOME` / `XDG_*`. TEST-3: `packages/smllm-wasm/test/smoke.test.mjs` loads the web build in Node and drives the compiled `examples/dev` machine (bind, enter, stop, accept, param type error, yield, export/import). TEST-4: `scripts/live-e2e.mjs` runs `claude -p` on a two-state `hello` machine and checks the instance is completed with `enter` and `written` in its history.
+TEST-2: `crates/app/smllm/tests/session.rs` (fake agent over hooks, `fire`, MCP stdio, showcase example) and `cli.rs`, via `common::World` with isolated user dirs (`HOME`, `XDG_*`, and `USERPROFILE` / `APPDATA` / `LOCALAPPDATA` for Windows) and no `SMLLM_CONFIG`; `World::mcp` starts the MCP server the same way. Tests that need a POSIX shell (the showcase's `test -s` guard, the dev example's commands, `sh -c` in the command runner) are `#[cfg(unix)]`; Windows twins cover what differs there (`cmd /C` quoting, env, failure, timeout; PLAN-003 D3-5). TEST-3: `packages/smllm-wasm/test/smoke.test.mjs` loads the web build in Node and drives the compiled `examples/dev` machine (bind, enter, stop, accept, param type error, yield, export/import). TEST-4: `scripts/live-e2e.mjs` runs `claude -p` on a two-state `hello` machine and checks the instance is completed with `enter` and `written` in its history.
 
 - SCENARIOS: see DESIGN-HOST-harnesses and DESIGN-CLI-cli integration scenarios
 

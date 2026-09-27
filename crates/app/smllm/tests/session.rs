@@ -4,7 +4,6 @@
 mod common;
 
 use std::io::{BufRead as _, BufReader, Write as _};
-use std::process::{Command, Stdio};
 
 use common::{World, key_in};
 use serde_json::{Value, json};
@@ -20,6 +19,7 @@ fn start(w: &World, sid: &str) -> String {
     key_in(&ctx)
 }
 
+#[cfg_attr(not(unix), allow(dead_code))] // used by the sh-only tests
 fn fire(w: &World, key: &str, event: &str, params: &[&str]) -> (i32, String) {
     let mut args = vec!["fire", "--session", key, event];
     for p in params {
@@ -30,6 +30,7 @@ fn fire(w: &World, key: &str, event: &str, params: &[&str]) -> (i32, String) {
     (o.code, o.stdout)
 }
 
+#[cfg_attr(not(unix), allow(dead_code))] // used by the sh-only tests
 fn stop(w: &World, sid: &str, active: bool) -> Value {
     w.hook(
         "stop",
@@ -47,6 +48,8 @@ fn stop(w: &World, sid: &str, active: bool) -> Value {
 // @zen-test: CLI-5_AC-1
 // @zen-test: CLI-6_AC-1
 // @zen-test: CLI-8_AC-1
+// Unix only: the showcase's CHECK guard is `test -s` (sh) (PLAN-003 D3-5).
+#[cfg(unix)]
 #[test]
 fn hooks_and_fire_through_the_showcase() {
     let w = World::showcase("session");
@@ -229,16 +232,7 @@ fn fire_without_a_session_binds_one_with_enter() {
 fn mcp_over_stdio() {
     let w = World::showcase("mcp");
     let key = start(&w, "cc-9");
-    let mut child = Command::new(assert_cmd::cargo::cargo_bin("smllm"))
-        .arg("mcp")
-        .current_dir(&w.project)
-        .env("XDG_STATE_HOME", w.root.join("state"))
-        .env("XDG_CONFIG_HOME", w.root.join("config"))
-        .env("HOME", w.root.join("home"))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
+    let mut child = w.mcp();
     struct Rpc {
         stdin: std::process::ChildStdin,
         lines: std::io::Lines<BufReader<std::process::ChildStdout>>,
@@ -360,16 +354,7 @@ fn mcp_over_stdio() {
 fn mcp_over_stdio_at_2026_07_28() {
     let w = World::showcase("mcp-2026");
     let key = start(&w, "cc-10");
-    let mut child = Command::new(assert_cmd::cargo::cargo_bin("smllm"))
-        .arg("mcp")
-        .current_dir(&w.project)
-        .env("XDG_STATE_HOME", w.root.join("state"))
-        .env("XDG_CONFIG_HOME", w.root.join("config"))
-        .env("HOME", w.root.join("home"))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
+    let mut child = w.mcp();
     let mut stdin = child.stdin.take().unwrap();
     let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
     let meta = json!({
@@ -425,6 +410,8 @@ fn mcp_over_stdio_at_2026_07_28() {
 
 // @zen-test: INST-10_AC-1
 // @zen-test: IDLE-6_AC-1
+// Unix only: the dev example's commands are sh (PLAN-003 D3-5).
+#[cfg(unix)]
 #[test]
 fn the_dev_example_through_final_and_reopen() {
     let w = World::new("dev");
@@ -479,16 +466,7 @@ fn the_dev_example_through_final_and_reopen() {
 fn mcp_pipelined_calls_on_one_session() {
     let w = World::showcase("mcp-pipelined");
     let key = start(&w, "cc-11");
-    let mut child = Command::new(assert_cmd::cargo::cargo_bin("smllm"))
-        .arg("mcp")
-        .current_dir(&w.project)
-        .env("XDG_STATE_HOME", w.root.join("state"))
-        .env("XDG_CONFIG_HOME", w.root.join("config"))
-        .env("HOME", w.root.join("home"))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
+    let mut child = w.mcp();
     let mut stdin = child.stdin.take().unwrap();
     let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
     let meta = json!({

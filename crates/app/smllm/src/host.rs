@@ -37,19 +37,7 @@ fn tail(text: &str) -> String {
 // @zen-impl: DEC-7_AC-1
 pub fn run_command(call: &Call<'_>) -> Outcome {
     let mut cmd = match call.params.get("run") {
-        Some(Value::Str(s)) => {
-            let mut c = if cfg!(windows) {
-                Command::new("cmd")
-            } else {
-                Command::new("sh")
-            };
-            if cfg!(windows) {
-                c.args(["/C", s]);
-            } else {
-                c.args(["-c", s]);
-            }
-            c
-        }
+        Some(Value::Str(s)) => shell(s),
         Some(Value::List(argv)) if !argv.is_empty() => {
             let mut c = Command::new(&argv[0]);
             c.args(&argv[1..]);
@@ -172,6 +160,25 @@ pub fn run_command(call: &Call<'_>) -> Outcome {
     }
 }
 
+/// The system shell running `script`: `sh -c` (DEC-4).
+#[cfg(not(windows))]
+fn shell(script: &str) -> Command {
+    let mut c = Command::new("sh");
+    c.args(["-c", script]);
+    c
+}
+
+/// The system shell running `script`: `cmd /C`, the script passed as is.
+/// Through `args`, std would quote it for the MSVC runtime (`"` → `\"`),
+/// which `cmd` never undoes, mangling every quote in it.
+#[cfg(windows)]
+fn shell(script: &str) -> Command {
+    use std::os::windows::process::CommandExt as _;
+    let mut c = Command::new("cmd");
+    c.arg("/C").raw_arg(script);
+    c
+}
+
 /// Kill a timed-out command and, on unix, its whole process group.
 // @zen-impl: DEC-5_AC-1
 fn kill_tree(child: &mut std::process::Child) {
@@ -270,6 +277,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn shell_exec_env_timeout_and_failure() {
         let env = vec![("SMLLM_REF".to_string(), "GH-1".to_string())];
@@ -307,6 +315,30 @@ mod tests {
         p.insert("cwd", Value::Str("/".into()));
         assert!(Action::run(&mut c, &call(&p, &env)).ok);
         assert!(Guard::check(&mut c, &call(&p, &env)).ok);
+    }
+
+    // The Windows twin (PLAN-003 D3-5): `cmd /C` gets the script as
+    // written, quotes included (F24); env, failure, timeout.
+    // @zen-test: DEC-4_AC-1
+    // @zen-test: DEC-5_AC-1
+    #[cfg(windows)]
+    #[test]
+    fn cmd_exec_env_quotes_timeout_and_failure() {
+        let env = vec![("SMLLM_REF".to_string(), "GH-1".to_string())];
+        let mut p = SmallMap::new();
+        p.insert(
+            "run",
+            Value::Str("if \"%SMLLM_REF%\"==\"GH-1\" (exit 0) else (exit 1)".into()),
+        );
+        assert!(run_command(&call(&p, &env)).ok);
+        p.insert("run", Value::Str("echo \"two words\" 1>&2 & exit 3".into()));
+        assert_eq!(
+            run_command(&call(&p, &env)).detail,
+            "exited 3: \"two words\""
+        );
+        p.insert("run", Value::Str("ping -n 6 127.0.0.1 >nul".into()));
+        p.insert("timeoutSecs", Value::Int(1));
+        assert_eq!(run_command(&call(&p, &env)).detail, "timed out after 1s");
     }
 
     // A timeout kills the command's whole group, and only it: this test

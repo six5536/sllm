@@ -65,7 +65,7 @@ crates/app/smllm/src/host.rs                  DEC-CommandRunner (Commands, run_c
 
 ### DEC-CommandRunner
 
-The CLI host's command guard/action runner. String `run` → `sh -c` (`cmd /C` on Windows); non-empty list → exec with no shell; anything else → failure `no run param`. Sets cwd (`params.cwd`, else `Call.cwd` when non-empty), env from `Call.env`, stdin null. Exit 0 → `ok`; non-zero → `exited N[: tail]`; signal → `killed by a signal`; spawn error → `could not start: …`; timeout → `timed out after Ns`. The same file supplies the CLI's `InstructionSource` (reads files at request time, ENG-4), `Matcher` (`regex`), `Clock` and `Ids` (`getrandom`).
+The CLI host's command guard/action runner. String `run` → `sh -c` (`cmd /C` on Windows, the script passed with `raw_arg` so its quotes reach `cmd` as written; through `args` std would escape each `"` as `\"`, PLAN-003 F24); non-empty list → exec with no shell; anything else → failure `no run param`. Sets cwd (`params.cwd`, else `Call.cwd` when non-empty), env from `Call.env`, stdin null. Exit 0 → `ok`; non-zero → `exited N[: tail]`; signal → `killed by a signal`; spawn error → `could not start: …`; timeout → `timed out after Ns`. The same file supplies the CLI's `InstructionSource` (reads files at request time, ENG-4), `Matcher` (`regex`), `Clock` and `Ids` (`getrandom`).
 
 IMPLEMENTS: DEC-4_AC-1, DEC-5_AC-1, DEC-7_AC-1
 
