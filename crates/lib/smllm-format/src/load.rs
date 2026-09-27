@@ -308,6 +308,12 @@ pub fn load_configs(files: &[ConfigFile], mode: Mode) -> Loaded {
                 continue;
             }
             seen_here.push(machine.id.clone());
+            let source = MachineSource {
+                id: machine.id.clone(),
+                file: file.clone(),
+                config: cf.path.clone(),
+                state_dir: dir.join("state"),
+            };
             if let Some(i) = out.config.machines.iter().position(|m| m.id == machine.id) {
                 out.findings.push(finding(
                     Severity::Info,
@@ -321,21 +327,11 @@ pub fn load_configs(files: &[ConfigFile], mode: Mode) -> Loaded {
                     "CFG-15",
                 ));
                 // Replaced in place: config order is kept.
-                out.machines[i] = MachineSource {
-                    id: machine.id.clone(),
-                    file: file.clone(),
-                    config: cf.path.clone(),
-                    state_dir: dir.join("state"),
-                };
+                out.machines[i] = source;
                 out.config.machines[i] = machine;
                 continue;
             }
-            out.machines.push(MachineSource {
-                id: machine.id.clone(),
-                file: file.clone(),
-                config: cf.path.clone(),
-                state_dir: dir.join("state"),
-            });
+            out.machines.push(source);
             out.config.machines.push(machine);
         }
     }

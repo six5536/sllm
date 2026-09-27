@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use toml_edit::{Array, DocumentMut, Item, Table, TableLike, Value};
 
-use crate::{Error, Result, harness::read_text};
+use crate::{Error, Result, harness::{parse_toml, read_text}};
 
 /// Where the parts a user declined are kept.
 pub trait DeclinedStore {
@@ -42,8 +42,7 @@ impl TomlDeclined {
     }
 
     fn parse(&self, text: &str) -> Result<DocumentMut> {
-        text.parse()
-            .map_err(|e: toml_edit::TomlError| self.refuse(e.message()))
+        parse_toml(&self.display, text)
     }
 }
 
@@ -108,9 +107,7 @@ pub fn set_declined_text(
 ) -> Result<Option<String>> {
     let refuse = |m: &str| Error::Harness(format!("{display}: {m}"));
     let mut doc: DocumentMut = match text {
-        Some(t) => t
-            .parse()
-            .map_err(|e: toml_edit::TomlError| refuse(e.message()))?,
+        Some(t) => parse_toml(display, t)?,
         None => DocumentMut::new(),
     };
     let harness_table = doc

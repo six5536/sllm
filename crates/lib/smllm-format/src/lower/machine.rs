@@ -143,10 +143,7 @@ pub(crate) fn lower(c: &mut Checker<'_>, files: &Files<'_>, file: &MachineFile) 
                 }
                 used_events.insert(event.to_string());
                 let transitions = lower_transitions(c, files, &ep, ts, &names, true);
-                if transitions
-                    .iter()
-                    .any(|t| t.actions.contains(&ActionDef::SetRef))
-                {
+                if sets_ref(&transitions) {
                     set_ref_events.push(event.to_string());
                 }
                 on.push(On {
@@ -190,16 +187,13 @@ pub(crate) fn lower(c: &mut Checker<'_>, files: &Files<'_>, file: &MachineFile) 
                     );
                 }
                 let mut m = smllm_core::SmallMap::new();
+                // The ref param is implied only on events that set the ref.
+                let event_sets_ref = on
+                    .iter()
+                    .any(|o| o.event == event && sets_ref(&o.transitions));
                 for (param, text) in prompts.iter() {
-                    // The ref param is implied only on events that set the ref.
-                    let sets_ref = on.iter().any(|o| {
-                        o.event == event
-                            && o.transitions
-                                .iter()
-                                .any(|t| t.actions.contains(&ActionDef::SetRef))
-                    });
                     let declared = events.get(event).is_some_and(|d| d.param(param).is_some())
-                        || (param == instance.ref_param && sets_ref);
+                        || (param == instance.ref_param && event_sets_ref);
                     if !declared {
                         c.error(
                             &[pp.clone(), ypath![param]].concat(),
@@ -273,8 +267,8 @@ pub(crate) fn lower(c: &mut Checker<'_>, files: &Files<'_>, file: &MachineFile) 
         });
     }
 
-    for e in set_ref_events {
-        require_ref(c, &mut events, &e, &instance);
+    for e in &set_ref_events {
+        require_ref(c, &mut events, e, &instance);
     }
     for (name, _) in events.iter() {
         if !BUILTINS.contains(&name) && !used_events.contains(name) {
@@ -287,27 +281,19 @@ pub(crate) fn lower(c: &mut Checker<'_>, files: &Files<'_>, file: &MachineFile) 
         }
     }
     for (name, def) in events.iter() {
-        if def.param(&instance.ref_param).is_some() && !def.params.is_empty() {
-            let has_set_ref = states
-                .iter()
-                .flat_map(|s| s.on.iter())
-                .filter(|o| o.event == name)
-                .any(|o| {
-                    o.transitions
-                        .iter()
-                        .any(|t| t.actions.contains(&ActionDef::SetRef))
-                });
-            if !has_set_ref {
-                c.warning(
-                    &ypath!["meta", "events", name],
-                    format!(
-                        "{name} has a param named like the ref param {} but never sets the ref",
-                        instance.ref_param
-                    ),
-                    Some("rename the param, or add a setRef action"),
-                    "CFG-13",
-                );
-            }
+        if def.param(&instance.ref_param).is_some()
+            && !def.params.is_empty()
+            && !set_ref_events.iter().any(|e| e == name)
+        {
+            c.warning(
+                &ypath!["meta", "events", name],
+                format!(
+                    "{name} has a param named like the ref param {} but never sets the ref",
+                    instance.ref_param
+                ),
+                Some("rename the param, or add a setRef action"),
+                "CFG-13",
+            );
         }
     }
 
@@ -440,4 +426,10 @@ pub(crate) fn reachable(m: &Machine) -> HashSet<String> {
         }
     }
     seen
+}
+/// Whether any of `transitions` sets the ref.
+fn sets_ref(transitions: &[Transition]) -> bool {
+    transitions
+        .iter()
+        .any(|t| t.actions.contains(&ActionDef::SetRef))
 }

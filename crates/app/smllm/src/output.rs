@@ -22,6 +22,15 @@ pub fn text(s: &str) -> Result<()> {
     write_stdout(s.as_bytes()).map_err(stdout_err)
 }
 
+/// Print an engine reply: as JSON with `json`, else its text.
+pub fn reply(reply: &smllm_core::Reply, json: bool) -> Result<()> {
+    if json {
+        self::json(reply)
+    } else {
+        text(&reply.text)
+    }
+}
+
 /// Print one JSON object and a newline.
 pub fn json(v: &impl Serialize) -> Result<()> {
     let buf = json_line(v).map_err(|e| Error::msg(e.to_string()))?;

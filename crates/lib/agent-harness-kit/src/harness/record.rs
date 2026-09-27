@@ -4,9 +4,8 @@
 
 use std::{collections::BTreeMap, path::Path};
 
-use toml_edit::DocumentMut;
 
-use crate::{Error, Result, harness::read_text};
+use crate::{Error, Result, harness::{parse_toml, read_text}};
 
 /// The record: harness name to part name to hash.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -23,9 +22,7 @@ pub fn read_record(path: &Path, display: &str) -> Result<Record> {
         return Ok(Record::default());
     };
     let refuse = |m: &str| Error::Harness(format!("{display}: {m}"));
-    let doc: DocumentMut = text
-        .parse()
-        .map_err(|e: toml_edit::TomlError| refuse(e.message()))?;
+    let doc = parse_toml(display, &text)?;
     let mut harnesses = BTreeMap::new();
     for (name, item) in doc.iter() {
         let table = item

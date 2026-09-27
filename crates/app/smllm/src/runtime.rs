@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use smllm_core::host::{Host, Store};
-use smllm_core::record::Session;
+use smllm_core::record::{Instance, Session};
 use smllm_core::{Bind, Engine, Reply};
 use smllm_format::{ConfigFile, Findings, Loaded, MachineSource, Mode, load_configs};
 
@@ -104,6 +104,15 @@ impl Runtime {
             configs: &configs,
         };
         Ok(self.with(|e, h| e.fire(h, key, event, params, &bind))?)
+    }
+
+    /// Every readable instance of the loaded machines, in config order.
+    pub fn all_instances(&mut self) -> Result<Vec<Instance>> {
+        let mut all = Vec::new();
+        for s in &self.sources {
+            all.extend(self.store.instances(&s.id)?);
+        }
+        Ok(all)
     }
 
     /// Run `f` with the engine and a CLI host.

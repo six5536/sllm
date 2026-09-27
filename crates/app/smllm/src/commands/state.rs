@@ -33,11 +33,7 @@ pub fn fire(args: &FireArgs, explicit: Option<&Path>) -> Result<u8> {
     let key = args.session.as_deref();
     let mut rt = Runtime::for_call(key, explicit, &cwd)?;
     let reply = rt.fire("none", key, &args.event, &ps, &cwd)?;
-    if args.json {
-        output::json(&reply)?;
-    } else {
-        output::text(&reply.text)?;
-    }
+    output::reply(&reply, args.json)?;
     Ok(if reply.ok { EXIT_OK } else { EXIT_ERRORS })
 }
 
@@ -75,11 +71,7 @@ pub fn session_list(args: &JsonArgs) -> Result<u8> {
 pub fn session_show(args: &KeyArgs) -> Result<u8> {
     let mut rt = Runtime::for_session(&args.key)?;
     let reply = rt.with(|e, h| e.view(h, &args.key))?;
-    if args.json {
-        output::json(&reply)?;
-    } else {
-        output::text(&reply.text)?;
-    }
+    output::reply(&reply, args.json)?;
     Ok(EXIT_OK)
 }
 
@@ -87,12 +79,7 @@ pub fn session_show(args: &KeyArgs) -> Result<u8> {
 // @zen-impl: CLI-6_AC-1
 pub fn instance_list(args: &JsonArgs, explicit: Option<&Path>) -> Result<u8> {
     let cwd = paths::cwd()?;
-    let mut rt = Runtime::lookup(explicit, &cwd)?;
-    let ids: Vec<String> = rt.sources.iter().map(|m| m.id.clone()).collect();
-    let mut all = Vec::new();
-    for id in ids {
-        all.extend(rt.store.instances(&id)?);
-    }
+    let all = Runtime::lookup(explicit, &cwd)?.all_instances()?;
     if args.json {
         return output::json(&json!({ "instances": all })).map(|()| EXIT_OK);
     }
@@ -123,14 +110,19 @@ pub fn instance_list(args: &JsonArgs, explicit: Option<&Path>) -> Result<u8> {
 pub fn instance_show(args: &KeyArgs, explicit: Option<&Path>) -> Result<u8> {
     let cwd = paths::cwd()?;
     let mut rt = Runtime::lookup(explicit, &cwd)?;
-    let ids: Vec<String> = rt.sources.iter().map(|m| m.id.clone()).collect();
+    // By id first: one file per machine, not a scan of every instance.
     let mut found = None;
-    for id in ids {
-        for i in rt.store.instances(&id)? {
-            if i.id == args.key || i.r#ref.as_deref() == Some(&args.key) {
-                found = Some(i);
-            }
+    for s in &rt.sources {
+        found = rt.store.instance(&s.id, &args.key)?;
+        if found.is_some() {
+            break;
         }
+    }
+    if found.is_none() {
+        found = rt
+            .all_instances()?
+            .into_iter()
+            .find(|i| i.r#ref.as_deref() == Some(&args.key));
     }
     let inst = found.ok_or_else(|| {
         Error::msg(format!(

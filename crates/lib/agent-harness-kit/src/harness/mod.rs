@@ -20,7 +20,7 @@ pub use declined::{DeclinedStore, TomlDeclined, set_declined_text};
 pub use file::render_files;
 pub use install::{HarnessResult, InstallOptions, PartResult, install, status};
 pub use merge::{
-    MergeOp, apply as apply_merge, extract, indent_of, json_text, parse_json,
+    MergeOp, apply as apply_merge, extract, indent_of, json_text, parse_json, parse_toml,
     remove as remove_merge, render_merge, render_unmerge,
 };
 pub use part::{Content, ExternalPart, Part, Profile, Target};

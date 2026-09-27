@@ -114,9 +114,7 @@ pub fn new(args: &NewArgs, explicit: Option<&Path>) -> Result<u8> {
 /// `config` with `file` added to `[machines] files`, formatting kept.
 fn register(config: &Path, config_dir: &Path, file: &Path) -> Result<String> {
     let text = std::fs::read_to_string(config).map_err(|e| Error::io(config, e))?;
-    let mut doc: toml_edit::DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| {
-        Error::msg(format!("{}: {}", config.display(), e.message()))
-    })?;
+    let mut doc = agent_harness_kit::harness::parse_toml(&config.display().to_string(), &text)?;
     let rel = relative(config_dir, file)
         .to_string_lossy()
         .replace('\\', "/");

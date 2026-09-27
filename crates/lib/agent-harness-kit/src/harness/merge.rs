@@ -107,6 +107,13 @@ pub fn parse_json(display: &str, text: &str) -> Result<Value> {
     Ok(doc)
 }
 
+/// Parse TOML, keeping its formatting; `display` names the file in the
+/// refusal.
+pub fn parse_toml(display: &str, text: &str) -> Result<toml_edit::DocumentMut> {
+    text.parse()
+        .map_err(|e: toml_edit::TomlError| Error::Harness(format!("{display}: {}", e.message())))
+}
+
 /// The indent of a file: the leading whitespace of its first indented line,
 /// or two spaces.
 pub fn indent_of(text: &str) -> String {
