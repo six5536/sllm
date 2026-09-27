@@ -110,19 +110,16 @@ pub fn instance_list(args: &JsonArgs, explicit: Option<&Path>) -> Result<u8> {
 pub fn instance_show(args: &KeyArgs, explicit: Option<&Path>) -> Result<u8> {
     let cwd = paths::cwd()?;
     let mut rt = Runtime::lookup(explicit, &cwd)?;
-    // By id first: one file per machine, not a scan of every instance.
+    // By id, then by ref: one or two files per machine, never a scan.
     let mut found = None;
     for s in &rt.sources {
-        found = rt.store.instance(&s.id, &args.key)?;
+        found = match rt.store.instance(&s.id, &args.key)? {
+            Some(i) => Some(i),
+            None => rt.store.instance_by_ref(&s.id, &args.key)?,
+        };
         if found.is_some() {
             break;
         }
-    }
-    if found.is_none() {
-        found = rt
-            .all_instances()?
-            .into_iter()
-            .find(|i| i.r#ref.as_deref() == Some(&args.key));
     }
     let inst = found.ok_or_else(|| {
         Error::msg(format!(

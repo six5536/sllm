@@ -1,7 +1,9 @@
 //! The file store: sessions and bindings under the user's state dir,
-//! instances and history in `state/` beside their config; atomic writes, a
-//! file lock and instance versions (STO, INST-8).
+//! instances and history in `state/` beside their config ([`instances`]);
+//! atomic writes, a file lock and instance versions (STO, INST-8).
 // @zen-component: STO-FileStore
+
+mod instances;
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
@@ -10,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use agent_harness_kit::fs as fs_kit;
 use smllm_core::host::{HostError, Store};
-use smllm_core::record::{HistoryEntry, Instance, Session};
+use smllm_core::record::{HistoryEntry, Instance, Session, Status};
 
 /// Sessions under `user`, instances under each machine's state dir.
 pub struct FsStore {
@@ -108,44 +110,14 @@ impl FsStore {
             .collect()
     }
 
-    /// Every instance file of `machine`: the readable ones by id, and the
-    /// unreadable ones with why (`validate` reports those, STO-1).
+    /// Every instance file of `machine`, both shelves: the readable ones
+    /// by id, and the unreadable ones with why (`validate` reports those,
+    /// STO-1).
     pub fn scan(&self, machine: &str) -> (Vec<Instance>, Vec<(PathBuf, String)>) {
-        let (mut good, mut bad) = (Vec::new(), Vec::new());
-        let Ok(dir) = self.machine_dir(machine) else {
-            return (good, bad);
-        };
-        let Ok(rd) = fs::read_dir(&dir) else {
-            return (good, bad);
-        };
-        for e in rd.flatten() {
-            let p = e.path();
-            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-            if !name.ends_with(".json") {
-                continue;
-            }
-            match read_json::<Instance>(&p) {
-                Ok(Some(i)) => good.push(i),
-                Ok(None) => {}
-                Err(e) => bad.push((p, e.to_string())),
-            }
+        match self.machine_dir(machine) {
+            Ok(dir) => instances::scan(&dir, None),
+            Err(_) => (Vec::new(), Vec::new()),
         }
-        good.sort_by(|a: &Instance, b| a.id.cmp(&b.id));
-        bad.sort();
-        (good, bad)
-    }
-
-    /// Whether another instance of the machine already has `instance`'s ref,
-    /// as its ref or its id (INST-3). Checked under the machine lock, so two
-    /// sessions entering the same new ref cannot both create an instance.
-    fn ref_taken(&mut self, instance: &Instance) -> Result<bool, HostError> {
-        let Some(r) = instance.r#ref.as_deref() else {
-            return Ok(false);
-        };
-        Ok(self
-            .instances(&instance.machine)?
-            .iter()
-            .any(|i| i.id != instance.id && (i.r#ref.as_deref() == Some(r) || i.id == r)))
     }
 
     /// Keep instance state out of git (O6: private in v1).
@@ -199,7 +171,8 @@ impl Store for FsStore {
         let Ok(dir) = self.machine_dir(machine) else {
             return Ok(None);
         };
-        read_json(&dir.join(format!("{}.json", safe(id))))
+        instances::migrate(&dir)?;
+        Ok(instances::find(&dir, id)?.map(|(_, i)| i))
     }
 
     /// The machine's readable instances. An unreadable or corrupt file is
@@ -209,32 +182,35 @@ impl Store for FsStore {
         Ok(self.scan(machine).0)
     }
 
-    // @zen-impl: INST-8_AC-2
-    // @zen-impl: INST-3_AC-1
+    /// One shelf: a parked list reads no completed instance.
+    fn instances_with(
+        &mut self,
+        machine: &str,
+        status: Status,
+    ) -> Result<Vec<Instance>, HostError> {
+        Ok(match self.machine_dir(machine) {
+            Ok(dir) => instances::scan(&dir, Some(status)).0,
+            Err(_) => Vec::new(),
+        })
+    }
+
+    /// One marker file.
+    fn instance_by_ref(
+        &mut self,
+        machine: &str,
+        r#ref: &str,
+    ) -> Result<Option<Instance>, HostError> {
+        let Ok(dir) = self.machine_dir(machine) else {
+            return Ok(None);
+        };
+        instances::migrate(&dir)?;
+        instances::by_ref(&dir, r#ref)
+    }
+
     fn put_instance(&mut self, instance: &Instance) -> Result<(), HostError> {
         let dir = self.machine_dir(&instance.machine)?;
-        fs::create_dir_all(&dir).map_err(other)?;
         self.ignore_state(&dir);
-        let lock = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(dir.join(".lock"))
-            .map_err(other)?;
-        lock.lock().map_err(other)?;
-        let path = dir.join(format!("{}.json", safe(&instance.id)));
-        let stored: Option<Instance> = read_json(&path)?;
-        let (version, stored_ref) = stored.map_or((0, None), |i| (i.version, i.r#ref));
-        // Only a new ref needs the scan of every instance.
-        let new_ref = instance.r#ref != stored_ref;
-        let result = if instance.version != version + 1 || (new_ref && self.ref_taken(instance)?) {
-            Err(HostError::Conflict)
-        } else {
-            let text = serde_json::to_string_pretty(instance).map_err(other)?;
-            write(&path, &text)
-        };
-        let _ = lock.unlock();
-        result
+        instances::put(&dir, instance)
     }
 
     fn append_history(
@@ -312,15 +288,15 @@ mod tests {
         let mut clash = b.clone();
         clash.id = "i-3".into();
         fs::write(
-            d.join("proj/state/dev/i-3.json"),
+            d.join("proj/state/dev/open/i-3.json"),
             serde_json::to_string(&clash).unwrap(),
         )
         .unwrap();
         b.version += 1;
         s.put_instance(&b).unwrap();
-        fs::remove_file(d.join("proj/state/dev/i-3.json")).unwrap();
+        fs::remove_file(d.join("proj/state/dev/open/i-3.json")).unwrap();
         // A corrupt instance file is skipped, and reported (PLAN-003 F5).
-        fs::write(d.join("proj/state/dev/i-bad.json"), "{ nope").unwrap();
+        fs::write(d.join("proj/state/dev/open/i-bad.json"), "{ nope").unwrap();
         assert_eq!(s.instances("dev").unwrap().len(), 2);
         let bad = s.scan("dev").1;
         assert_eq!(bad.len(), 1);
@@ -361,6 +337,77 @@ mod tests {
         s.put_session(&sess).unwrap();
         assert_eq!(s.session("sm-1").unwrap(), Some(sess));
         assert_eq!(s.sessions().unwrap().len(), 1);
+        fs::remove_dir_all(d).ok();
+    }
+
+    // Live instances in `open/`, completed ones in `done/`, refs as marker
+    // files; an old layout moves there on first access (PLAN-005).
+    // @zen-test: INST-3_AC-1
+    // @zen-test: INST-4_AC-1
+    #[test]
+    fn shelves_markers_and_migration() {
+        let d = crate::test_support::temp_dir("shelves");
+        let dev = d.join("state/dev");
+        let mut s = FsStore::new(
+            d.join("user"),
+            [("dev".to_string(), d.join("state"))].into(),
+        );
+        let save = |i: &Instance| {
+            fs::create_dir_all(&dev).unwrap();
+            fs::write(
+                dev.join(format!("{}.json", i.id)),
+                serde_json::to_string(i).unwrap(),
+            )
+            .unwrap();
+        };
+        let mut a = inst(1);
+        a.id = "i-a".into();
+        a.r#ref = Some("R1".into());
+        let mut b = inst(1);
+        b.id = "i-b".into();
+        b.r#ref = Some("R2".into());
+        b.status = Status::Completed;
+        save(&a);
+        save(&b);
+        fs::write(dev.join("i-c.json"), "{ nope").unwrap();
+        fs::write(dev.join("i-a.history.jsonl"), "").unwrap();
+
+        // The old layout moves to the shelves on first access.
+        assert!(s.instances_with("dev", Status::Parked).unwrap().is_empty());
+        assert!(dev.join("open/i-a.json").is_file() && dev.join("done/i-b.json").is_file());
+        assert!(dev.join("open/i-c.json").is_file(), "reported by validate");
+        assert!(dev.join("i-a.history.jsonl").is_file() && !dev.join("open.new").exists());
+        assert_eq!(s.instance_by_ref("dev", "R2").unwrap().unwrap().id, "i-b");
+        assert_eq!(s.instances("dev").unwrap().len(), 2);
+        assert_eq!(s.scan("dev").1.len(), 1);
+
+        // Completing moves the file; a parked list never reads `done/`.
+        a.version = 2;
+        a.status = Status::Completed;
+        s.put_instance(&a).unwrap();
+        assert!(dev.join("done/i-a.json").is_file() && !dev.join("open/i-a.json").exists());
+        let mut misplaced = inst(1);
+        misplaced.id = "i-x".into();
+        misplaced.status = Status::Parked;
+        fs::write(
+            dev.join("done/i-x.json"),
+            serde_json::to_string(&misplaced).unwrap(),
+        )
+        .unwrap();
+        assert!(s.instances_with("dev", Status::Parked).unwrap().is_empty());
+        fs::remove_file(dev.join("done/i-x.json")).unwrap();
+
+        // A ref's marker; one left by a failed write does not hold the ref.
+        assert_eq!(fs::read_to_string(dev.join("refs/R1")).unwrap(), "i-a");
+        fs::write(dev.join("refs/R9"), "i-a").unwrap();
+        let mut c = inst(1);
+        c.id = "i-d".into();
+        c.r#ref = Some("R9".into());
+        s.put_instance(&c).unwrap();
+        assert_eq!(s.instance_by_ref("dev", "R9").unwrap().unwrap().id, "i-d");
+        c.id = "i-e".into();
+        assert_eq!(s.put_instance(&c), Err(HostError::Conflict));
+        assert!(s.instance_by_ref("dev", "nope").unwrap().is_none());
         fs::remove_dir_all(d).ok();
     }
 }

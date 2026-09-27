@@ -284,7 +284,7 @@ fn new_forms_and_validate_paths() {
     );
     // A corrupt instance file is skipped everywhere else, and reported here
     // (PLAN-003 F5).
-    w.write(".smllm/state/other/i-bad.json", "{ nope");
+    w.write(".smllm/state/other/open/i-bad.json", "{ nope");
     let o = w.run(&["validate", "--warnings"]);
     assert!(
         o.stdout.contains("i-bad.json") && o.stdout.contains("cannot be read"),
