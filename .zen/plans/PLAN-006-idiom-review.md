@@ -38,6 +38,11 @@ with the gate passing; specs updated with the code.
   write; writers create the folders they need under the lock they already take. The CHANGELOG's
   "moves on first use; restart after upgrading" note goes. The same rule (no compatibility code
   before the first release) applies to every later item.
+- D6-2 (I-2): compiled output is the same bytes on any machine, from any folder. It holds no
+  path of the machine that compiled it: a command's `cwd` stays as the author wrote it
+  (relative to the machine file), and the CLI resolves it when it loads for running. Checked:
+  `cwd` is the only location-dependent value today (prompts are inlined). Test: one machine
+  with a `cwd`, compiled from two folders, gives identical output.
 
 ## 5. Outcome
 
