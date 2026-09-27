@@ -43,6 +43,10 @@ The project is now smllm: state machines for LLM agents (PLAN-001).
   config (11 ms → 0.7 ms here). Loading the config reads no prompt file and probes no
   `enter-<STATE>.md`; `validate` still does, for its warnings (86 file accesses → 17; 11.4 ms →
   5.4 ms on a slow mount). A command guard or action that passes no longer waits for its output.
+- Instance files moved (PLAN-005): `.smllm/state/<machine>/open/` holds live instances,
+  `done/` completed ones, and `refs/` a marker per ref, so status lines, idle lists and ref
+  lookups no longer read every instance ever completed. Existing state moves on first use;
+  restart running smllm processes (such as `smllm mcp`) after upgrading.
 
 ### Fixed
 

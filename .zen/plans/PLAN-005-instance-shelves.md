@@ -2,7 +2,7 @@
 
 | Meta               | Value                                         |
 | ------------------ | --------------------------------------------- |
-| Status             | in-progress                                   |
+| Status             | completed (B1–B3, 2026-09-27)                 |
 | Workflow direction | bottom-up (PLAN-004 D4-2 → code → specs)      |
 | Traces to          | STO-1, STO-3, INST-3, INST-4, INST-9, STL-5, IDLE |
 
@@ -56,4 +56,8 @@ trait Store {
 
 ## 5. Outcome
 
-(filled in at the end)
+| Phase | Commit / result |
+| ----- | --------------- |
+| B1 | 3145421: `Store::instances_with` / `instance_by_ref` with filtering defaults; parked list, status count, `idle::find`, `check_set_ref` use them. Wasm 257.1 KiB |
+| B2 | 14695b1: `store/instances.rs` (shelves, markers, `put` with rename, lazy migration); `instance show` by id then ref. Tests: migration of an old layout (a corrupt file lands in `open/`, history stays), completion moves the file, a parked list ignores `done/`, a stale marker does not hold its ref. On a copy of this repo's state, a status line opens only `open/` files |
+| B3 | DESIGN-STO, DESIGN-ENG, ARCHITECTURE 0.5.0, CHANGELOG (restart after upgrading) |

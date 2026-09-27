@@ -131,6 +131,9 @@ pub trait Store {
     fn put_binding(&mut self, harness: &str, host_session: &str, key: &str) -> Result<(), HostError>;
     fn instance(&mut self, machine: &str, id: &str) -> Result<Option<Instance>, HostError>;
     fn instances(&mut self, machine: &str) -> Result<Vec<Instance>, HostError>;
+    /// Defaults filter `instances`; a store may answer from its layout (PLAN-005).
+    fn instances_with(&mut self, machine: &str, status: Status) -> Result<Vec<Instance>, HostError>;
+    fn instance_by_ref(&mut self, machine: &str, r#ref: &str) -> Result<Option<Instance>, HostError>;
     /// version must be stored+1 (or 1 when new), else HostError::Conflict.
     fn put_instance(&mut self, i: &Instance) -> Result<(), HostError>;
     fn append_history(&mut self, machine: &str, id: &str, e: &HistoryEntry) -> Result<(), HostError>;
