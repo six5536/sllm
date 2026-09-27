@@ -2,18 +2,31 @@
 
 | Meta               | Value                                                        |
 | ------------------ | ------------------------------------------------------------ |
-| Status             | in-progress (draft)                                          |
+| Status             | in-progress (draft, double-checked)                          |
 | Workflow direction | bottom-up (review findings → code → specs touched per phase) |
 | Traces to          | NFR-2, NFR-8, TURN-4..8, CFG-4, CFG-7, STO-2, STO-3, DEC-6, INST-3, INST-9 |
 
 ## 1. Goal
 
 Act on the 2026-09-27 DRY and performance review. Every hook, status line refresh and MCP call
-starts `smllm` and loads the whole config: `smllm instance list` takes about 12 ms on this repo,
-against 0.5 ms for `--version`. NFR-2_AC-1 records 1–2 ms. Most of that time is checking work
-that only `validate` reports. Bring the hook paths back to a few ms and remove the duplication
-the review found. Behaviour is unchanged unless an item says otherwise. Out of scope: the
-cross-run config cache (not worth it after P1–P2).
+starts `smllm` and loads the whole config. NFR-2_AC-1 records 1–2 ms. Measured 2026-09-27 on this
+repo's `.smllm` (4 machines), 50-run averages of `smllm graph --config …`:
+
+| Where the config lives | Time | Notes |
+| ---------------------- | ---- | ----- |
+| `/workspaces` (virtiofs, a devcontainer on a Mac) | 11.0 ms | 48 file opens at about 0.13 ms each |
+| local disk (`target/`, ext4) | 4.8 ms | CPU: YAML, shape check, lowering |
+| local disk, no `pattern:` lines | 4.0 ms | pattern compiling costs about 0.8 ms |
+| no config (`session list`) | 0.7 ms | process start |
+
+The load makes 48 opens: 5 config and machine files, 11 prompt files in 29 opens (two of them
+read 10 times each, once per state that names them), and 14 probes for `enter-<STATE>.md` files that
+don't exist. Only the 5 are needed to run. The review's claim that patterns cost 8 of 12 ms was
+wrong: the cost is file access on a slow mount, plus about 2.5 ms of load CPU not yet attributed.
+
+Goal: hooks back near NFR-2's figure on both disks, and the duplication the review found removed.
+Behaviour is unchanged unless an item says otherwise. Out of scope: the cross-run config cache
+(revisit only if A1 leaves the local-disk load above about 2 ms).
 
 ## 2. Findings (requirements)
 
@@ -21,83 +34,98 @@ Performance (`P-` ids):
 
 | ID  | Finding (file) → fix | Traces |
 | --- | -------------------- | ------ |
-| P-1 | Each param `pattern` is fully compiled on every load, just to check it is valid; if enum values are present it is compiled twice (`lower/events.rs:16`, `:180`). About 8 of the 12 ms (reviewer's measurement, to be confirmed in phase A1) → cheaper check (Q1); compile once when enum values are present | NFR-2, CFG-7 |
-| P-2 | Every prompt file, and every `enter-<STATE>.md` probe, is read on every load, just to check fences (`lower/actions.rs:110`, `:155`); only `validate` prints that warning → run mode checks `is_file()` only (a missing file is still an error); `default_prompt` does not touch the disk | NFR-2, CFG-4 |
+| P-1 | Each param `pattern` is fully compiled on every load, just to check it is valid, and compiled again when enum values are present (`lower/events.rs:16`, `:180`); about 0.8 ms → cheaper check (Q1); compile once when enum values are present | NFR-2, CFG-7 |
+| P-2 | Every prompt file is read, once per state that names it, and every `enter-<STATE>.md` is probed, on every load, only for the fence warning that `validate` prints (`lower/actions.rs:110`, `:155`); 43 of 48 file opens → run mode: no reads and no probes; each named file is checked for existence once per load, not once per mention (Q4) | NFR-2, CFG-4 |
 | P-3 | user-prompt-submit loads every machine; `prompt_submitted` needs only the session (`harness.rs:343`) → no config load | NFR-2, TURN-8 |
 | P-4 | stop loads every machine before `Engine::stop` allows at once for idle or yielded sessions (`harness.rs:350`) → decide from the session first (one core rule, shared by the engine and the CLI) | NFR-2, TURN-4..6 |
-| P-5 | The session is read two or three times per hook (`bound_key`, `for_session`, the session-start check, then the engine) → `for_session` returns the session it read | NFR-2, STO-2 |
+| P-5 | The session is read two or three times per hook (`for_session`, the session-start check, then the engine) → `for_session` returns the session it read | NFR-2, STO-2 |
 | P-6 | stop reads and parses the held instance twice (`api.rs:299-300`: `held` then `view` → `held`) → `view` takes the pair `held` returned | NFR-2, TURN-4 |
 | P-7 | The command runner polls the readers with a 5 ms sleep after the child exits; most commands pay it (`host.rs:147-150`) → each reader signals on a channel; `recv_timeout` against the same 200 ms deadline | DEC-6 |
-| P-8 | Every instance write scans and parses the whole instance directory (`store.rs:228`, `ref_taken`) → check the ref only when it differs from the stored instance's | STO-3, INST-3 |
-| P-9 | `Runtime::new` deep-copies the whole config (`runtime.rs:38`) → move it into the engine; readers use `engine.config()` | — |
-| P-10 | `config.toml` is parsed twice per lookup (`paths::configures`, then `load_configs`) → `load_configs` skips a file with neither `[machines]` nor `[idle]`, and the rule moves beside `ConfigToml` | STO-2 |
-| P-11 | Parked-list sort builds two Strings per comparison (`idle.rs:148`) → `insertion_sort_by` with a comparator, replacing `_by_key` | — |
+| P-8 | Every instance write scans and parses the whole instance directory (`store.rs:228`, `ref_taken`) → check the ref only when it differs from the stored instance's (a new instance, or `setRef`), still under the lock, so PLAN-003 F4 holds | STO-3, INST-3 |
+| P-9 | `Runtime::new` deep-copies the whole config (`runtime.rs:39`) → move it into the engine; `graph.rs:136` and `config.rs:170` use `engine.config()` | — |
+| P-10 | Load CPU on local disk (about 2.5 ms besides patterns and process start) is not attributed; the suspect is the shape check building about 13 JSON Schemas per process (`shape.rs:28-55`) → time each load stage in A1 and fix the largest (one shared `schema_for!(MachineFile)` if it is the schemas) | NFR-2 |
+| P-11 | Parked-list sort builds two Strings per comparison (`idle.rs:148`) → `insertion_sort_by` with a comparator, replacing `_by_key` (crate-private) | — |
 | P-12 | `validate` scans each machine directory twice (`config.rs:156-174`, `unreadable` + `instances`) → one scan | — |
 
-DRY (`D-` ids, behaviour unchanged):
+DRY (`D-` ids, behaviour unchanged unless noted):
 
 | ID  | Finding → fix |
 | --- | ------------- |
 | D-1 | The "held by this session with this status" check is written about six times (`idle.rs:116-130`, `:449-458`, `machine.rs:84`, `:426`, `status.rs:83-92`) → `Instance::held_by(key, status)` plus one lookup shared by `status.rs` and `idle::list` |
 | D-2 | `Turn::enter` / `Turn::exit` are near-copies (`turn.rs:230-275`) → private `run_lists` |
 | D-3 | `Engine::view` / `menu` differ by one flag (`api.rs:219-237`) → private `show` |
-| D-4 | "names joined by commas" rebuilt through a temporary `Vec` about 12 times → `push_joined` plus `Machine::state_names()` / `entry_point_names()`; one wording for "no entry points" |
-| D-5 | Parsing "params is a JSON object of strings" appears twice, with the same error text (`mcp.rs:81-93`, `smllm-wasm lib.rs:256-267`) → one core `params_from_json` |
-| D-6 | TOML "parse or refuse" written four times (kit `record.rs:141`, `declined.rs:274`, `:339`, app `config.rs:117`) → kit `parse_toml` beside `parse_json` |
+| D-4 | "names joined by commas" rebuilt through a temporary `Vec` about 12 times → `push_joined` plus `Machine::state_names()` / `entry_point_names()`. The two "no entry points" texts (`idle.rs:284-288` `(none: no state is an entry point)`, `:387-391` `none`) become one; this changes output, and the snapshots with it |
+| D-5 | "params is an object of strings" parsed twice with the same error text (`mcp.rs:81-93`, `smllm-wasm lib.rs:256-267`). Core has no `serde_json` (dev-dependency only) → core `params_from(impl Iterator<Item = (&str, Option<&str>)>) -> Result<Vec<(String, String)>, Error>` holds the rule and the text; each caller maps its JSON values to `Option<&str>` |
+| D-6 | TOML "parse or refuse" written four times (kit `record.rs:141`, `declined.rs:274`, `:339`, app `config.rs:117`) → kit `parse_toml` beside `parse_json` (the kit already depends on `toml_edit`) |
 | D-7 | The "event sets the ref" scan appears three times, once inside a per-param loop (`lower/machine.rs:146`, `:195`, `:291`) → `sets_ref` helper, hoisted; CFG-13 check uses `set_ref_events` |
 | D-8 | Two identical `MachineSource` constructions (`load.rs:311-325`) → build once |
 | D-9 | `FsStore::new(user_state_dir, empty)` three times → `FsStore::user()`; instance lookup across machines twice in `state.rs` → `Runtime::all_instances()`; `instance show` tries the id directly first; "JSON or text" output twice → `output::reply` |
-| D-10 | Tests: MCP JSON-RPC client written three times, `_meta` block twice (`tests/session.rs`), `statusline.rs` re-implements `start` → `tests/common` helpers; per-crate temp-dir copies → one helper per crate (no `tempfile` dependency) |
+| D-10 | Tests: MCP JSON-RPC client written three times, `_meta` block twice (`tests/session.rs`), `statusline.rs` re-implements `start` → `tests/common` helpers. Temp dirs: about 9 copies → per crate one `#[cfg(test)]` helper for unit tests in `src/` and one in `tests/common`; no `tempfile` dependency |
+
+Dropped at double-check: moving the "configures smllm" rule (`paths::configures`) into
+`load_configs`. `lookup` uses it to choose which files count, and `init` uses it, so moving it
+would change which configs a session binds to. The saved second parse is microseconds.
 
 ## 3. Design sketch
 
-- LOAD MODE: `smllm-format` replaces `inline: bool` with
-  `pub enum Mode { Run, Check, Inline }`. `Files { dir, mode }`.
-  `Run` (hooks, MCP, status line, the other commands) does only what the engine needs.
-  `Check` (`validate`) and `Inline` (`compile`) keep today's full checks and findings.
-  `load_configs(files, Mode)`, `load_machine(path, Mode)`. `Runtime::new(files)` uses `Run`;
-  `Runtime::checked(files)` uses `Check`, for `validate`. Findings that only `Check` computes are
-  warnings, so run mode's error set stays the same, pattern errors aside (Q1).
+- LOAD MODE: `smllm-format` replaces `inline: bool` with `pub enum Mode { Run, Check, Inline }`;
+  `Files { dir, mode }`.
+  - `Run`: hooks, MCP, the status line and the other commands, through `Runtime::new`. Does only
+    what the engine needs (P-1, P-2).
+  - `Check`: `validate`, through `Runtime::checked`. Today's full checks and warnings.
+  - `Inline`: `compile`. Full checks, prompt texts copied into the JSON.
+  - Signatures: `load_configs(files, Mode)`, `load_machine(path, Mode)`.
+  - Load warnings are printed only by `validate`, so `Run` skipping warning-only work is invisible
+    elsewhere. A missing named prompt file is still an error in `Run`.
 - STOP AND PROMPT HOOKS: core `Session::may_stop(&self) -> bool` (`yielded || holding.is_none()`),
-  used by `Engine::stop` and by the CLI before loading. `Runtime::for_session(key) -> (Runtime, Option<Session>)`,
-  or a bare `Runtime::session_only()` over `FsStore::user()` for `prompt_submitted`.
+  used by `Engine::stop` and by the CLI before loading. `Runtime::for_session(key) -> (Runtime, Option<Session>)`;
+  `prompt_submitted` runs over a bare `FsStore::user()`.
 - ENGINE: `machine::view_held(turn, machine, &inst, entry)`; `view` = `held` + `view_held`;
-  `stop` calls `view_held`. `utils::sort::insertion_sort_by(&mut [T], impl FnMut(&T,&T)->Ordering)`.
-- RUNNER: `std::sync::mpsc` channel; each reader thread sends `()` on exit.
+  `stop` calls `view_held`. `utils::sort::insertion_sort_by(&mut [T], impl FnMut(&T, &T) -> Ordering)`.
+- RUNNER: `std::sync::mpsc`; each reader thread sends `()` when it ends.
 - STORE: `put_instance` keeps the stored `Instance`; `ref_taken` only when
   `instance.r#ref != stored.r#ref`.
-- Wasm budget: 300 KiB (now 259 KiB); D-4/D-5 should shrink it slightly. Check after P1 and P5.
+- Wasm budget: 300 KiB (now 259 KiB); smllm-wasm does not use smllm-format, so only A3 and D-5
+  touch its size.
 
 ## 4. Phases
 
-Each phase is one commit and passes `npm run -s test:gate`. Timing is `for i in $(seq 50); do smllm instance list; done`
-with the release binary, recorded before A1 and after A2.
+Each phase is one commit and passes `npm run -s test:gate`. Timing: 50-run average of
+`smllm graph --config …` with the release binary, on `/workspaces` and on local disk (a copy
+under `target/`), plus `strace -f -e trace=openat` counting the files opened. Recorded before A1,
+after A1 and after A2.
 
 | Phase | Name | Items | Proof |
 | ----- | ---- | ----- | ----- |
-| A1 | Load mode | P-1, P-2, P-10 | `validate` snapshots unchanged; a run-mode test with a missing prompt file still errors; timing |
-| A2 | Hooks read less | P-3, P-4, P-5, P-9, D-9 (store helper) | session tests unchanged; a stop on an idle session with a broken config allows (proves no load); timing |
-| A3 | Engine | P-6, P-11, D-1, D-2, D-3, D-4 | engine and instance tests unchanged; wasm size |
-| A4 | Runner and store | P-7, P-8, P-12 | host tests; a test that a command's output is complete without the sleep; ref-clash test still fails a duplicate |
+| A1 | Load mode | P-1, P-2, P-10 | `validate` and `compile` snapshots unchanged; a run-mode test with a missing prompt file still errors; load opens only the config and machine files; per-stage timing; before/after timing |
+| A2 | Hooks read less | P-3, P-4, P-5, P-9, D-9 (store helper) | session tests unchanged; strace: user-prompt-submit and an idle stop open no machine file; timing |
+| A3 | Engine | P-6, P-11, D-1, D-2, D-3, D-4 | engine and instance tests unchanged except D-4's snapshots; wasm size |
+| A4 | Runner and store | P-7, P-8, P-12 | host tests; a test that a quick command's output is complete; the duplicate-ref test still fails a duplicate |
 | A5 | Shared helpers | D-5, D-6, D-7, D-8, D-9 (rest) | MCP and wasm smoke tests; harness tests |
 | A6 | Test helpers | D-10 | test count unchanged |
-| A7 | Docs and outcome | NFR-2_AC-1 measurement, DESIGN-CFG (modes), DESIGN-DEC (runner), ARCHITECTURE change log, this plan's §7 | — |
+| A7 | Docs and outcome | NFR-2_AC-1 figures (both disks), DESIGN-CFG (modes), DESIGN-DEC (runner), ARCHITECTURE change log, this plan's §7 | — |
 
 ## 5. Open questions
 
-- Q1: How to make the pattern check cheap?
+- Q1: How should the pattern check get cheaper (P-1, about 0.8 ms)?
   - (a) Recommended: add `regex-syntax` as a direct dependency of `smllm-format` and use its
-    parser for the syntax check. It is already in the tree through `regex` (same version), so it
-    adds no code. It needs your approval.
-  - (b) Run mode skips the pattern check. A bad pattern then fails at fire time, with a
-    rejection from the host matcher, instead of dropping the machine at load. `validate` still reports it.
+    parser for the check. It is already built through `regex` (0.8.11 in `Cargo.lock`), so it
+    adds no code, but it needs your approval. One difference: a pattern that parses but is too
+    big to compile (regex's size limit) would load and fail at fire time; `validate` would still report it.
+  - (b) `Run` skips the check. A bad pattern then fails only when an event using it is fired;
+    `validate` still reports it.
+  - (c) Keep compiling (only the second compile goes). Simplest; keeps 0.8 ms.
 - Q2: Instance scans grow with history (INST-9 keeps completed instances forever). The status
-  line, idle view and ref checks parse every file. Fix now by moving completed instances to
-  `<machine>/done/`, which changes the store layout and needs a migration or a fallback read,
-  or defer? Recommended: defer, since it costs nothing at today's sizes.
-- Q3: Rust's `\d` matches any Unicode digit; JavaScript's (wasm host) matches only 0–9, so the
-  two hosts can disagree on one pattern. Leave as is (recommended; document it in CFG-7), or
-  make the CLI match ASCII-only (`RegexBuilder::unicode(false)`, which rejects some patterns)?
+  line, idle view and ref checks parse every file, and on a slow mount each file costs about
+  0.13 ms. Fix now by moving completed instances to `<machine>/done/` (changes the store layout;
+  needs a fallback read), or defer? Recommended: defer.
+- Q3: Rust's `\d` matches any Unicode digit; JavaScript's (the wasm host) matches only 0–9, so the
+  two hosts can disagree on one pattern. Leave as is and document it in CFG-7 (recommended), or
+  make the CLI ASCII-only (`RegexBuilder::unicode(false)`, which rejects some patterns)?
+- Q4: In `Run`, check that each named prompt file exists (11 stats here, roughly 1.5 ms on
+  the virtiofs mount), or not at all, so a missing file is reported when the prompt is shown (and
+  by `validate`)? Recommended: check existence, once per file; a machine that names a missing
+  file keeps failing at load, as now.
 
 ## 6. Decisions
 
