@@ -62,7 +62,10 @@ fn the_examples_load_cleanly() {
 // @zen-test: CFG-11_AC-1
 #[test]
 fn the_showcase_lowers_as_written() {
-    let (m, _) = load_machine(&root().join("examples/showcase/showcase.smllm.yaml"), Mode::Check);
+    let (m, _) = load_machine(
+        &root().join("examples/showcase/showcase.smllm.yaml"),
+        Mode::Check,
+    );
     let m = m.unwrap();
     assert_eq!(m.instance.kind, "document");
     assert_eq!(m.instance.ref_param, "documentPath");
@@ -409,14 +412,18 @@ fn a_run_load_checks_prompt_files_without_reading_them() {
     let p = dir.join("p.md").display().to_string();
     assert!(matches!(&a.entry[..], [ActionDef::Prompt(Prompt::File(f))] if *f == p));
     let c = m.state("C").unwrap();
-    assert!(matches!(&c.entry[..], [ActionDef::Prompt(Prompt::DefaultFile(_))]));
+    assert!(matches!(
+        &c.entry[..],
+        [ActionDef::Prompt(Prompt::DefaultFile(_))]
+    ));
 
     for missing in ["nowhere.md", "dir.md"] {
         std::fs::write(&file, machine(missing)).unwrap();
         let (m, f) = load_machine(&file, Mode::Run);
         assert!(m.is_none(), "{missing}");
         assert!(
-            f.0.iter().any(|f| f.message.starts_with(&format!("prompt file {missing}"))),
+            f.0.iter()
+                .any(|f| f.message.starts_with(&format!("prompt file {missing}"))),
             "{:?}",
             f.0
         );

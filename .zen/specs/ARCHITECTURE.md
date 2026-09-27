@@ -288,3 +288,4 @@ Pre-0.1 release. Engine, format, store, Claude Code harness, MCP server and wasm
 - 0.1.0 (2026-09-25): Initial architecture (PLAN-001)
 - 0.2.0 (2026-09-25): Status line: `Engine::status`, `smllm statusline`, skill part, docs/ (PLAN-002)
 - 0.3.0 (2026-09-27): Code review fixes (PLAN-003): kit `fs` module; smllm-format reports through the kit; MCP calls serialised; `Session.blocked`; fence-safe engine lines
+- 0.4.0 (2026-09-27): Faster hooks (PLAN-004): smllm-format load modes; hooks that need no config load none; kit `parse_toml`

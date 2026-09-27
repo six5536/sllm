@@ -68,7 +68,7 @@ pub struct RefMeta {
     /// Prompt for the ref.
     #[serde(default)]
     pub description: Option<String>,
-    /// Pattern the ref must match.
+    /// Pattern the ref must match, in the syntax of a param's `pattern`.
     #[serde(default)]
     pub pattern: Option<String>,
 }
@@ -114,7 +114,8 @@ pub struct PropSchema {
     #[serde(default, rename = "enum")]
     pub enum_values: Option<Vec<String>>,
     /// Pattern, in Rust `regex` syntax: the common subset of JSON Schema's ECMA-262
-    /// patterns (no lookaround or backreferences).
+    /// patterns (no lookaround or backreferences). `\d`, `\w` and `\s` match
+    /// Unicode here but ASCII in JavaScript hosts: write `[0-9]` for ASCII digits.
     #[serde(default)]
     pub pattern: Option<String>,
 }

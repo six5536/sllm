@@ -9,9 +9,9 @@ use crate::engine::{Location, Reply, idle};
 use crate::host::{HostError, Store};
 use crate::model::{ActionDef, Config, Machine};
 use crate::prelude::*;
-use crate::utils::join;
 use crate::record::{HistoryEntry, Instance, InstanceKey, Status};
 use crate::render::{Block, format_utc, header, quote};
+use crate::utils::join;
 
 /// Why the held instance cannot be used.
 pub(crate) enum Gone {
@@ -180,9 +180,7 @@ fn missing_state_note(turn: &mut Turn<'_, '_>, machine: &Machine, inst: &Instanc
         let names = join(machine.state_names());
         turn.notes.push(format!(
             "Saved state {} no longer exists in {}. Fire park, then enter with a state: {}.",
-            inst.state,
-            machine.id,
-            names
+            inst.state, machine.id, names
         ));
     }
 }
@@ -286,11 +284,7 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
     let offers = machine_offers(machine, state, &inst);
     let Some(offer) = offers.iter().find(|o| o.name == turn.event) else {
         let names = join(offers.iter().map(|o| o.name.as_str()));
-        let msg = format!(
-            "{} is not offered here (offered: {})",
-            turn.event,
-            names
-        );
+        let msg = format!("{} is not offered here (offered: {})", turn.event, names);
         return reject(turn, machine, &inst, msg);
     };
     match check_params(offer, params, turn.host.matcher) {

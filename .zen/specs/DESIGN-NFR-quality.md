@@ -57,7 +57,7 @@ packages/smllm-wasm/test/        # smoke.test.mjs + dev.json (TEST-3)
 No NFR or TEST components. Carriers:
 
 - NFR-1: ENG-Host (host traits in `smllm-core/src/host`), implemented by DEC-CommandRunner / STO-FileStore in the app and HOST-Wasm in JavaScript
-- NFR-2: HOST-Claude — one short-lived process per hook, synchronous file IO, no async runtime (tokio is only started by `smllm mcp`); release profile `opt-level = "z"`, LTO, `panic = "abort"`
+- NFR-2: HOST-Claude — one short-lived process per hook, synchronous file IO, no async runtime (tokio is only started by `smllm mcp`); release profile `opt-level = "z"`, LTO, `panic = "abort"`. A hook loads only what it needs: user-prompt-submit and a stop the session allows load no config, and a load for running reads no prompt file (`Mode::Run`, PLAN-004)
 - NFR-3: ENG-Engine — all nondeterminism (clock, ids, guard results) comes through the host
 - NFR-4: HOST-Claude via `agent_harness_kit::hook::emit`
 - NFR-5: DEC-CommandRunner — params reach commands as `SMLLM_PARAM_<NAME>` env; array `run` is exec without a shell
@@ -140,7 +140,7 @@ TEST-2: `crates/app/smllm/tests/session.rs` (fake agent over hooks, `fire`, MCP 
 SOURCE: .zen/specs/REQ-NFR-quality.md, .zen/specs/REQ-TEST-testing.md
 
 - NFR-1_AC-1 → ENG-Host — enforced by the CI `wasm` job's `no_std` build; no marker
-- NFR-2_AC-1 → HOST-Claude — measured ~1–2 ms with the release binary; no automated check
+- NFR-2_AC-1 → HOST-Claude — measured 2026-09-27 (PLAN-004), release binary, this repo's 4 machines: user-prompt-submit and an idle stop 0.7 ms; a full config load (session-start, a blocking stop, fire) 4.4 ms on local disk and 5.4 ms on a virtiofs mount; no automated check
 - NFR-3_AC-1 → ENG-Engine (NFR_P-1) — tested as ENG_P-1; no NFR marker
 - NFR-4_AC-1 → HOST-Claude — via HOST-7_AC-1 test; no NFR marker
 - NFR-5_AC-1 → DEC-CommandRunner — env-only by construction; no marker

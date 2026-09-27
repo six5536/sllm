@@ -5,8 +5,8 @@
 use crate::host::Matcher;
 use crate::model::{Config, EventDef, Machine, ParamSpec, State};
 use crate::prelude::*;
-use crate::utils::join;
 use crate::record::Instance;
+use crate::utils::join;
 
 /// Built-in event names (IDLE-1).
 pub const BUILTINS: [&str; 5] = ["enter", "resume", "park", "unmatched", "yield"];
@@ -221,11 +221,7 @@ pub(crate) fn check_params(
                 format!("{} takes no params, but got {name}", offer.name)
             } else {
                 let names = join(offer.params.iter().map(|p| p.name.as_str()));
-                format!(
-                    "{} has no param {name} (params: {})",
-                    offer.name,
-                    names
-                )
+                format!("{} has no param {name} (params: {})", offer.name, names)
             });
         }
     }

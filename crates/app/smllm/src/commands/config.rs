@@ -7,8 +7,8 @@ use agent_harness_kit::fs::write_atomic;
 use agent_harness_kit::report_text;
 use serde_json::json;
 use smllm_format::{
-    ConfigFile, Finding, Findings, Origin, Severity, compile, config_template, json_schema,
-    Mode, load_machine, machine_template,
+    ConfigFile, Finding, Findings, Mode, Origin, Severity, compile, config_template, json_schema,
+    load_machine, machine_template,
 };
 
 use crate::cli::{CompileArgs, InitArgs, NewArgs, ValidateArgs};

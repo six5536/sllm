@@ -63,7 +63,9 @@ crates/lib/smllm-format/tests/
 - JSON SCHEMA FROM THE SOURCE TYPES: `schemars::schema_for!(MachineFile)` means the schema cannot drift from the parser (CFG-15_AC-1). Alternatives: a hand-maintained schema file
 - SERDE-SAPHYR FOR YAML: it is maintained and reports locations; `serde_yaml` is unmaintained (PLAN-001 §12). Alternatives: `serde_norway`
 - SEPARATE SOURCE AND MODEL TYPES: the source types mirror the file for serde and schemars, while `smllm_core::model` stays no_std, is resolved (defaults applied, the ref param required), and carries no parsing concerns (D24). Alternatives: deserialize straight into the core model
-- PROMPT FILES RESOLVED TO ABSOLUTE PATHS: lowering stores `Prompt::File(<abs>)`, which the host reads at request time so edits show without reloading. `compile` (`Files.inline`) reads the files and stores `Prompt::Text` instead, because browser hosts have no files. Alternatives: always inline
+- PROMPT FILES RESOLVED TO ABSOLUTE PATHS: lowering stores `Prompt::File(<abs>)`, which the host reads at request time so edits show without reloading. `compile` (`Mode::Inline`) reads the files and stores `Prompt::Text` instead, because browser hosts have no files. Alternatives: always inline
+- LOAD MODES (PLAN-004): every hook, status line refresh and MCP call loads the config, so `Mode::Run` does only what the engine needs: each named prompt file is checked to exist (once per path), none is read, and no `enter-<STATE>.md` is probed; the fence warnings that need their text are `validate`'s (`Mode::Check`). Load warnings are printed only by `validate`, so the modes differ in nothing else a user sees. Each pattern is compiled once, and the enum check reuses it. The shape check's key tables come from one `schema_for!(MachineFile)`, looked up by `$defs` name
+- PATTERNS ARE HOST REGEXES: `pattern` follows JSON Schema, which asks for ECMA-262 and recommends a portable subset; each host matches with its own engine (Rust `regex` in the CLI, JavaScript in wasm hosts). Outside the subset they differ, e.g. `\d` is Unicode in Rust and ASCII in JavaScript, so the schema tells authors to write `[0-9]` (PLAN-004 D4-3)
 - IMPLIED DEFAULT PROMPT: a state with no `prompt` entry action gets `Prompt::DefaultFile(<dir>/enter-<STATE>.md)`, which is read only if the file exists. When inlining, a missing file adds no prompt
 - NEVER TEMPLATE: user text is copied verbatim into the model, and neither the format nor the renderers substitute anything, so braces stay literal (CFG-17_AC-1)
 - SEMANTICS IN THE CORE, CHECKS IN THE FORMAT: runtime XState behaviour (CFG-3_AC-1, CFG-11_AC-1 ordering) is implemented in `smllm-core` ENG-Turn. This crate only guarantees the model is well formed
@@ -110,7 +112,7 @@ pub fn json_schema() -> String;
 IMPLEMENTS: CFG-1_AC-1, CFG-6_AC-1, CFG-7_AC-1, CFG-9_AC-1, CFG-12_AC-1, CFG-13_AC-1 (also IDLE-1_AC-1, DEC-2_AC-2, TURN-12_AC-2 from other specs)
 
 ```rust
-pub(crate) struct Files<'a> { pub dir: &'a Path, pub inline: bool }
+pub(crate) struct Files<'a> { pub dir: &'a Path, pub mode: Mode, /* found: once per path */ }
 pub(crate) struct Checker<'a> { pub file: &'a Path, pub text: &'a str, pub findings: Findings }
 impl Checker<'_> {
     pub(crate) fn add(&mut self, level: Severity, path: &[String], message: String,
@@ -134,8 +136,9 @@ pub enum Origin { User, Project, Explicit }
 pub struct ConfigFile { pub path: PathBuf, pub origin: Origin }
 pub struct MachineSource { pub id: String, pub file: PathBuf, pub config: PathBuf, pub state_dir: PathBuf }
 pub struct Loaded { pub config: Config, pub machines: Vec<MachineSource>, pub findings: Findings }
-pub fn load_machine(path: &Path, inline: bool) -> (Option<Machine>, Findings);
-pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded;
+pub enum Mode { Run, Check, Inline }
+pub fn load_machine(path: &Path, mode: Mode) -> (Option<Machine>, Findings);
+pub fn load_configs(files: &[ConfigFile], mode: Mode) -> Loaded;
 pub fn compile(path: &Path) -> (Option<String>, Findings);
 ```
 
@@ -248,3 +251,4 @@ SOURCE: .zen/specs/REQ-CFG-format.md
 ## Change Log
 
 - 0.1.0 (2026-09-25): Initial design
+- 0.2.0 (2026-09-27): Load modes, one compile per pattern, one schema for the shape check (PLAN-004)

@@ -132,7 +132,7 @@
           "default": null
         },
         "pattern": {
-          "description": "Pattern the ref must match.",
+          "description": "Pattern the ref must match, in the syntax of a param's `pattern`.",
           "type": [
             "string",
             "null"
@@ -234,7 +234,7 @@
           "default": null
         },
         "pattern": {
-          "description": "Pattern, in Rust `regex` syntax: the common subset of JSON Schema's ECMA-262\npatterns (no lookaround or backreferences).",
+          "description": "Pattern, in Rust `regex` syntax: the common subset of JSON Schema's ECMA-262\npatterns (no lookaround or backreferences). `\\d`, `\\w` and `\\s` match\nUnicode here but ASCII in JavaScript hosts: write `[0-9]` for ASCII digits.",
           "type": [
             "string",
             "null"

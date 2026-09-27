@@ -259,10 +259,7 @@ fn mcp_over_stdio() {
     assert!(err && text.contains("bogus is not offered here"), "{text}");
     let (err, text) = mcp.tool(7, json!({ "session": "sm-nope" }));
     assert!(err && text.contains("no smllm session"), "{text}");
-    let (err, text) = mcp.tool(
-        9,
-        json!({ "session": key, "event": "park", "params": [] }),
-    );
+    let (err, text) = mcp.tool(9, json!({ "session": key, "event": "park", "params": [] }));
     assert!(err && text.contains("params must be an object"), "{text}");
     let (err, text) = mcp.tool(10, json!({ "session": 7 }));
     assert!(err && text.contains("session must be a string"), "{text}");
@@ -369,22 +366,20 @@ fn mcp_pipelined_calls_on_one_session() {
     let w = World::showcase("mcp-pipelined");
     let key = w.start("cc-11");
     let mut mcp = w.mcp().at_2026_07_28();
-    let mut send = |id: u64, args: Value| {
-        mcp.send(id, "tools/call", json!({ "name": "smllm", "arguments": args }));
-    };
-    let mut id = 0;
-    let mut sent = 0;
-    send(
-        id,
+    // The server runs pipelined calls one at a time, in no promised order:
+    // enter first, then the pipelined yields.
+    let (err, text) = mcp.tool(
+        0,
         json!({ "session": key, "event": "enter", "params": { "stateMachine": "showcase" } }),
     );
-    sent += 1;
-    for _ in 0..30 {
-        for _ in 0..2 {
-            id += 1;
-            send(id, json!({ "session": key, "event": "yield" }));
-            sent += 1;
-        }
+    assert!(!err, "{text}");
+    let sent = 60;
+    for id in 1..=sent {
+        mcp.send(
+            id,
+            "tools/call",
+            json!({ "name": "smllm", "arguments": { "session": key, "event": "yield" } }),
+        );
     }
     mcp.close();
     let mut failures = Vec::new();

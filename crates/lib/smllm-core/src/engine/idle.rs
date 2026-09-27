@@ -9,9 +9,9 @@ use crate::engine::turn::Turn;
 use crate::engine::{Location, Reply, api::random_id};
 use crate::model::{ActionDef, Machine};
 use crate::prelude::*;
-use crate::utils::join;
 use crate::record::{Instance, Status};
 use crate::render::{Block, idle_header};
+use crate::utils::join;
 use crate::utils::{SmallMap, insertion_sort_by};
 
 /// The idle list (TURN-7): header, notes, `error:`, idle instructions, state

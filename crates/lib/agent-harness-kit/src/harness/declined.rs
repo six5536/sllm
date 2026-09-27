@@ -7,7 +7,10 @@ use std::path::PathBuf;
 
 use toml_edit::{Array, DocumentMut, Item, Table, TableLike, Value};
 
-use crate::{Error, Result, harness::{parse_toml, read_text}};
+use crate::{
+    Error, Result,
+    harness::{parse_toml, read_text},
+};
 
 /// Where the parts a user declined are kept.
 pub trait DeclinedStore {

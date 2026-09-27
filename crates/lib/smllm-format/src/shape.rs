@@ -31,7 +31,10 @@ impl Keys {
         static ROOT: OnceLock<schemars::Schema> = OnceLock::new();
         let root = ROOT.get_or_init(|| schemars::schema_for!(MachineFile));
         let own;
-        let v = match root.get("$defs").and_then(|d| d.get(T::schema_name().as_ref())) {
+        let v = match root
+            .get("$defs")
+            .and_then(|d| d.get(T::schema_name().as_ref()))
+        {
             Some(v) => v,
             None if T::schema_name() == MachineFile::schema_name() => root.as_value(),
             None => {

@@ -2,7 +2,7 @@
 
 | Meta               | Value                                                        |
 | ------------------ | ------------------------------------------------------------ |
-| Status             | in-progress (ready to implement)                             |
+| Status             | completed (A1–A7, 2026-09-27); Q5 open                        |
 | Workflow direction | bottom-up (review findings → code → specs touched per phase) |
 | Traces to          | NFR-2, NFR-8, TURN-4..8, CFG-4, CFG-7, STO-2, STO-3, DEC-6, INST-3, INST-9 |
 
@@ -140,3 +140,4 @@ None; answered in §6 by the usual practice.
 | A4 | A passing command returns without waiting for output; a failing one waits on a channel that disconnects when both readers end (no 5 ms polling); `put_instance` scans for a ref clash only when the ref is new; `FsStore::scan` public, `validate` scans each machine once (`unreadable` removed). Tests: a pass with a background process returns in < 150 ms (the old code waited 200 ms); a hand-made ref clash no longer blocks an unchanged ref |
 | A5 | Kit `parse_toml` (record, declined ×2, the app's `register`); `sets_ref` in lowering, hoisted out of the per-param loop, the CFG-13 warning reads `set_ref_events`; one `MachineSource`; `output::reply`, `Runtime::all_instances`, `instance show` reads by id first (first match, not last). D-5 dropped: the shared part is a four-line loop over different JSON types, and sharing it needs a new public core function and error text |
 | A6 | `tests/common`: `Mcp` (`call`, `send`, `notify`, `next`, `tool`, `close`, `finish`, `at_2026_07_28`) behind `World::mcp`, `World::start`; the three MCP tests and the status line test use them. Temp dirs: app `src/test_support.rs` (4 unit tests), `validate.rs` `temp_dir` (4 tests); the kit already had one of each. 170 tests, as before |
+| A7 | DESIGN-CFG (load modes, patterns are host regexes), DESIGN-DEC (runner), DESIGN-NFR (NFR-2 figures), ARCHITECTURE 0.4.0, CHANGELOG; the pattern doc (and `schema/smllm.schema.json`) tells authors to write `[0-9]`; `cargo fmt`; workspace clippy clean for `x86_64-pc-windows-gnu`. `mcp_pipelined_calls_on_one_session` failed 1 run in 3 under the full suite: it pipelined `enter` with the yields, and the server does not order pipelined calls, so yields could reach idle first. It now waits for `enter`, then pipelines 60 yields; 10/10 full-suite runs pass |

@@ -58,7 +58,7 @@ crates/app/smllm/src/host.rs                  DEC-CommandRunner (Commands, run_c
 - CWD RESOLVED AT LOAD: `smllm-format` rewrites `params.cwd` to an absolute path from the YAML's directory; the runner uses it as is, else the session's `cwd` recorded at bind (`Call.cwd`)
 - DRAINED PIPES: stdout and stderr are drained on threads so a chatty command cannot block before the timeout; only the last `KEPT_BYTES` are buffered (the trace shows a 400-character tail), and once the command is done the readers stop at their next read, so a background process left holding the pipes cannot grow smllm's memory (PLAN-003 F25); `wait-timeout` enforces `timeoutSecs` and the child is killed on expiry
 - GROUP KILL (unix): each command runs in its own process group; on expiry, while the child is still unreaped (so its pid, the group id, cannot have been reused) and its pid is > 1, `kill -s KILL -- -<pid>` kills the group, then `child.kill()`. The `--` is required: procps `kill` reads `-<pid>` as an option and signals `-<first digit>`, i.e. every process for `-1…` (PLAN-003 D3-1). No `kill` on `PATH` → `child.kill()` only. Windows: `child.kill()` only (the `cmd` process)
-- TAIL ONLY ON FAILURE: the combined output is trimmed to its last 400 chars on one line and attached only to failures (`exited N: <tail>`); a passing guard's trace line has no detail
+- TAIL ONLY ON FAILURE: the combined output is trimmed to its last 400 chars on one line and attached only to failures (`exited N: <tail>`); a passing guard's trace line has no detail, so a pass returns as soon as the command exits. A failure waits up to 200 ms for the readers to reach end-of-file: each holds a channel sender, and the channel disconnects when both have ended (PLAN-004 P-7)
 - ALWAYS CAP: `ALWAYS_CAP = 32`; the validator should make the cap unreachable (DEC-2_AC-2), the cap is a safety net for machines that skipped validation
 
 ## Components and Interfaces
@@ -163,3 +163,4 @@ SOURCE: .zen/specs/REQ-DEC-decisions.md
 ## Change Log
 
 - 1.0.0 (2026-09-25): Initial design, documenting the P6 implementation
+- 1.1.0 (2026-09-27): A pass waits for no output; readers signal their end on a channel (PLAN-004)

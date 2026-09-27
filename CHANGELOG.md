@@ -39,6 +39,10 @@ The project is now smllm: state machines for LLM agents (PLAN-001).
 - Renamed the project from sllm to smllm.
 - Exit codes: `1` now means errors were found (config errors, a rejected event, a failed hook).
   `2` still means a usage or internal error.
+- Faster hooks (PLAN-004): user-prompt-submit and a stop that lets the agent stop load no
+  config (11 ms → 0.7 ms here). Loading the config reads no prompt file and probes no
+  `enter-<STATE>.md`; `validate` still does, for its warnings (86 file accesses → 17; 11.4 ms →
+  5.4 ms on a slow mount). A command guard or action that passes no longer waits for its output.
 
 ### Fixed
 

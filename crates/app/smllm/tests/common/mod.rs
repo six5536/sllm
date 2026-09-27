@@ -216,7 +216,9 @@ impl Mcp {
             "tools/call",
             json!({ "name": "smllm", "arguments": args }),
         );
-        let text = r["result"]["content"][0]["text"].as_str().unwrap_or_default();
+        let text = r["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default();
         (r["result"]["isError"] == true, text.to_string())
     }
 
