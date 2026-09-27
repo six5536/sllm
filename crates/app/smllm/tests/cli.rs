@@ -215,6 +215,35 @@ fn harness_install_and_status() {
     assert_eq!(w.run(&["harness", "install", "cursor"]).code, 2);
 }
 
+// Declining a part writes only `[harness]` to a new config.toml: that does
+// not configure smllm, so hooks stay silent, and `init` still adds the
+// template (PLAN-003 F18).
+// @zen-test: HOST-8_AC-1
+#[test]
+fn declining_a_part_does_not_turn_smllm_on() {
+    let w = World::new("declined");
+    let o = w.run(&["harness", "install", "claude", "--without", "statusline"]);
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    assert!(w.read(".smllm/config.toml").contains("statusline"));
+    let start = serde_json::json!({ "session_id": "cc-1", "cwd": w.project });
+    assert_eq!(w.hook("session-start", start), serde_json::json!({}));
+    let o = w.run(&["init"]);
+    assert_eq!(o.stdout, "created .smllm/config.toml\n");
+    let cfg = w.read(".smllm/config.toml");
+    assert!(
+        cfg.contains("[machines]") && cfg.contains("statusline"),
+        "{cfg}"
+    );
+    assert!(w.run(&["init"]).stdout.contains("already exists"));
+    // A declined part's file is never read, so a broken one does not block
+    // the rest (PLAN-003 F19).
+    let w = World::showcase("declined-broken");
+    w.write(".mcp.json", "{ broken");
+    let o = w.run(&["harness", "install", "claude", "--without", "mcp"]);
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    assert_eq!(w.read(".mcp.json"), "{ broken");
+}
+
 // @zen-test: CLI-3_AC-2
 #[test]
 fn new_forms_and_validate_paths() {

@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 362b64cd1678d9f1bd1e8f65dc15c35452e1c785a1ef6b85fdc184c1697dd8e7 # shrinks to s = Scenario { agents: None, claude: None, settings: None, without: ["mcp"] }, which = 3
+cc ca253c31ccbfee204029be4e4a3d568e6e5f0efb6e4b8011dcd24d1f7bc5a38e # shrinks to s = Scenario { agents: None, claude: None, settings: None, without: ["hooks", "permissions"] }, which = 2

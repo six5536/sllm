@@ -30,9 +30,11 @@ pub enum MergeOp {
         /// The member's value.
         value: Value,
     },
-    /// The tool's group under `hooks.<event>` is `group`: it replaces the
-    /// group one of whose `hooks[].command` starts with `command_prefix`, or
-    /// is appended.
+    /// The tool's hooks under `hooks.<event>` are `group`'s: the tool owns
+    /// the hooks whose `command` starts with `command_prefix`, not the group
+    /// they sit in. They replace the tool's hooks in the first group that
+    /// has one (the user's hooks and keys such as `matcher` stay), or come
+    /// as a new group.
     HookGroup {
         /// The hook event, e.g. `Stop` or `SessionStart`.
         event: String,
@@ -120,14 +122,18 @@ fn get<'a>(doc: &'a Value, path: &[String]) -> Option<&'a Value> {
     path.iter().try_fold(doc, |v, k| v.as_object()?.get(k))
 }
 
-/// Whether a hook group is the tool's: one of its commands starts with the
-/// prefix.
-fn is_tool_group(group: &Value, prefix: &str) -> bool {
-    group["hooks"].as_array().is_some_and(|hooks| {
-        hooks
-            .iter()
-            .any(|h| h["command"].as_str().is_some_and(|c| c.starts_with(prefix)))
-    })
+/// Whether a hook is the tool's: its command starts with the prefix.
+fn is_tool_hook(hook: &Value, prefix: &str) -> bool {
+    hook["command"]
+        .as_str()
+        .is_some_and(|c| c.starts_with(prefix))
+}
+
+/// Whether a hook group holds one of the tool's hooks.
+fn has_tool_hook(group: &Value, prefix: &str) -> bool {
+    group["hooks"]
+        .as_array()
+        .is_some_and(|hooks| hooks.iter().any(|h| is_tool_hook(h, prefix)))
 }
 
 /// The tool's entry of `op` as found in `doc`; `None` when it is not there.
@@ -143,11 +149,21 @@ pub fn extract(doc: &Value, op: &MergeOp) -> Option<Value> {
             event,
             command_prefix,
             ..
-        } => doc["hooks"][event.as_str()]
-            .as_array()?
-            .iter()
-            .find(|g| is_tool_group(g, command_prefix))
-            .cloned(),
+        } => {
+            // Only the tool's hooks: the user's hooks and keys beside them
+            // are theirs, not an edit of the tool's entry.
+            let group = doc["hooks"][event.as_str()]
+                .as_array()?
+                .iter()
+                .find(|g| has_tool_hook(g, command_prefix))?;
+            let ours: Vec<Value> = group["hooks"]
+                .as_array()?
+                .iter()
+                .filter(|h| is_tool_hook(h, command_prefix))
+                .cloned()
+                .collect();
+            Some(serde_json::json!({ "hooks": ours }))
+        }
     }
 }
 
@@ -206,8 +222,21 @@ pub fn apply(doc: &mut Value, op: &MergeOp, display: &str) -> Result<()> {
         } => {
             let path = ["hooks".to_string(), event.clone()];
             let groups = array_at(doc, &path, display)?;
-            match groups.iter_mut().find(|g| is_tool_group(g, command_prefix)) {
-                Some(existing) => *existing = group.clone(),
+            match groups
+                .iter_mut()
+                .find(|g| has_tool_hook(g, command_prefix))
+                .and_then(|g| g["hooks"].as_array_mut())
+            {
+                Some(hooks) => {
+                    // The tool's hooks go where its first one was.
+                    let at = hooks
+                        .iter()
+                        .position(|h| is_tool_hook(h, command_prefix))
+                        .unwrap_or(hooks.len());
+                    hooks.retain(|h| !is_tool_hook(h, command_prefix));
+                    let ours = group["hooks"].as_array().cloned().unwrap_or_default();
+                    hooks.splice(at..at, ours);
+                }
                 None => groups.push(group.clone()),
             }
         }
@@ -243,9 +272,17 @@ pub fn remove(doc: &mut Value, op: &MergeOp) -> bool {
             let Some(groups) = get_mut(doc, &path).and_then(Value::as_array_mut) else {
                 return false;
             };
-            let before = groups.len();
-            groups.retain(|g| !is_tool_group(g, command_prefix));
-            groups.len() != before
+            // Take out the tool's hooks; a group left with no hooks goes too.
+            let mut removed = false;
+            for g in groups.iter_mut() {
+                if let Some(hooks) = g["hooks"].as_array_mut() {
+                    let before = hooks.len();
+                    hooks.retain(|h| !is_tool_hook(h, command_prefix));
+                    removed |= hooks.len() != before;
+                }
+            }
+            groups.retain(|g| g["hooks"].as_array().is_none_or(|h| !h.is_empty()));
+            removed
         }
     }
 }
@@ -363,6 +400,45 @@ mod tests {
         let doc = parse_json(P, "{\"permissions\":{\"allow\":[\"Bash(npm *)\"]}}").unwrap();
         assert_eq!(extract(&doc, &permissions()[0]), None);
         assert_eq!(extract(&json!({"permissions": 1}), &permissions()[0]), None);
+    }
+
+    // The tool owns its hook commands, not the group: a user's command and
+    // a matcher beside it are kept, and do not make the entry "edited"
+    // (PLAN-003 F20).
+    #[test]
+    fn a_shared_hook_group_keeps_the_users_hooks() {
+        let shared = json!({"hooks": {"Stop": [{
+            "matcher": "*",
+            "hooks": [
+                { "type": "command", "command": "tool harness hook claude old" },
+                { "type": "command", "command": "~/bin/notify.sh" }
+            ]
+        }]}});
+        let op = &hooks()[0];
+        let mut doc = shared.clone();
+        apply(&mut doc, op, P).unwrap();
+        assert_eq!(
+            doc["hooks"]["Stop"],
+            json!([{
+                "matcher": "*",
+                "hooks": [
+                    { "type": "command", "command": "tool harness hook claude stop" },
+                    { "type": "command", "command": "~/bin/notify.sh" }
+                ]
+            }])
+        );
+        assert_eq!(extract(&doc, op).as_ref(), Some(op.value()));
+        assert!(remove(&mut doc, op));
+        assert_eq!(
+            doc["hooks"]["Stop"],
+            json!([{ "matcher": "*", "hooks": [{ "type": "command", "command": "~/bin/notify.sh" }] }])
+        );
+        // A group left without hooks goes.
+        let mut alone = json!({"hooks": {"Stop": [{"hooks": [
+            { "type": "command", "command": "tool harness hook claude stop" }
+        ]}]}});
+        assert!(remove(&mut alone, op));
+        assert_eq!(alone["hooks"]["Stop"], json!([]));
     }
 
     #[test]

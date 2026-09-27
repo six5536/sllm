@@ -347,7 +347,12 @@ proptest! {
         match which {
             0 => name = "cursor",
             1 => without.push("nope".into()),
-            2 => tree.write(".claude/settings.json", "{ not json"),
+            2 => {
+                // A broken file refuses when a part that writes it is kept;
+                // a declined part never reads it.
+                without.retain(|w| w != "hooks");
+                tree.write(".claude/settings.json", "{ not json");
+            }
             3 => {
                 // A container of another type refuses when the part is written.
                 without.retain(|w| w != "mcp");

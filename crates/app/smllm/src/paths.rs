@@ -65,19 +65,32 @@ pub fn lookup(explicit: Option<&Path>, from: &Path) -> Result<Vec<ConfigFile>> {
     }
     let mut out = Vec::new();
     let user = user_config_dir()?.join(CONFIG_FILE);
-    if user.is_file() {
+    if user.is_file() && configures(&user) {
         out.push(ConfigFile {
             path: user,
             origin: Origin::User,
         });
     }
-    if let Some(p) = project_config(from) {
+    if let Some(p) = project_config(from).filter(|p| configures(p)) {
         out.push(ConfigFile {
             path: p,
             origin: Origin::Project,
         });
     }
     Ok(out)
+}
+
+/// Whether a config file configures smllm: it has `[machines]` or `[idle]`.
+/// One holding only `[harness]` (the parts `harness install --without`
+/// declined) does not turn smllm on (HOST-8). A file that does not parse
+/// counts, so its error is reported.
+pub fn configures(path: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return true;
+    };
+    text.parse::<toml_edit::DocumentMut>().map_or(true, |d| {
+        d.contains_key("machines") || d.contains_key("idle")
+    })
 }
 
 /// The configs recorded on a session (STO-2), as `ConfigFile`s.
@@ -107,6 +120,14 @@ mod tests {
         assert!(found.is_err());
         let found = lookup(Some(&d.join(".smllm/config.toml")), &deep).unwrap();
         assert_eq!(found[0].origin, Origin::Explicit);
+        // Declined harness parts alone do not configure smllm (PLAN-003 F18).
+        let cfg = d.join(".smllm/config.toml");
+        std::fs::write(&cfg, "[harness.claude]\nwithout = [\"statusline\"]\n").unwrap();
+        assert!(!configures(&cfg));
+        std::fs::write(&cfg, "[machines]\nfiles = []\n").unwrap();
+        assert!(configures(&cfg));
+        std::fs::write(&cfg, "[machines\n").unwrap();
+        assert!(configures(&cfg), "a broken file counts, so its error shows");
         std::fs::remove_dir_all(d).ok();
     }
 }

@@ -109,14 +109,20 @@ fn examine<'a>(cx: &'a Context, declined: &[String]) -> Result<Vec<Examined<'a>>
     let mut out = Vec::new();
     for part in &cx.profile.parts {
         let path = target_path(&cx.root, part)?;
+        // A declined part is never read: a broken file it would merge into
+        // must not block the rest.
+        if declined.contains(&part.name) {
+            out.push(Examined {
+                part,
+                path,
+                state: State::Skipped,
+                existed: false,
+            });
+            continue;
+        }
         let observed = observe(&cx.root, part, &path, &cx.markers)?;
         let hash = recorded.and_then(|m| m.get(&part.name)).map(String::as_str);
-        let state = state(
-            &observed,
-            &expected(part),
-            hash,
-            declined.contains(&part.name),
-        );
+        let state = state(&observed, &expected(part), hash, false);
         let present = matches!(observed, Observed::Present(_));
         let existed = present
             || (!matches!(part.content, Content::External(_)) && cx.root.join(&path).exists());

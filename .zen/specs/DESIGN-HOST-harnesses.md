@@ -203,6 +203,8 @@ pub struct HookInput {
 - HOST_P-3 [Region isolation]: installing changes only the text between smllm's markers
   VALIDATES: HOST-11_AC-1
 
+Kit semantics behind these (PLAN-003 F19–F21): a declined part is never read, so a broken file only a declined part writes cannot block the rest; the tool owns its hook commands (`hooks[].command` starting with its prefix), not the hook group they sit in, so a user's command and keys like `matcher` in the same group are kept, not "edited", and `--force` rewrites only the tool's commands (a group left empty on removal goes); the region is the one a closing marker ends, opened by the nearest opening marker before it, so a stray opening marker stays the user's text.
+
 ## Error Handling
 
 ### Hook failures

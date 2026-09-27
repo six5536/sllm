@@ -63,7 +63,7 @@ crates/app/smllm/src/
 
 ### CLI-Lookup
 
-User dirs through `etcetera::choose_base_strategy` (XDG on Linux and macOS, Known Folders on Windows): config `…/smllm`, state `state_dir` or `data_dir` fallback + `/smllm`, and `~/.claude`. `project_config` walks ancestors for `.smllm/config.toml`. `lookup` returns the explicit config alone (`--config`, else non-empty `SMLLM_CONFIG`; relative to `from`; missing → error), else user config then project config, each only if it is a file; an empty result means "no config" (HOST-8). `recorded` rebuilds `ConfigFile`s from a session's recorded paths as `Origin::Explicit`.
+User dirs through `etcetera::choose_base_strategy` (XDG on Linux and macOS, Known Folders on Windows): config `…/smllm`, state `state_dir` or `data_dir` fallback + `/smllm`, and `~/.claude`. `project_config` walks ancestors for `.smllm/config.toml`. `lookup` returns the explicit config alone (`--config`, else non-empty `SMLLM_CONFIG`; relative to `from`; missing → error), else user config then project config, each only if it is a file that `configures` smllm (has `[machines]` or `[idle]`; a file that does not parse counts, so its error shows): one holding only `[harness]` declined parts does not turn smllm on (PLAN-003 F18); an empty result means "no config" (HOST-8). `init` writes the template over such a file, keeping its text after the template. `recorded` rebuilds `ConfigFile`s from a session's recorded paths as `Origin::Explicit`.
 
 IMPLEMENTS: CLI-3_AC-2
 

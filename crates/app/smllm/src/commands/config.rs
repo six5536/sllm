@@ -30,9 +30,17 @@ pub fn init(args: &InitArgs) -> Result<u8> {
     } else {
         cwd()?.join(PROJECT_DIR).join(CONFIG_FILE)
     };
-    let created = !path.exists();
+    // A file holding only declined harness parts gets the template too,
+    // its own text kept after it.
+    let created = !path.exists() || !paths::configures(&path);
     if created {
-        write_atomic(&path, config_template())?;
+        let kept = std::fs::read_to_string(&path).unwrap_or_default();
+        let text = if kept.trim().is_empty() {
+            config_template().to_string()
+        } else {
+            format!("{}\n{kept}", config_template())
+        };
+        write_atomic(&path, &text)?;
     }
     if args.json {
         output::json(&json!({ "path": path.display().to_string(), "created": created }))?;

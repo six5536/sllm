@@ -23,16 +23,22 @@ impl Markers {
         }
     }
 
-    /// The line indexes of the markers in LF text: the first opening line
-    /// and the first closing line after it.
+    /// The line indexes of the markers in LF text: the first closing line
+    /// that has an opening line before it, and the nearest such opening
+    /// line. A stray opening marker (its closing one deleted) is then just
+    /// the user's text: the region never swallows what lies between it and
+    /// a later region, so `--force` cannot delete it.
     fn find(&self, lines: &[&str]) -> Option<(usize, usize)> {
-        let open = lines.iter().position(|l| l.trim_end() == self.open)?;
-        let close = lines[open + 1..]
+        lines
             .iter()
-            .position(|l| l.trim_end() == self.close)?
-            + open
-            + 1;
-        Some((open, close))
+            .enumerate()
+            .filter(|(_, l)| l.trim_end() == self.close)
+            .find_map(|(close, _)| {
+                let open = lines[..close]
+                    .iter()
+                    .rposition(|l| l.trim_end() == self.open)?;
+                Some((open, close))
+            })
     }
 
     /// The block with its markers, LF, a blank line after the opening
@@ -188,6 +194,20 @@ mod tests {
                 .unwrap()
                 .starts_with(other)
         );
+    }
+
+    // A stray opening marker is the user's text: the region is the one a
+    // closing marker ends, so it never spans the user's lines (PLAN-003 F21).
+    #[test]
+    fn a_stray_opening_marker_is_left_alone() {
+        let stray = "<!-- tool:harness -->\nmine\n";
+        assert_eq!(find_region(stray, &m()), None);
+        let out = render_region(Some(stray), BLOCK, &m()).unwrap();
+        assert_eq!(out, format!("{stray}\n{}", m().framed(BLOCK)));
+        assert_eq!(find_region(&out, &m()).as_deref(), Some(BLOCK));
+        assert_eq!(render_region(Some(&out), BLOCK, &m()), None, "current");
+        let again = render_region(Some(&out), "New.\n", &m()).unwrap();
+        assert!(again.starts_with(stray), "{again}");
     }
 
     #[test]
