@@ -92,12 +92,7 @@ impl Engine {
         };
         let mut parked = 0;
         for m in &config.machines {
-            parked += host
-                .store
-                .instances(&m.id)?
-                .iter()
-                .filter(|i| i.status == Status::Parked)
-                .count() as u32;
+            parked += host.store.instances_with(&m.id, Status::Parked)?.len() as u32;
         }
         Ok(SessionStatus {
             session: session.key,

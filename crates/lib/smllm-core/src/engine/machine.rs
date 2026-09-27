@@ -397,13 +397,18 @@ fn check_set_ref(
         }
         None => {}
     }
-    let taken = turn
-        .host
-        .store
-        .instances(&machine.id)
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .any(|i| i.id != inst.id && (i.r#ref.as_deref() == Some(value) || i.id == *value));
+    // Another instance has it as its ref, or as its id.
+    let store = &mut turn.host.store;
+    let other = |found: Option<Instance>| found.is_some_and(|i| i.id != inst.id);
+    let taken = other(
+        store
+            .instance_by_ref(&machine.id, value)
+            .map_err(|e| e.to_string())?,
+    ) || other(
+        store
+            .instance(&machine.id, value)
+            .map_err(|e| e.to_string())?,
+    );
     if taken {
         return Err(format!(
             "another {kind} of {} already has ref {value}",

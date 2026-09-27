@@ -135,10 +135,8 @@ fn list(
     }
     let mut parked = Vec::new();
     for m in &turn.config.machines {
-        for i in turn.host.store.instances(&m.id)? {
-            if i.status == Status::Parked {
-                parked.push((m, i));
-            }
+        for i in turn.host.store.instances_with(&m.id, Status::Parked)? {
+            parked.push((m, i));
         }
     }
     insertion_sort_by(&mut parked, |(m, i), (n, j)| {
@@ -402,12 +400,7 @@ fn find(
     if let Some(i) = turn.host.store.instance(&machine.id, value)? {
         return Ok(Some(i));
     }
-    Ok(turn
-        .host
-        .store
-        .instances(&machine.id)?
-        .into_iter()
-        .find(|i| i.r#ref.as_deref() == Some(value)))
+    Ok(turn.host.store.instance_by_ref(&machine.id, value)?)
 }
 
 /// A new instance with a fresh generated id (INST-2).

@@ -3,7 +3,7 @@
 
 use crate::model::Value;
 use crate::prelude::*;
-use crate::record::{HistoryEntry, Instance, Session};
+use crate::record::{HistoryEntry, Instance, Session, Status};
 use crate::utils::SmallMap;
 
 /// A store failure.
@@ -43,6 +43,30 @@ pub trait Store {
     fn instance(&mut self, machine: &str, id: &str) -> Result<Option<Instance>, HostError>;
     /// Every instance of `machine`.
     fn instances(&mut self, machine: &str) -> Result<Vec<Instance>, HostError>;
+    /// The instances of `machine` with `status`. The default filters
+    /// [`Store::instances`]; a store that keeps completed instances apart
+    /// answers without reading them (INST-9 keeps them forever).
+    fn instances_with(
+        &mut self,
+        machine: &str,
+        status: Status,
+    ) -> Result<Vec<Instance>, HostError> {
+        let mut all = self.instances(machine)?;
+        all.retain(|i| i.status == status);
+        Ok(all)
+    }
+    /// The instance of `machine` whose ref is `r#ref` (INST-4). The default
+    /// searches [`Store::instances`]; a store may keep an index.
+    fn instance_by_ref(
+        &mut self,
+        machine: &str,
+        r#ref: &str,
+    ) -> Result<Option<Instance>, HostError> {
+        Ok(self
+            .instances(machine)?
+            .into_iter()
+            .find(|i| i.r#ref.as_deref() == Some(r#ref)))
+    }
     /// Save an instance whose `version` was bumped by one from the stored copy
     /// (or is 1 for a new one); anything else is [`HostError::Conflict`].
     fn put_instance(&mut self, instance: &Instance) -> Result<(), HostError>;
