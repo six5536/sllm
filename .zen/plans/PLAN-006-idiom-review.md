@@ -57,6 +57,10 @@ with the gate passing; specs updated with the code.
   carry sessions, bindings and instances only. The host owns persistence and retention, as with
   XState's persisted snapshots; no prune API (YAGNI). The core and its `Store` trait do not
   change; `MemoryStore` keeps history for the core's tests.
+- D6-5 (I-5): keep: no change. A path flag replaces discovery (ESLint `-c`, Ruff/Black and
+  Prettier `--config`, `STARSHIP_CONFIG`); layering is the idiom for key/value overrides
+  (`git -c`, `cargo --config`), which smllm does not have. One level is replaced through
+  `XDG_CONFIG_HOME` (user) and the working directory (project).
 
 ## 5. Outcome
 
