@@ -36,6 +36,10 @@ pub struct Session {
     /// The agent fired `yield` since the last user prompt (TURN-4, TURN-8).
     #[cfg_attr(feature = "serde", serde(default))]
     pub yielded: bool,
+    /// The stop hook blocked, and the agent has fired no event since
+    /// (TURN-6): only then does a harness continuation let the agent stop.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub blocked: bool,
     /// Created, unix ms.
     pub created: u64,
     /// Last call, unix ms.

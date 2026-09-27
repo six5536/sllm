@@ -63,6 +63,7 @@ pub struct Session {
     pub holding: Option<InstanceKey>,
     pub suspended: Option<InstanceKey>,
     pub yielded: bool,               // TURN-4, TURN-8
+    pub blocked: bool,               // TURN-6: blocked, no event since (serde default)
     pub created: u64,
     pub last_active: u64,
 }

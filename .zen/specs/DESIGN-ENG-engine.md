@@ -153,7 +153,7 @@ pub struct Host<'a> {
 
 ### ENG-Engine
 
-The public protocol (HOST-1). `bind` reuses a harness binding or creates a session in idle (key `sm-` + 6 Crockford base32 chars from `Ids`); `view` and `menu` are read-only; `fire` dispatches to idle or machine handling and, with no key, only `enter` creates a session; `stop` returns `Allow` for unknown, idle or yielded sessions, `Runaway` when `stop_hook_active`, else `Block` with the menu; `prompt_submitted` clears `yielded`. `unsupported` walks every guard/action (shared, entry, exit, transitions, always) and lists host kinds the given `Guard`/`Action` do not support.
+The public protocol (HOST-1). `bind` reuses a harness binding or creates a session in idle (key `sm-` + 6 Crockford base32 chars from `Ids`); `view` and `menu` are read-only; `fire` dispatches to idle or machine handling and, with no key, only `enter` creates a session; `stop` returns `Allow` for unknown, idle or yielded sessions, `Runaway` when `stop_hook_active` and `session.blocked` (blocked before, no event fired since), else `Block` with the menu, setting and saving `blocked`; `fire` clears `blocked` (saved with the session by every path that records the event); `prompt_submitted` clears `yielded` and `blocked` (PLAN-003 F6). `unsupported` walks every guard/action (shared, entry, exit, transitions, always) and lists host kinds the given `Guard`/`Action` do not support.
 
 IMPLEMENTS: ENG-5_AC-1, ACT-6_AC-1, NFR-9_AC-1, HOST-3_AC-1, HOST-4_AC-1, TURN-4_AC-1, TURN-5_AC-1, TURN-6_AC-1, TURN-8_AC-1
 

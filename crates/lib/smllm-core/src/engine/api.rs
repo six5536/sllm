@@ -258,6 +258,8 @@ impl Engine {
         };
         let mut turn = Turn::new(&self.config, host, session, event);
         turn.session.last_active = turn.now;
+        // Saved with the session by every path that records the event.
+        turn.session.blocked = false;
         if turn.session.holding.is_some() {
             machine::fire(&mut turn, params)
         } else {
@@ -282,6 +284,9 @@ impl Engine {
         if session.yielded || session.holding.is_none() {
             return Ok(Stop::Allow);
         }
+        // The runaway release needs both the harness's flag and no event
+        // fired since the last block: a fire clears `blocked`.
+        let runaway = stop_hook_active && session.blocked;
         let mut turn = Turn::new(&self.config, host, session, "");
         // A moved instance is reported once, here, and the session drops to
         // idle (INST-7); an unconfigured machine lets the agent stop.
@@ -290,20 +295,24 @@ impl Engine {
             Err(machine::Gone::Moved(r)) => r.text,
             Err(machine::Gone::Unconfigured(_)) => return Ok(Stop::Allow),
         };
-        Ok(if stop_hook_active {
-            Stop::Runaway(text)
-        } else {
-            Stop::Block(text)
-        })
+        if runaway {
+            return Ok(Stop::Runaway(text));
+        }
+        if !turn.session.blocked {
+            turn.session.blocked = true;
+            turn.host.store.put_session(&turn.session)?;
+        }
+        Ok(Stop::Block(text))
     }
 
     /// A user prompt arrived: clear the yielded flag; inject nothing (TURN-8).
     // @zen-impl: TURN-8_AC-1
     pub fn prompt_submitted(&self, host: &mut Host<'_>, key: &str) -> Result<(), Error> {
         if let Some(mut s) = host.store.session(key)?
-            && s.yielded
+            && (s.yielded || s.blocked)
         {
             s.yielded = false;
+            s.blocked = false;
             host.store.put_session(&s)?;
         }
         Ok(())

@@ -41,6 +41,7 @@ fn enter_a_new_instance_runs_entry_and_shows_the_header() {
 }
 
 // @zen-test: TURN-2_AC-1
+// @zen-test: TURN-6_AC-1
 #[test]
 fn the_stop_hook_blocks_with_the_events_list_until_yield() {
     let (e, mut f) = (engine(), fake());
@@ -61,9 +62,15 @@ fn the_stop_hook_blocks_with_the_events_list_until_yield() {
     };
     insta::assert_snapshot!(text);
     assert!(matches!(f.stop(&e, &k, true), Stop::Runaway(_)));
+    // After an event the agent is held again, although the harness is still
+    // continuing because of the stop hook; released only on a second stop
+    // with no event between (TURN-6).
+    assert!(f.fire(&e, &k, "reject", &[("reason", "tests")]).ok);
+    assert!(matches!(f.stop(&e, &k, true), Stop::Block(_)));
+    assert!(matches!(f.stop(&e, &k, true), Stop::Runaway(_)));
     let y = f.fire(&e, &k, "yield", &[("note", "asking the user")]);
     assert!(y.ok);
-    assert!(y.text.contains("Yielded: staying in REVIEW"));
+    assert!(y.text.contains("Yielded: staying in WORK"));
     assert_eq!(f.stop(&e, &k, false), Stop::Allow);
     // A user prompt clears the flag (TURN-8).
     f.with(|h| e.prompt_submitted(h, &k).unwrap());
