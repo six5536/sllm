@@ -2,7 +2,7 @@
 
 | Meta               | Value                                                        |
 | ------------------ | ------------------------------------------------------------ |
-| Status             | completed (A1–A7, 2026-09-27); Q5 open                        |
+| Status             | completed (A1–A7, 2026-09-27)                                 |
 | Workflow direction | bottom-up (review findings → code → specs touched per phase) |
 | Traces to          | NFR-2, NFR-8, TURN-4..8, CFG-4, CFG-7, STO-2, STO-3, DEC-6, INST-3, INST-9 |
 
@@ -124,11 +124,10 @@ None; answered in §6 by the usual practice.
   once per path; a missing file fails the machine at load, as now. Only reads and the
   `enter-<STATE>.md` probes go.
 
-- Q5 (raised in A1, open): the release profile optimises for size (`opt-level = "z"`). Measured
-  per load: YAML parsing 2.3 ms at `z`; `opt-level = 3` for the whole binary halves it (+1.5 MB,
-  +43%); `opt-level = 3` for only `serde-saphyr`, `granit-parser`, `regex-automata` and
-  `regex-syntax` gives 1.3 ms YAML and faster patterns, about 1.4 ms per load in all, for +330 KB
-  (+9.5%). Keep `z`, or add the per-package overrides?
+- D4-5 (Q5, raised in A1): keep the release profile at `opt-level = "z"`. Measured per load:
+  YAML parsing 2.3 ms at `z`; `opt-level = 3` for `serde-saphyr`, `granit-parser`,
+  `regex-automata` and `regex-syntax` would save about 1.4 ms for +330 KB (+9.5%), for the whole
+  binary +1.5 MB. Binary size wins.
 
 ## 7. Outcome
 
