@@ -3,15 +3,16 @@
 // @zen-component: IDLE-Idle
 
 use crate::Error;
-use crate::engine::machine::{self, commit, takeover_note};
+use crate::engine::machine::{self, commit, owned, takeover_note};
 use crate::engine::offer::{check_value, idle_offers};
 use crate::engine::turn::Turn;
 use crate::engine::{Location, Reply, api::random_id};
 use crate::model::{ActionDef, Machine};
 use crate::prelude::*;
+use crate::utils::join;
 use crate::record::{Instance, Status};
 use crate::render::{Block, idle_header};
-use crate::utils::{SmallMap, insertion_sort_by_key};
+use crate::utils::{SmallMap, insertion_sort_by};
 
 /// The idle list (TURN-7): header, notes, `error:`, idle instructions, state
 /// machines, suspended and parked instances, events.
@@ -105,27 +106,22 @@ fn list(
             id_line.push_str(&format!(" (pattern: {p})"));
         }
         b.line(&id_line);
-        let eps: Vec<&str> = m.entry_points().map(|s| s.name.as_str()).collect();
+        let eps = join(m.entry_point_names());
         let mut starts = format!("    starts at: {}", m.initial);
         if !eps.is_empty() {
-            starts.push_str(&format!("; entry points: {}", eps.join(", ")));
+            starts.push_str(&format!("; entry points: {}", eps));
         }
         b.line(&starts);
     }
 
     let suspended = match &turn.session.suspended {
-        Some(k) => match (
-            turn.config.machine(&k.machine),
-            turn.host.store.instance(&k.machine, &k.id)?,
-        ) {
-            (Some(m), Some(i))
-                if i.status == Status::Suspended
-                    && i.holder.as_deref() == Some(&turn.session.key) =>
-            {
-                Some((m, i))
-            }
-            _ => None,
-        },
+        Some(k) => owned(
+            turn.config,
+            turn.host.store,
+            k,
+            Status::Suspended,
+            &turn.session.key,
+        )?,
         None => None,
     };
     if let Some((m, i)) = &suspended {
@@ -145,7 +141,9 @@ fn list(
             }
         }
     }
-    insertion_sort_by_key(&mut parked, |(m, i)| (m.id.clone(), i.label().to_string()));
+    insertion_sort_by(&mut parked, |(m, i), (n, j)| {
+        m.id.cmp(&n.id).then_with(|| i.label().cmp(j.label()))
+    });
     if !parked.is_empty() {
         b.line("Parked:");
         for (m, i) in &parked {
@@ -213,10 +211,10 @@ fn enter(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Result<Reply, 
     };
     let config = turn.config;
     let Some(machine) = config.machine(&machine_id) else {
-        let ids: Vec<&str> = config.machines.iter().map(|m| m.id.as_str()).collect();
+        let ids = join(config.machines.iter().map(|m| m.id.as_str()));
         let msg = format!(
             "enter param stateMachine must be one of: {} (got \"{machine_id}\")",
-            ids.join(", ")
+            ids
         );
         return reply(turn, false, Some(msg));
     };
@@ -277,25 +275,25 @@ fn enter(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Result<Reply, 
             let saved_exists = machine.state(&inst.state).is_some();
             let arrival = match (&state_param, inst.status, saved_exists) {
                 (None, Status::Completed, _) => {
-                    let eps: Vec<&str> = machine.entry_points().map(|s| s.name.as_str()).collect();
+                    let eps = join(machine.entry_point_names());
                     let msg = format!(
                         "{kind} {} is completed; to reopen it, fire enter with state: one of {}",
                         inst.label(),
                         if eps.is_empty() {
                             "(none: no state is an entry point)".to_string()
                         } else {
-                            eps.join(", ")
+                            eps
                         }
                     );
                     return reply(turn, false, Some(msg));
                 }
                 (None, _, false) => {
-                    let all: Vec<&str> = machine.states.iter().map(|s| s.name.as_str()).collect();
+                    let all = join(machine.state_names());
                     let msg = format!(
                         "saved state {} of {kind} {} no longer exists; fire enter with state: one of {}",
                         inst.state,
                         inst.label(),
-                        all.join(", ")
+                        all
                     );
                     return reply(turn, false, Some(msg));
                 }
@@ -380,14 +378,14 @@ fn entry_point(machine: &Machine, state: &str) -> Result<(), String> {
     match machine.state(state) {
         Some(s) if s.entry_point => Ok(()),
         _ => {
-            let eps: Vec<&str> = machine.entry_points().map(|s| s.name.as_str()).collect();
+            let eps = join(machine.entry_point_names());
             Err(format!(
                 "{state} is not an entry point of {} (entry points: {})",
                 machine.id,
                 if eps.is_empty() {
                     "none".to_string()
                 } else {
-                    eps.join(", ")
+                    eps
                 }
             ))
         }
@@ -447,16 +445,10 @@ fn resume(turn: &mut Turn<'_, '_>) -> Result<Reply, Error> {
     let machine = turn.config.machine(&key.machine);
     let inst = turn.host.store.instance(&key.machine, &key.id)?;
     let (machine, mut inst) = match (machine, inst) {
-        (Some(m), Some(i))
-            if i.status == Status::Suspended && i.holder.as_deref() == Some(&turn.session.key) =>
-        {
-            (m, i)
-        }
+        (Some(m), Some(i)) if i.held_by(&turn.session.key, Status::Suspended) => (m, i),
         // A briefly invalid machine file must not lose the suspended
         // instance: report, change nothing.
-        (None, Some(i))
-            if i.status == Status::Suspended && i.holder.as_deref() == Some(&turn.session.key) =>
-        {
+        (None, Some(i)) if i.held_by(&turn.session.key, Status::Suspended) => {
             let msg = format!(
                 "state machine {} is not configured (is its file valid?); fix the config, then resume",
                 key.machine
@@ -484,14 +476,14 @@ fn resume(turn: &mut Turn<'_, '_>) -> Result<Reply, Error> {
         }
     };
     if machine.state(&inst.state).is_none() {
-        let all: Vec<&str> = machine.states.iter().map(|s| s.name.as_str()).collect();
+        let all = join(machine.state_names());
         let msg = format!(
             "saved state {} no longer exists; fire enter with stateMachine {}, {} {}, state: one of {}",
             inst.state,
             machine.id,
             machine.instance.ref_param,
             inst.label(),
-            all.join(", ")
+            all
         );
         return reply(turn, false, Some(msg));
     }

@@ -5,6 +5,7 @@
 use crate::host::Matcher;
 use crate::model::{Config, EventDef, Machine, ParamSpec, State};
 use crate::prelude::*;
+use crate::utils::join;
 use crate::record::Instance;
 
 /// Built-in event names (IDLE-1).
@@ -219,11 +220,11 @@ pub(crate) fn check_params(
             return Err(if offer.params.is_empty() {
                 format!("{} takes no params, but got {name}", offer.name)
             } else {
-                let names: Vec<&str> = offer.params.iter().map(|p| p.name.as_str()).collect();
+                let names = join(offer.params.iter().map(|p| p.name.as_str()));
                 format!(
                     "{} has no param {name} (params: {})",
                     offer.name,
-                    names.join(", ")
+                    names
                 )
             });
         }

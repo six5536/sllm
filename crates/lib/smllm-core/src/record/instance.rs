@@ -101,6 +101,11 @@ impl Instance {
         self.r#ref.as_deref().unwrap_or(&self.id)
     }
 
+    /// Whether `session` holds it with `status`.
+    pub fn held_by(&self, session: &str, status: Status) -> bool {
+        self.status == status && self.holder.as_deref() == Some(session)
+    }
+
     /// Entries of `state` so far.
     pub fn visits(&self, state: &str) -> u32 {
         self.visits.get(state).copied().unwrap_or(0)

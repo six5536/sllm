@@ -6,10 +6,11 @@ use crate::Error;
 use crate::engine::offer::{check_params, machine_offers};
 use crate::engine::turn::{Turn, lists};
 use crate::engine::{Location, Reply, idle};
-use crate::host::HostError;
-use crate::model::{ActionDef, Machine};
+use crate::host::{HostError, Store};
+use crate::model::{ActionDef, Config, Machine};
 use crate::prelude::*;
-use crate::record::{HistoryEntry, Instance, Status};
+use crate::utils::join;
+use crate::record::{HistoryEntry, Instance, InstanceKey, Status};
 use crate::render::{Block, format_utc, header, quote};
 
 /// Why the held instance cannot be used.
@@ -81,9 +82,7 @@ pub(crate) fn held<'c>(
     };
     let inst = turn.host.store.instance(&key.machine, &key.id)?;
     match inst {
-        Some(i) if i.holder.as_deref() == Some(&turn.session.key) && i.status == Status::Active => {
-            Ok(Ok((machine, i)))
-        }
+        Some(i) if i.held_by(&turn.session.key, Status::Active) => Ok(Ok((machine, i))),
         Some(i) => {
             let kind = &machine.instance.kind;
             let msg = match &i.holder {
@@ -104,6 +103,24 @@ pub(crate) fn held<'c>(
             persist,
         ),
     }
+}
+
+/// Instance `key` with its configured machine, when `session` holds it with
+/// `status`.
+pub(crate) fn owned<'c>(
+    config: &'c Config,
+    store: &mut dyn Store,
+    key: &InstanceKey,
+    status: Status,
+    session: &str,
+) -> Result<Option<(&'c Machine, Instance)>, Error> {
+    let Some(machine) = config.machine(&key.machine) else {
+        return Ok(None);
+    };
+    Ok(store
+        .instance(&key.machine, &key.id)?
+        .filter(|i| i.held_by(session, status))
+        .map(|i| (machine, i)))
 }
 
 fn gone(
@@ -131,10 +148,19 @@ pub(crate) fn moved(turn: &mut Turn<'_, '_>, msg: String) -> Result<Reply, Error
 
 /// No event: entry block (optionally) + events list (ENG-5).
 pub(crate) fn view(turn: &mut Turn<'_, '_>, entry: bool) -> Result<Reply, Error> {
-    let (machine, inst) = match held(turn, false)? {
-        Ok(p) => p,
-        Err(gone) => return Ok(gone.reply()),
-    };
+    Ok(match held(turn, false)? {
+        Ok((machine, inst)) => view_held(turn, machine, &inst, entry),
+        Err(gone) => gone.reply(),
+    })
+}
+
+/// [`view`] of the instance [`held`] returned.
+pub(crate) fn view_held(
+    turn: &mut Turn<'_, '_>,
+    machine: &Machine,
+    inst: &Instance,
+    entry: bool,
+) -> Reply {
     if entry && let Some(state) = machine.state(&inst.state) {
         // Re-render the state's entry prompts only; commands are not re-run.
         for (_, list) in lists(machine, &state.name, &state.entry, true) {
@@ -145,18 +171,18 @@ pub(crate) fn view(turn: &mut Turn<'_, '_>, entry: bool) -> Result<Reply, Error>
             }
         }
     }
-    missing_state_note(turn, machine, &inst);
-    Ok(block(turn, machine, &inst, None, entry, true, None))
+    missing_state_note(turn, machine, inst);
+    block(turn, machine, inst, None, entry, true, None)
 }
 
 fn missing_state_note(turn: &mut Turn<'_, '_>, machine: &Machine, inst: &Instance) {
     if machine.state(&inst.state).is_none() {
-        let names: Vec<&str> = machine.states.iter().map(|s| s.name.as_str()).collect();
+        let names = join(machine.state_names());
         turn.notes.push(format!(
             "Saved state {} no longer exists in {}. Fire park, then enter with a state: {}.",
             inst.state,
             machine.id,
-            names.join(", ")
+            names
         ));
     }
 }
@@ -259,11 +285,11 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
     let state = machine.state(&inst.state);
     let offers = machine_offers(machine, state, &inst);
     let Some(offer) = offers.iter().find(|o| o.name == turn.event) else {
-        let names: Vec<&str> = offers.iter().map(|o| o.name.as_str()).collect();
+        let names = join(offers.iter().map(|o| o.name.as_str()));
         let msg = format!(
             "{} is not offered here (offered: {})",
             turn.event,
-            names.join(", ")
+            names
         );
         return reject(turn, machine, &inst, msg);
     };
@@ -308,10 +334,10 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
         "resume" => {
             let back = inst.interrupted.take().unwrap_or_default();
             if machine.state(&back).is_none() {
-                let all: Vec<&str> = machine.states.iter().map(|s| s.name.as_str()).collect();
+                let all = join(machine.state_names());
                 let msg = format!(
                     "the interrupted state {back} no longer exists; leave with one of this state's events, or park and enter with a state: {}",
-                    all.join(", ")
+                    all
                 );
                 inst.interrupted = Some(back);
                 return reject(turn, machine, &inst, msg);
@@ -423,8 +449,7 @@ fn unmatched(
     if let Some(old) = turn.session.suspended.replace(key.clone())
         && old != key
         && let Some(mut o) = turn.host.store.instance(&old.machine, &old.id)?
-        && o.status == Status::Suspended
-        && o.holder.as_deref() == Some(&turn.session.key)
+        && o.held_by(&turn.session.key, Status::Suspended)
     {
         o.status = Status::Parked;
         o.holder = None;

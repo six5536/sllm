@@ -225,20 +225,21 @@ impl Engine {
     /// Read-only "where am I": entry block + events list; changes nothing (ENG-5).
     // @zen-impl: ENG-5_AC-1
     pub fn view(&self, host: &mut Host<'_>, key: &str) -> Result<Reply, Error> {
-        let session = self.session(host, key)?;
-        let mut turn = Turn::new(&self.config, host, session, "");
-        if turn.session.holding.is_some() {
-            return machine::view(&mut turn, true);
-        }
-        idle::reply(&mut turn, true, None)
+        self.show(host, key, true)
     }
 
     /// The events list for the current state (the stop hook's text).
     pub fn menu(&self, host: &mut Host<'_>, key: &str) -> Result<Reply, Error> {
+        self.show(host, key, false)
+    }
+
+    /// Where session `key` is; in a machine state, with its entry prompts
+    /// when `entry`.
+    fn show(&self, host: &mut Host<'_>, key: &str, entry: bool) -> Result<Reply, Error> {
         let session = self.session(host, key)?;
         let mut turn = Turn::new(&self.config, host, session, "");
         if turn.session.holding.is_some() {
-            return machine::view(&mut turn, false);
+            return machine::view(&mut turn, entry);
         }
         idle::reply(&mut turn, true, None)
     }
@@ -297,7 +298,7 @@ impl Engine {
         // A moved instance is reported once, here, and the session drops to
         // idle (INST-7); an unconfigured machine lets the agent stop.
         let text = match machine::held(&mut turn, true)? {
-            Ok(_) => machine::view(&mut turn, false)?.text,
+            Ok((m, inst)) => machine::view_held(&mut turn, m, &inst, false).text,
             Err(machine::Gone::Moved(r)) => r.text,
             Err(machine::Gone::Unconfigured(_)) => return Ok(Stop::Allow),
         };

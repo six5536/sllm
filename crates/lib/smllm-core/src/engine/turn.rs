@@ -240,21 +240,7 @@ impl<'a, 'h> Turn<'a, 'h> {
         inst.state = name.to_string();
         let n = inst.visits(name) + 1;
         inst.visits.insert(name, n);
-        let Some(state) = machine.state(name) else {
-            return;
-        };
-        for (what, list) in lists(machine, name, &state.entry, true) {
-            self.run(
-                inst,
-                list,
-                &ListLabel {
-                    what: &what,
-                    state: name,
-                    from,
-                    to: Some(name),
-                },
-            );
-        }
+        self.run_lists(machine, inst, name, true, from, Some(name));
     }
 
     /// Leave `name`: shared-before, own, shared-after `exit`.
@@ -265,17 +251,31 @@ impl<'a, 'h> Turn<'a, 'h> {
         name: &str,
         to: Option<&str>,
     ) {
+        self.run_lists(machine, inst, name, false, Some(name), to);
+    }
+
+    /// Run the `entry` (or `exit`) lists of state `name`, shared ones included.
+    fn run_lists(
+        &mut self,
+        machine: &Machine,
+        inst: &mut Instance,
+        name: &str,
+        entry: bool,
+        from: Option<&str>,
+        to: Option<&str>,
+    ) {
         let Some(state) = machine.state(name) else {
             return;
         };
-        for (what, list) in lists(machine, name, &state.exit, false) {
+        let own = if entry { &state.entry } else { &state.exit };
+        for (what, list) in lists(machine, name, own, entry) {
             self.run(
                 inst,
                 list,
                 &ListLabel {
                     what: &what,
                     state: name,
-                    from: Some(name),
+                    from,
                     to,
                 },
             );

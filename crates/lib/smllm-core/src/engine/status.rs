@@ -4,6 +4,7 @@
 #[cfg(feature = "serde")]
 use serde::Serialize;
 
+use crate::engine::machine::owned;
 use crate::engine::{Engine, Error};
 use crate::host::Host;
 use crate::model::Machine;
@@ -80,16 +81,7 @@ impl Engine {
             .session(key)?
             .ok_or_else(|| Error::UnknownSession(key.to_string()))?;
         let config = self.config();
-        let mut read = |k: &crate::record::InstanceKey, status: Status| -> Result<_, Error> {
-            let Some(machine) = config.machine(&k.machine) else {
-                return Ok(None);
-            };
-            Ok(host
-                .store
-                .instance(&k.machine, &k.id)?
-                .filter(|i| i.status == status && i.holder.as_deref() == Some(key))
-                .map(|i| (machine, i)))
-        };
+        let mut read = |k, status| owned(config, host.store, k, status, key);
         let held = match &session.holding {
             Some(k) => read(k, Status::Active)?,
             None => None,

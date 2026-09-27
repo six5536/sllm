@@ -70,6 +70,16 @@ impl Machine {
     pub fn entry_points(&self) -> impl Iterator<Item = &State> {
         self.states.iter().filter(|s| s.entry_point)
     }
+
+    /// Every state's name, in order.
+    pub(crate) fn state_names(&self) -> impl Iterator<Item = &str> {
+        self.states.iter().map(|s| s.name.as_str())
+    }
+
+    /// The entry points' names, in order.
+    pub(crate) fn entry_point_names(&self) -> impl Iterator<Item = &str> {
+        self.entry_points().map(|s| s.name.as_str())
+    }
 }
 
 /// `meta.instance`: what an instance is called and its ref param (CFG-6).
