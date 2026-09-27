@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
+use agent_harness_kit::fs::write_atomic;
 use agent_harness_kit::report_text;
 use serde_json::json;
 use smllm_core::host::Store;
@@ -16,7 +17,6 @@ use crate::error::{Error, Result};
 use crate::output::{self, EXIT_ERRORS, EXIT_OK};
 use crate::paths::{self, CONFIG_FILE, PROJECT_DIR};
 use crate::runtime::Runtime;
-use crate::store::write_atomic;
 
 fn cwd() -> Result<PathBuf> {
     std::env::current_dir().map_err(|e| Error::io(Path::new("."), e))
@@ -32,7 +32,7 @@ pub fn init(args: &InitArgs) -> Result<u8> {
     };
     let created = !path.exists();
     if created {
-        write_atomic(&path, config_template()).map_err(|e| Error::io(&path, e))?;
+        write_atomic(&path, config_template())?;
     }
     if args.json {
         output::json(&json!({ "path": path.display().to_string(), "created": created }))?;
@@ -92,8 +92,8 @@ pub fn new(args: &NewArgs, explicit: Option<&Path>) -> Result<u8> {
     }
     // Prepare the config edit first: a failure leaves every file as found (NFR-6).
     let registered = register(&config, &config_dir, &file)?;
-    write_atomic(&file, &text).map_err(|e| Error::io(&file, e))?;
-    write_atomic(&config, &registered).map_err(|e| Error::io(&config, e))?;
+    write_atomic(&file, &text)?;
+    write_atomic(&config, &registered)?;
     if args.json {
         output::json(
             &json!({ "id": args.id, "path": file.display().to_string(), "config": config.display().to_string() }),
@@ -235,7 +235,7 @@ pub fn compile_cmd(args: &CompileArgs) -> Result<u8> {
     match &args.out {
         Some(out) => {
             let out = cwd()?.join(out);
-            write_atomic(&out, &format!("{json}\n")).map_err(|e| Error::io(&out, e))?;
+            write_atomic(&out, &format!("{json}\n"))?;
         }
         None => output::text(&format!("{json}\n"))?,
     }

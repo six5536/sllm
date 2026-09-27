@@ -8,6 +8,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+use agent_harness_kit::fs as fs_kit;
 use smllm_core::host::{HostError, Store};
 use smllm_core::record::{HistoryEntry, Instance, Session};
 
@@ -21,29 +22,19 @@ fn other(e: impl std::fmt::Display) -> HostError {
     HostError::Other(e.to_string())
 }
 
-/// Write via a temp file + rename, so readers never see half a file.
-// @zen-impl: STO-3_AC-1
-pub fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
-    if let Some(d) = path.parent() {
-        fs::create_dir_all(d)?;
-    }
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let tmp = path.with_file_name(format!(".{name}.tmp{}", std::process::id()));
-    fs::write(&tmp, text)?;
-    fs::rename(&tmp, path)
+fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>, HostError> {
+    let Some(text) = fs_kit::read_text(path).map_err(other)? else {
+        return Ok(None);
+    };
+    serde_json::from_str(&text)
+        .map(Some)
+        .map_err(|e| other(format!("{}: {e}", path.display())))
 }
 
-fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>, HostError> {
-    match fs::read_to_string(path) {
-        Ok(t) => serde_json::from_str(&t)
-            .map(Some)
-            .map_err(|e| other(format!("{}: {e}", path.display()))),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(other(format!("{}: {e}", path.display()))),
-    }
+/// Write via a temp file + rename, so readers never see half a file.
+// @zen-impl: STO-3_AC-1
+fn write(path: &Path, text: &str) -> Result<(), HostError> {
+    fs_kit::write_atomic(path, text).map_err(other)
 }
 
 /// A file name from arbitrary text (harness session ids).
@@ -103,10 +94,8 @@ impl FsStore {
         let p = self
             .machine_dir(machine)?
             .join(format!("{}.history.jsonl", safe(id)));
-        let text = match fs::read_to_string(&p) {
-            Ok(t) => t,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(other(e)),
+        let Some(text) = fs_kit::read_text(&p).map_err(other)? else {
+            return Ok(Vec::new());
         };
         text.lines()
             .filter(|l| !l.trim().is_empty())
@@ -133,7 +122,7 @@ impl Store for FsStore {
 
     fn put_session(&mut self, session: &Session) -> Result<(), HostError> {
         let text = serde_json::to_string_pretty(session).map_err(other)?;
-        write_atomic(&self.session_path(&session.key), &text).map_err(other)
+        write(&self.session_path(&session.key), &text)
     }
 
     fn binding(&mut self, harness: &str, host_session: &str) -> Result<Option<String>, HostError> {
@@ -142,11 +131,9 @@ impl Store for FsStore {
             .join("bindings")
             .join(safe(harness))
             .join(safe(host_session));
-        match fs::read_to_string(p) {
-            Ok(k) => Ok(Some(k.trim().to_string())),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(other(e)),
-        }
+        Ok(fs_kit::read_text(&p)
+            .map_err(other)?
+            .map(|k| k.trim().to_string()))
     }
 
     fn put_binding(
@@ -160,7 +147,7 @@ impl Store for FsStore {
             .join("bindings")
             .join(safe(harness))
             .join(safe(host_session));
-        write_atomic(&p, key).map_err(other)
+        write(&p, key)
     }
 
     fn instance(&mut self, machine: &str, id: &str) -> Result<Option<Instance>, HostError> {
@@ -211,7 +198,7 @@ impl Store for FsStore {
             Err(HostError::Conflict)
         } else {
             let text = serde_json::to_string_pretty(instance).map_err(other)?;
-            write_atomic(&path, &text).map_err(other)
+            write(&path, &text)
         };
         let _ = lock.unlock();
         result

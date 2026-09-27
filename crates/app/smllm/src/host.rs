@@ -3,6 +3,7 @@
 // @zen-component: DEC-CommandRunner
 
 use std::io::Read;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -224,11 +225,7 @@ pub struct Files;
 
 impl InstructionSource for Files {
     fn read(&self, file: &str) -> Result<Option<String>, String> {
-        match std::fs::read_to_string(file) {
-            Ok(t) => Ok(Some(t)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e.to_string()),
-        }
+        agent_harness_kit::fs::read_text(Path::new(file)).map_err(|e| e.to_string())
     }
 }
 

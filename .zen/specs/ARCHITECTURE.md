@@ -145,6 +145,7 @@ RESPONSIBILITIES
 - `hook`: Claude Code `HookInput`, `Answer`, `emit`, `LoopGuard`
 - `report`: findings and their text/JSON forms
 - `cli`: exit codes, stdout writing, broken pipe handling, `error:` runner
+- `fs`: `read_text` (absent = `None`) and `write_atomic` (temp + rename, unique temp per write, follows symlinks, keeps permissions); the app's store uses it too
 
 CONSTRAINTS
 

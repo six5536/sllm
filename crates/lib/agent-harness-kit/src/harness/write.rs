@@ -7,7 +7,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::{Error, Result, harness::ExternalPart};
+use crate::{Result, fs::write_atomic, harness::ExternalPart};
 
 /// Everything `install` will write, computed before any write.
 #[derive(Debug, Clone, Default)]
@@ -38,26 +38,12 @@ impl Plan {
     }
 }
 
-/// Write `text` to `path` unless it is already there, creating the parent
-/// directories.
+/// Write `text` to `path` unless it is already there ([`write_atomic`]).
 pub fn write_if_changed(path: &Path, text: &str) -> Result<()> {
     if fs::read_to_string(path).ok().as_deref() == Some(text) {
         return Ok(());
     }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| Error::io(parent, e))?;
-    }
-    // Temp file + rename: a reader never sees half a file.
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let tmp = path.with_file_name(format!(".{name}.tmp{}", std::process::id()));
-    fs::write(&tmp, text).map_err(|e| Error::io(&tmp, e))?;
-    fs::rename(&tmp, path).map_err(|e| {
-        let _ = fs::remove_file(&tmp);
-        Error::io(path, e)
-    })
+    write_atomic(path, text)
 }
 
 /// Write the plan: the external parts first (they run other programs, the
@@ -80,7 +66,7 @@ pub fn apply_plan(plan: &Plan) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::temp_dir;
+    use crate::{Error, test_support::temp_dir};
 
     #[test]
     fn a_plan_replaces_an_earlier_write_to_the_same_path() {

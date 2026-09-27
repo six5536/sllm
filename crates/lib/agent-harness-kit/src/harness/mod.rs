@@ -15,6 +15,7 @@ mod target;
 mod tool;
 mod write;
 
+pub(crate) use crate::fs::read_text;
 pub use declined::{DeclinedStore, TomlDeclined, set_declined_text};
 pub use file::render_files;
 pub use install::{HarnessResult, InstallOptions, PartResult, install, status};
@@ -25,7 +26,6 @@ pub use merge::{
 pub use part::{Content, ExternalPart, Part, Profile, Target};
 pub use record::{Record, read_record, render_record};
 pub use region::{Markers, find_region, render_region};
-pub(crate) use state::read_text;
 pub use state::{Found, Observed, State, expected, hash, observe, state};
 pub use target::{instructions_file, target_path};
 pub use tool::{Scope, Tool};

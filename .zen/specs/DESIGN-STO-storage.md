@@ -34,7 +34,7 @@ crates/lib/smllm-core/src/
     ├── instance.rs       # Instance, Status, InstanceKey (INST-Records)
     └── history.rs        # HistoryEntry (INST-Records)
 crates/app/smllm/src/
-├── store.rs              # FsStore, write_atomic (STO-FileStore)
+├── store.rs              # FsStore (STO-FileStore); writes via agent_harness_kit::fs
 ├── paths.rs              # user_state_dir (CLI-Lookup)
 └── runtime.rs            # builds FsStore per call (HOST-Runtime)
 ```
@@ -70,7 +70,7 @@ pub struct Session {
 
 ### STO-FileStore
 
-`FsStore` implements `Store`. Paths: sessions at `<user>/sessions/<safe(key)>.json`; bindings at `<user>/bindings/<safe(harness)>/<safe(host_session)>` (plain text key); instances at `<state_dir>/<safe(machine)>/<safe(id)>.json`, history beside as `<id>.history.jsonl`. `safe()` keeps `[A-Za-z0-9-]` and %-escapes every other byte (`%5F` for `_`), so distinct ids never share a file. `write_atomic` creates parent dirs, writes `.<name>.tmp<pid>` beside the target and renames over it; it is also used by `init`, `new --write` and `compile -o`. `put_instance` creates the machine dir, drops `state/.gitignore` (`*`) if absent, opens `.lock`, takes `File::lock`, re-reads the stored version, writes only when `instance.version == stored + 1` else returns `HostError::Conflict`, then unlocks. Unknown machines read as empty (no instances) and fail on write. `sessions()` lists newest first for `session list`; `history()` parses the JSONL for `instance show`.
+`FsStore` implements `Store`. Paths: sessions at `<user>/sessions/<safe(key)>.json`; bindings at `<user>/bindings/<safe(harness)>/<safe(host_session)>` (plain text key); instances at `<state_dir>/<safe(machine)>/<safe(id)>.json`, history beside as `<id>.history.jsonl`. `safe()` keeps `[A-Za-z0-9-]` and %-escapes every other byte (`%5F` for `_`), so distinct ids never share a file. Every write goes through the kit's `fs::write_atomic` (also used by `init`, `new --write`, `compile -o` and `harness install`): it follows symlinks and replaces the file they name, creates parent dirs, creates `.<name>.<pid>.<n>.tmp` beside that file (`n` a per-process counter, so concurrent writers never share a temp) with the old file's permissions before writing the text, renames it over the target, and removes the temp on any failure (PLAN-003 F1, F2). Reads that treat a missing file as `None` use the kit's `fs::read_text`. `put_instance` creates the machine dir, drops `state/.gitignore` (`*`) if absent, opens `.lock`, takes `File::lock`, re-reads the stored version, writes only when `instance.version == stored + 1` else returns `HostError::Conflict`, then unlocks. Unknown machines read as empty (no instances) and fail on write. `sessions()` lists newest first for `session list`; `history()` parses the JSONL for `instance show`.
 
 IMPLEMENTS: STO-3_AC-1, INST-8_AC-2
 
@@ -83,7 +83,9 @@ impl FsStore {
     pub fn history(&self, machine: &str, id: &str) -> Result<Vec<HistoryEntry>, HostError>;
 }
 
-pub fn write_atomic(path: &Path, text: &str) -> std::io::Result<()>;
+// agent_harness_kit::fs
+pub fn read_text(path: &Path) -> Result<Option<String>>;
+pub fn write_atomic(path: &Path, text: &str) -> Result<()>;
 
 impl Store for FsStore {
     fn session(&mut self, key: &str) -> Result<Option<Session>, HostError>;

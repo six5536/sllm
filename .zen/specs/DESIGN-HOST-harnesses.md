@@ -38,6 +38,7 @@ crates/app/smllm/src/
     └── mcp.rs              # HOST-Mcp: rmcp ServerHandler, one tool
 crates/lib/smllm-wasm/src/lib.rs   # HOST-Wasm
 crates/lib/agent-harness-kit/src/
+├── fs.rs                   # read_text, write_atomic (keeps symlinks and modes)
 ├── harness/                # install/status, parts, region, merge, target, record, declined
 └── hook/                   # HookInput, Answer, emit, LoopGuard
 plugin/                     # Claude Code plugin (hooks.json, .mcp.json, plugin.json)

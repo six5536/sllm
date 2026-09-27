@@ -61,7 +61,7 @@ No NFR or TEST components. Carriers:
 - NFR-3: ENG-Engine — all nondeterminism (clock, ids, guard results) comes through the host
 - NFR-4: HOST-Claude via `agent_harness_kit::hook::emit`
 - NFR-5: DEC-CommandRunner — params reach commands as `SMLLM_PARAM_<NAME>` env; array `run` is exec without a shell
-- NFR-6: kit `install` plans all writes and refuses before any write; app commands validate before writing; `write_atomic` for every write
+- NFR-6: kit `install` plans all writes and refuses before any write; app commands validate before writing; the kit's `fs::write_atomic` for every write
 - NFR-7: file-size rule and `.zen/rules/rust-rules.md`; the largest Rust source file is under 600 lines
 - NFR-8: HOST-Wasm + `scripts/build-wasm.mjs` + `checks.yml` job `wasm`
 - NFR-9: ENG-Engine `unsupported(guards, actions)`, surfaced by HOST-Wasm `unsupported()`; the app does not call it, since its command host supports every v1 kind

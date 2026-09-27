@@ -7,7 +7,8 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::{
-    Error, Result,
+    Result,
+    fs::read_text,
     harness::{Content, Markers, Part, extract, find_region, parse_json},
     hash::{Fnv, normalise},
 };
@@ -72,15 +73,6 @@ pub fn expected(part: &Part) -> Found {
         Content::Block(block) => Found::Block(block.clone()),
         Content::Merge(ops) => Found::Entries(ops.iter().map(|op| op.value().clone()).collect()),
         Content::External(ext) => Found::Text(ext.expected()),
-    }
-}
-
-/// The text of `path`; `None` when absent.
-pub(crate) fn read_text(path: &Path) -> Result<Option<String>> {
-    match std::fs::read_to_string(path) {
-        Ok(t) => Ok(Some(t)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(Error::io(path, e)),
     }
 }
 

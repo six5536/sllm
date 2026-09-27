@@ -8,6 +8,7 @@
 //! - [`report`]: findings (error / warning / info) and their text and JSON
 //!   forms.
 //! - [`cli`]: exit codes, stdout, broken pipes and the `error:` runner.
+//! - [`fs`]: whole-file reads and atomic writes that keep symlinks and modes.
 #![warn(missing_docs)]
 
 mod error;
@@ -16,6 +17,7 @@ mod hash;
 mod test_support;
 
 pub mod cli;
+pub mod fs;
 pub mod harness;
 pub mod hook;
 pub mod report;
