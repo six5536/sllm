@@ -45,7 +45,7 @@ crates/lib/smllm-core/tests/snapshots/      the text contract (TURN-11)
 
 ### Architectural Decisions
 
-- ONE FENCE PER REPLY: every reply is one `Block` opened with a header and closed with `</smllm>`. A final state's block and the idle list that follows share that one fence, so the reply may contain two `<instructions>` sections. Alternatives: two fenced blocks
+- ONE FENCE PER REPLY: every reply is one `Block` opened with a header and closed with `</smllm>`. Engine lines (header, notes, trace, `error:`, idle list) echo agent input (refs, param names, labels), so `Block::line` writes each through `push_safe`: a line break shows as `\n`, and a `<` starting `smllm`/`instructions`/`events` (`<tag` or `</tag`, any case) as `&lt;`; no input can close, open or forge a fence (PLAN-003 F9). Author text in `<instructions>` and `<events>` is trusted and checked at validation instead (TURN-12_AC-2). The unknown-session error echoes its key the same way. A final state's block and the idle list that follows share that one fence, so the reply may contain two `<instructions>` sections. Alternatives: two fenced blocks
 - ENTRY BLOCKS CARRY NO MENU: after a valid transition the reply has header, arrival lines and `<instructions>` only; the events list comes from the stop hook, the no-event view and errors (D2)
 - MENU FOLLOWS A CALL LINE: every `<events>` section is preceded by `Fire one event: smllm({ session: "<key>", event, params })`
 - PARAMS ON THEIR OWN LINES: every param, including `yield`'s `note`, is an indented line under its event

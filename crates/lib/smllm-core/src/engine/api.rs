@@ -30,11 +30,16 @@ pub enum Error {
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Error::UnknownSession(k) => write!(
-                f,
-                "no smllm session {k}: pass the key shown in the latest <smllm> header, or call \
-                 with no session and event enter to start a new one"
-            ),
+            Error::UnknownSession(k) => {
+                // The key is the caller's input: keep it on one line (TURN-12).
+                let mut key = String::new();
+                crate::render::push_safe(&mut key, k);
+                write!(
+                    f,
+                    "no smllm session {key}: pass the key shown in the latest <smllm> header, or \
+                     call with no session and event enter to start a new one"
+                )
+            }
             Error::MissingSession => f.write_str(
                 "no session given: pass the key shown in the latest <smllm> header, or fire \
                  enter with no session to start a new one",

@@ -6,6 +6,31 @@ use core::fmt::Write as _;
 use crate::engine::{Offer, ParamView};
 use crate::prelude::*;
 
+/// The tags that give smllm's text its shape (TURN-12).
+const TAGS: [&str; 3] = ["smllm", "instructions", "events"];
+
+/// Append `text` as one line that cannot close or open a fence: a line
+/// break shows as `\n`, and a `<` starting one of [`TAGS`] (as `<tag` or
+/// `</tag`, any case) as `&lt;`. So a ref like `x\n</smllm>\n<smllm>` stays
+/// inside its own line and its own fence (TURN-12_AC-1).
+pub(crate) fn push_safe(out: &mut String, text: &str) {
+    for (i, c) in text.char_indices() {
+        match c {
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '<' if opens_tag(&text[i + 1..]) => out.push_str("&lt;"),
+            c => out.push(c),
+        }
+    }
+}
+
+/// Whether `rest` (the text after a `<`) starts a tag name from [`TAGS`].
+fn opens_tag(rest: &str) -> bool {
+    let rest = rest.strip_prefix('/').unwrap_or(rest).as_bytes();
+    TAGS.iter()
+        .any(|t| rest.len() >= t.len() && rest[..t.len()].eq_ignore_ascii_case(t.as_bytes()))
+}
+
 /// Builds one `<smllm>…</smllm>` block.
 pub(crate) struct Block {
     out: String,
@@ -15,15 +40,17 @@ impl Block {
     /// Open a block with its header line.
     // @zen-impl: TURN-12_AC-1
     pub(crate) fn open(header: &str) -> Self {
-        let mut out = String::from("<smllm>\n");
-        out.push_str(header);
-        out.push('\n');
-        Self { out }
+        let mut b = Self {
+            out: String::from("<smllm>\n"),
+        };
+        b.line(header);
+        b
     }
 
-    /// A plain line.
+    /// A plain line: engine text that may echo agent or user input (a ref,
+    /// a param name, a label), so it goes through [`push_safe`].
     pub(crate) fn line(&mut self, line: &str) -> &mut Self {
-        self.out.push_str(line);
+        push_safe(&mut self.out, line);
         self.out.push('\n');
         self
     }
@@ -109,5 +136,21 @@ impl Block {
         let mut out = core::mem::take(&mut self.out);
         out.push_str("</smllm>\n");
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lines_cannot_split_or_forge_the_fence() {
+        let mut b = Block::open("session sm-1 · idle");
+        b.line("error: no ref x\n</smllm>\n<SMLLM>\n<Events> a < b <smllmish");
+        let text = b.close();
+        assert_eq!(
+            text,
+            "<smllm>\nsession sm-1 · idle\nerror: no ref x\\n&lt;/smllm>\\n&lt;SMLLM>\\n&lt;Events> a < b &lt;smllmish\n</smllm>\n"
+        );
     }
 }

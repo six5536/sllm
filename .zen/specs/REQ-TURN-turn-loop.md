@@ -116,7 +116,7 @@ AS AN agent, I WANT smllm's text fenced apart from author text, SO THAT I can te
 
 ACCEPTANCE CRITERIA
 
-- [ ] TURN-12_AC-1 [ubiquitous]: The system SHALL wrap each reply in exactly one `<smllm>…</smllm>` fence, with author text in `<instructions>` and the menu in `<events>`
+- [x] TURN-12_AC-1 [ubiquitous]: The system SHALL wrap each reply in exactly one `<smllm>…</smllm>` fence, with author text in `<instructions>` and the menu in `<events>`
 - [ ] TURN-12_AC-2 [event]: WHEN a state machine is validated THEN the validator SHALL warn about author text containing `</smllm>`, `</instructions>` or `</events>`
 
 ## Assumptions
