@@ -24,7 +24,8 @@ npm install      # install the JS workspace (the launcher package)
 Use `npm install`, not `npm ci`: the launcher pins the current version of every
 platform package, and until a release has published that version the lockfile
 cannot carry a resolved entry for it, which `npm ci` treats as fatal. That is
-the case for every platform package until the first release goes out.
+the case for every platform package until the first release goes out. CI and
+the release workflow use `npm install --no-audit --no-fund` for the same reason.
 
 A plain `cargo build` needs no Node at all. Node is only needed for the npm
 packages, the version scripts, and the smoke tests.
@@ -224,8 +225,8 @@ that first ships it:
    `packages/*` itself — no change needed there.)
 
 Until the next release publishes a real version, `npm ci` fails on the new
-optional dependency (the `npm install` note under Prerequisites). That window
-is expected; land the change and the release together or in quick succession.
+optional dependency (the `npm install` note under Prerequisites), which is why
+nothing here uses `npm ci`.
 
 ### Version consistency
 

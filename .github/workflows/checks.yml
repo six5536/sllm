@@ -108,8 +108,10 @@ jobs:
         # `shell: bash` adds pipefail, so an over-budget build fails the job
         # despite the `tee`.
         shell: bash
+        # `npm install`, not `npm ci`: the lock cannot hold the launcher's
+        # platform packages before a release publishes them (CONTRIBUTING.md).
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm run build:wasm | tee wasm-build.log
           grep 'smllm_wasm_bg.wasm:' wasm-build.log >> "$GITHUB_STEP_SUMMARY"
 

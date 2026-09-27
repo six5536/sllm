@@ -56,8 +56,9 @@ for (const name of readdirSync(pkgsDir)) {
 }
 
 // Lockfiles record the workspace members' own versions, so they go stale on a
-// bump. Left stale, `cargo publish --locked` fails and `npm ci` refuses to
-// install. Refresh both rather than leave that for the release to discover.
+// bump. Left stale, `cargo publish --locked` fails and package-lock.json
+// names old versions. Refresh both rather than leave that for the release to
+// discover.
 const run = (cmd, args) => {
   try {
     execFileSync(cmd, args, { cwd: root, stdio: "inherit" });

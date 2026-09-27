@@ -214,9 +214,11 @@ jobs:
           tool: wasm-bindgen@0.2.129
 
       # packages/smllm-wasm is built here, from the tagged tree (NFR-8).
+      # `npm install`, not `npm ci`: the lock cannot hold the platform
+      # packages this release is about to publish (CONTRIBUTING.md).
       - name: Build smllm-wasm
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm run build:wasm
           npm run test:wasm
 
