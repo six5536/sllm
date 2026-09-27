@@ -398,8 +398,11 @@ mod tests {
         fs::remove_file(dev.join("done/i-x.json")).unwrap();
 
         // A ref's marker; one left by a failed write does not hold the ref.
-        assert_eq!(fs::read_to_string(dev.join("refs/R1")).unwrap(), "i-a");
-        fs::write(dev.join("refs/R9"), "i-a").unwrap();
+        assert_eq!(
+            fs::read_to_string(dev.join("refs/r1")).unwrap(),
+            r#"{"R1":"i-a"}"#
+        );
+        fs::write(dev.join("refs/r9"), r#"{"R9":"i-a"}"#).unwrap();
         let mut c = inst(1);
         c.id = "i-d".into();
         c.r#ref = Some("R9".into());
@@ -408,6 +411,29 @@ mod tests {
         c.id = "i-e".into();
         assert_eq!(s.put_instance(&c), Err(HostError::Conflict));
         assert!(s.instance_by_ref("dev", "nope").unwrap().is_none());
+
+        // Refs that differ only in case share a marker, not an owner; a long
+        // ref gets a short marker name.
+        let long = "x/".repeat(150);
+        for (id, r) in [("i-f", "gh-1"), ("i-g", "GH-1"), ("i-h", long.as_str())] {
+            let mut i = inst(1);
+            i.id = id.into();
+            i.r#ref = Some(r.into());
+            s.put_instance(&i).unwrap();
+        }
+        assert_eq!(s.instance_by_ref("dev", "gh-1").unwrap().unwrap().id, "i-f");
+        assert_eq!(s.instance_by_ref("dev", "GH-1").unwrap().unwrap().id, "i-g");
+        assert_eq!(s.instance_by_ref("dev", &long).unwrap().unwrap().id, "i-h");
+        let mut dup = inst(1);
+        dup.id = "i-j".into();
+        dup.r#ref = Some("GH-1".into());
+        assert_eq!(s.put_instance(&dup), Err(HostError::Conflict));
+        assert!(
+            fs::read_dir(dev.join("refs"))
+                .unwrap()
+                .flatten()
+                .all(|e| e.file_name().len() <= 120)
+        );
         fs::remove_dir_all(d).ok();
     }
 }

@@ -5,10 +5,10 @@
 //! file, however much history `done/` keeps (INST-9).
 // @zen-component: STO-FileStore
 
+use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 
-use agent_harness_kit::fs as fs_kit;
 use smllm_core::host::HostError;
 use smllm_core::record::{Instance, Status};
 
@@ -83,7 +83,7 @@ fn migrate_locked(dir: &Path) -> Result<(), HostError> {
             id, r#ref: Some(r), ..
         }) = &inst
         {
-            write(&dir.join(REFS).join(safe(r)), id)?;
+            add_ref(dir, r, id)?;
         }
         let to = match &inst {
             Some(i) if i.status == Status::Completed => dir.join(DONE),
@@ -95,23 +95,60 @@ fn migrate_locked(dir: &Path) -> Result<(), HostError> {
 }
 
 /// Instance `id` and where it is: `open/` first, where most reads find it.
+/// A reopen moves a file from `done/` back to `open/` without the reader's
+/// lock, so `open/` is read again after `done/`. On a case-insensitive file
+/// system `I-X.json` opens `i-x.json`: only the exact id counts.
 pub(super) fn find(dir: &Path, id: &str) -> Result<Option<(PathBuf, Instance)>, HostError> {
-    for s in [OPEN, DONE] {
-        let p = dir.join(s).join(file_name(id));
-        if let Some(i) = read_json(&p)? {
+    let name = file_name(id);
+    // Too long for a file name: no stored id (they are generated and short),
+    // but a ref looked up as an id can be.
+    if name.len() > 255 {
+        return Ok(None);
+    }
+    for s in [OPEN, DONE, OPEN] {
+        let p = dir.join(s).join(&name);
+        if let Some(i) = read_json::<Instance>(&p)?.filter(|i| i.id == id) {
             return Ok(Some((p, i)));
         }
     }
     Ok(None)
 }
 
+/// Longest ref marker name; longer ones are cut and end in a hash.
+const MAX_MARKER: usize = 120;
+
+/// The marker file of `r#ref`: a bucket of `ref → id` entries, named by
+/// the ref folded to lower case, so refs that differ only in case share a
+/// bucket rather than silently one file on macOS and Windows. A name over
+/// [`MAX_MARKER`] bytes is cut and suffixed with the ref's FNV-1a hash.
+fn marker(dir: &Path, r#ref: &str) -> PathBuf {
+    let mut name = safe(r#ref).to_ascii_lowercase();
+    if name.len() > MAX_MARKER {
+        let hash = r#ref.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+            (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+        });
+        name.truncate(MAX_MARKER - 17);
+        name.push_str(&format!("~{hash:016x}"));
+    }
+    dir.join(REFS).join(name)
+}
+
+/// Record that instance `id` has `r#ref`.
+fn add_ref(dir: &Path, r#ref: &str, id: &str) -> Result<(), HostError> {
+    let path = marker(dir, r#ref);
+    let mut bucket: BTreeMap<String, String> = read_json(&path)?.unwrap_or_default();
+    bucket.insert(r#ref.to_string(), id.to_string());
+    write(&path, &serde_json::to_string(&bucket).map_err(other)?)
+}
+
 /// The instance whose ref is `r#ref`: its marker names it, and it has the
 /// ref (a marker left by a failed write names one that does not).
 pub(super) fn by_ref(dir: &Path, r#ref: &str) -> Result<Option<Instance>, HostError> {
-    let Some(id) = fs_kit::read_text(&dir.join(REFS).join(safe(r#ref))).map_err(other)? else {
+    let bucket: Option<BTreeMap<String, String>> = read_json(&marker(dir, r#ref))?;
+    let Some(id) = bucket.as_ref().and_then(|b| b.get(r#ref)) else {
         return Ok(None);
     };
-    Ok(find(dir, id.trim())?
+    Ok(find(dir, id)?
         .map(|(_, i)| i)
         .filter(|i| i.r#ref.as_deref() == Some(r#ref)))
 }
@@ -152,6 +189,8 @@ pub(super) fn scan(dir: &Path, status: Option<Status>) -> (Vec<Instance>, Vec<(P
         }
     }
     out.0.sort_by(|a, b| a.id.cmp(&b.id));
+    // An instance moving shelves while they are read may be seen on both.
+    out.0.dedup_by(|a, b| a.id == b.id);
     out.1.sort();
     out
 }
@@ -178,7 +217,7 @@ pub(super) fn put(dir: &Path, instance: &Instance) -> Result<(), HostError> {
             if another(by_ref(dir, r)?) || another(find(dir, r)?.map(|(_, i)| i)) {
                 return Err(HostError::Conflict);
             }
-            write(&dir.join(REFS).join(safe(r)), &instance.id)?;
+            add_ref(dir, r, &instance.id)?;
         }
         let text = serde_json::to_string_pretty(instance).map_err(other)?;
         let target = dir
