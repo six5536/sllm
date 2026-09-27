@@ -6,7 +6,7 @@ use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 use smllm_core::host::{Action, Call, Clock, Guard, Ids, InstructionSource, Matcher, Outcome};
@@ -92,10 +92,15 @@ pub fn run_command(call: &Call<'_>) -> Outcome {
     // at their next read, so such a process cannot grow smllm's memory.
     let collected = Arc::new(Mutex::new(Vec::new()));
     let done = Arc::new(AtomicBool::new(false));
+    // Each reader holds a sender until it ends: the channel disconnects once
+    // both have reached end-of-file.
+    let (reading, all_read) = mpsc::channel::<()>();
     let drain = |r: Option<Box<dyn Read + Send>>| {
         let sink = Arc::clone(&collected);
         let done = Arc::clone(&done);
+        let reading = reading.clone();
         std::thread::spawn(move || {
+            let _reading = reading;
             let Some(mut r) = r else { return };
             let mut buf = [0u8; 4096];
             while let Ok(n) = r.read(&mut buf) {
@@ -110,20 +115,19 @@ pub fn run_command(call: &Call<'_>) -> Outcome {
             }
         })
     };
-    let readers = [
-        drain(
-            child
-                .stdout
-                .take()
-                .map(|s| Box::new(s) as Box<dyn Read + Send>),
-        ),
-        drain(
-            child
-                .stderr
-                .take()
-                .map(|s| Box::new(s) as Box<dyn Read + Send>),
-        ),
-    ];
+    drain(
+        child
+            .stdout
+            .take()
+            .map(|s| Box::new(s) as Box<dyn Read + Send>),
+    );
+    drain(
+        child
+            .stderr
+            .take()
+            .map(|s| Box::new(s) as Box<dyn Read + Send>),
+    );
+    drop(reading);
     let waited = child.wait_timeout(Duration::from_secs(secs));
     let status = match waited {
         Ok(Some(s)) => s,
@@ -143,23 +147,22 @@ pub fn run_command(call: &Call<'_>) -> Outcome {
             };
         }
     };
-    // Give the readers a moment to reach end-of-file, then take what arrived.
-    let deadline = std::time::Instant::now() + Duration::from_millis(200);
-    while readers.iter().any(|r| !r.is_finished()) && std::time::Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(5));
+    if status.success() {
+        // A pass shows no output (DEC-5).
+        done.store(true, Ordering::Relaxed);
+        return Outcome {
+            ok: true,
+            detail: String::new(),
+        };
     }
+    // Give the readers a moment to reach end-of-file, then take what arrived.
+    let _ = all_read.recv_timeout(Duration::from_millis(200));
     done.store(true, Ordering::Relaxed);
     let text = collected
         .lock()
         .map(|v| String::from_utf8_lossy(&v).into_owned())
         .unwrap_or_default();
     let t = tail(&text);
-    if status.success() {
-        return Outcome {
-            ok: true,
-            detail: String::new(),
-        };
-    }
     let code = status.code().map_or_else(
         || "killed by a signal".to_string(),
         |c| format!("exited {c}"),
@@ -323,10 +326,15 @@ mod tests {
             "{}",
             &o.detail[..40]
         );
-        // A background process holding the pipes does not stall the result.
+        // A background process holding the pipes does not stall the result;
+        // a pass waits for no output at all (PLAN-004 P-7).
         p.insert("run", Value::Str("sleep 5 & exit 0".into()));
         let t0 = std::time::Instant::now();
         assert!(run_command(&call(&p, &env)).ok);
+        assert!(t0.elapsed() < std::time::Duration::from_millis(150));
+        p.insert("run", Value::Str("sleep 5 & echo late; exit 2".into()));
+        let t0 = std::time::Instant::now();
+        assert_eq!(run_command(&call(&p, &env)).detail, "exited 2: late");
         assert!(t0.elapsed() < std::time::Duration::from_secs(3));
         p.insert("run", Value::Str("sleep 5".into()));
         p.insert("timeoutSecs", Value::Int(1));

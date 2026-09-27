@@ -109,8 +109,8 @@ impl FsStore {
     }
 
     /// Every instance file of `machine`: the readable ones by id, and the
-    /// unreadable ones with why.
-    fn scan(&self, machine: &str) -> (Vec<Instance>, Vec<(PathBuf, String)>) {
+    /// unreadable ones with why (`validate` reports those, STO-1).
+    pub fn scan(&self, machine: &str) -> (Vec<Instance>, Vec<(PathBuf, String)>) {
         let (mut good, mut bad) = (Vec::new(), Vec::new());
         let Ok(dir) = self.machine_dir(machine) else {
             return (good, bad);
@@ -133,11 +133,6 @@ impl FsStore {
         good.sort_by(|a: &Instance, b| a.id.cmp(&b.id));
         bad.sort();
         (good, bad)
-    }
-
-    /// Instance files of `machine` that cannot be read, with why.
-    pub fn unreadable(&self, machine: &str) -> Vec<(PathBuf, String)> {
-        self.scan(machine).1
     }
 
     /// Whether another instance of the machine already has `instance`'s ref,
@@ -209,7 +204,7 @@ impl Store for FsStore {
 
     /// The machine's readable instances. An unreadable or corrupt file is
     /// skipped, so one bad file cannot break every idle list and status
-    /// line; `validate` reports it ([`FsStore::unreadable`]).
+    /// line; `validate` reports it ([`FsStore::scan`]).
     fn instances(&mut self, machine: &str) -> Result<Vec<Instance>, HostError> {
         Ok(self.scan(machine).0)
     }
@@ -229,8 +224,10 @@ impl Store for FsStore {
         lock.lock().map_err(other)?;
         let path = dir.join(format!("{}.json", safe(&instance.id)));
         let stored: Option<Instance> = read_json(&path)?;
-        let stored = stored.map_or(0, |i| i.version);
-        let result = if instance.version != stored + 1 || self.ref_taken(instance)? {
+        let (version, stored_ref) = stored.map_or((0, None), |i| (i.version, i.r#ref));
+        // Only a new ref needs the scan of every instance.
+        let new_ref = instance.r#ref != stored_ref;
+        let result = if instance.version != version + 1 || (new_ref && self.ref_taken(instance)?) {
             Err(HostError::Conflict)
         } else {
             let text = serde_json::to_string_pretty(instance).map_err(other)?;
@@ -310,10 +307,22 @@ mod tests {
         assert_eq!(s.put_instance(&b), Err(HostError::Conflict));
         b.r#ref = Some("GH-2".into());
         s.put_instance(&b).unwrap();
+        // Only a new ref is checked against the others (PLAN-004 P-8): a
+        // clash made by hand does not stop the instance from saving.
+        let mut clash = b.clone();
+        clash.id = "i-3".into();
+        fs::write(
+            d.join("proj/state/dev/i-3.json"),
+            serde_json::to_string(&clash).unwrap(),
+        )
+        .unwrap();
+        b.version += 1;
+        s.put_instance(&b).unwrap();
+        fs::remove_file(d.join("proj/state/dev/i-3.json")).unwrap();
         // A corrupt instance file is skipped, and reported (PLAN-003 F5).
         fs::write(d.join("proj/state/dev/i-bad.json"), "{ nope").unwrap();
         assert_eq!(s.instances("dev").unwrap().len(), 2);
-        let bad = s.unreadable("dev");
+        let bad = s.scan("dev").1;
         assert_eq!(bad.len(), 1);
         assert!(bad[0].0.ends_with("i-bad.json"), "{bad:?}");
         s.append_history(

@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use agent_harness_kit::fs::write_atomic;
 use agent_harness_kit::report_text;
 use serde_json::json;
-use smllm_core::host::Store;
 use smllm_format::{
     ConfigFile, Finding, Findings, Origin, Severity, compile, config_template, json_schema,
     Mode, load_machine, machine_template,
@@ -156,7 +155,8 @@ fn relative(base: &Path, path: &Path) -> PathBuf {
 fn saved_states(rt: &mut Runtime) -> Findings {
     let mut out = Findings::default();
     for src in rt.sources.clone() {
-        for (file, why) in rt.store.unreadable(&src.id) {
+        let (instances, unreadable) = rt.store.scan(&src.id);
+        for (file, why) in unreadable {
             out.push(Finding {
                 level: Severity::Warning,
                 file,
@@ -171,7 +171,7 @@ fn saved_states(rt: &mut Runtime) -> Findings {
             continue;
         };
         let states: Vec<String> = m.states.iter().map(|s| s.name.clone()).collect();
-        for i in rt.store.instances(&src.id).unwrap_or_default() {
+        for i in instances {
             if !states.contains(&i.state) {
                 out.push(Finding {
                     level: Severity::Warning,
