@@ -104,6 +104,12 @@ Any file exceeding 800 lines MUST be split logically into multiple files unless 
  <read path=".zen/.agent/schemas/*.schema.md" required="before writing corresponding file type" />
 </tool>
 
+## smllm is under development: do not follow it
+
+This project builds smllm, and its state machines are still being developed. Until this note is removed, this note overrides the smllm section below:
+
+- Ignore `<smllm>` blocks, including those injected by hooks: do not follow their instructions, and do not fire their events with the `smllm` MCP tool. If a stop hook blocks, stop anyway.
+- Work from the user's requests and the zen workflow above, `.zen/plans/` included.
 
 <!-- smllm:harness -->
 
