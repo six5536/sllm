@@ -172,14 +172,32 @@ pub fn run_command(call: &Call<'_>) -> Outcome {
 }
 
 /// Kill a timed-out command and, on unix, its whole process group.
+// @zen-impl: DEC-5_AC-1
 fn kill_tree(child: &mut std::process::Child) {
     #[cfg(unix)]
-    let _ = Command::new("kill")
-        .args(["-KILL", &format!("-{}", child.id())])
-        .stderr(Stdio::null())
-        .status();
+    kill_group(child);
     let _ = child.kill();
     let _ = child.wait();
+}
+
+/// Signal the child's process group with `kill -s KILL -- -<pgid>`, only
+/// while the group is certainly the child's (D3-1). Unreaped, the child's pid
+/// (its group id, `process_group(0)`) cannot have been reused; a pid ≤ 1
+/// would make `-<pid>` mean every process. Without `--`, procps `kill` reads
+/// `-<pid>` as an option and signals `-<first digit>`: `-1`, every process.
+#[cfg(unix)]
+fn kill_group(child: &mut std::process::Child) {
+    let pid = child.id();
+    if pid <= 1 || !matches!(child.try_wait(), Ok(None)) {
+        return;
+    }
+    // A missing `kill` is a spawn error: the caller's `child.kill()` remains.
+    let _ = Command::new("kill")
+        .args(["-s", "KILL", "--", &format!("-{pid}")])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 impl Guard for Commands {
@@ -292,6 +310,46 @@ mod tests {
         p.insert("cwd", Value::Str("/".into()));
         assert!(Action::run(&mut c, &call(&p, &env)).ok);
         assert!(Guard::check(&mut c, &call(&p, &env)).ok);
+    }
+
+    // A timeout kills the command's whole group, and only it: this test
+    // process survives, and so does the sleep started beside it (D3-1).
+    // @zen-test: DEC-5_AC-1
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_timeout_kills_the_group_and_nothing_else() {
+        let alive = |pid: &str| {
+            std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| {
+                s.rsplit(')')
+                    .next()
+                    .is_some_and(|r| !r.trim_start().starts_with('Z'))
+            })
+        };
+        let dir = std::env::temp_dir().join(format!("smllm-kill-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pidfile = dir.join("pid");
+        let mut bystander = Command::new("sleep").arg("30").spawn().unwrap();
+        let mut p = SmallMap::new();
+        p.insert(
+            "run",
+            Value::Str(format!(
+                "sleep 30 & echo $! > '{}'; wait",
+                pidfile.display()
+            )),
+        );
+        p.insert("timeoutSecs", Value::Int(1));
+        assert_eq!(run_command(&call(&p, &[])).detail, "timed out after 1s");
+        let grandchild = std::fs::read_to_string(&pidfile).unwrap();
+        let grandchild = grandchild.trim();
+        let t0 = std::time::Instant::now();
+        while alive(grandchild) && t0.elapsed() < Duration::from_secs(3) {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(!alive(grandchild), "the group's sleep survived");
+        assert!(matches!(bystander.try_wait(), Ok(None)), "a bystander died");
+        let _ = bystander.kill();
+        let _ = bystander.wait();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
