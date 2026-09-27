@@ -33,7 +33,11 @@ with the gate passing; specs updated with the code.
 
 ## 4. Decisions
 
-(filled in while grilling)
+- D6-1 (I-1): nothing is released, so no compatibility: delete the migration. Readers read only
+  the shelves (`open/`, `done/`, `refs/`, `history/`; a missing folder is no instances) and never
+  write; writers create the folders they need under the lock they already take. The CHANGELOG's
+  "moves on first use; restart after upgrading" note goes. The same rule (no compatibility code
+  before the first release) applies to every later item.
 
 ## 5. Outcome
 
