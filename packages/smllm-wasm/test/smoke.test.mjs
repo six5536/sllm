@@ -32,12 +32,15 @@ test("a scripted session runs through the JS API", () => {
   let r = JSON.parse(engine.fire(key, "enter", JSON.stringify({ stateMachine: "dev", issueId: "GH-1" })));
   assert.equal(r.ok, true, r.text);
   assert.equal(r.location.state, "TRIAGE");
-  assert.ok(engine.stop(key, false).includes("<events>"));
+  const block = JSON.parse(engine.stop(key, false));
+  assert.equal(block.decision, "block");
+  assert.ok(block.text.includes("<events>"));
+  assert.equal(JSON.parse(engine.stop(key, true)).decision, "runaway");
   r = JSON.parse(engine.fire(key, "accept", "{}"));
   assert.equal(r.location.state, "WORK", r.text);
   assert.throws(() => engine.fire(key, "submit", JSON.stringify({ summary: 1 })), /must be a string/);
   r = JSON.parse(engine.fire(key, "yield", "{}"));
-  assert.equal(engine.stop(key, false), undefined);
+  assert.deepEqual(JSON.parse(engine.stop(key, false)), { decision: "allow" });
   const status = JSON.parse(engine.status(key));
   assert.equal(status.state, "WORK");
   assert.equal(status.yielded, true);
@@ -46,4 +49,24 @@ test("a scripted session runs through the JS API", () => {
   const again = new Engine(compiled, host);
   again.importState(state);
   assert.equal(JSON.parse(again.view(key)).location.state, "WORK");
+});
+
+// A host method that throws is a host failure, not a broken engine
+// (PLAN-003 F22): here `new RegExp` rejects a Rust-only pattern.
+test("a throwing host leaves the engine usable", () => {
+  const throwing = {
+    ...host,
+    isMatch: (pattern) => {
+      throw new SyntaxError(`Invalid regular expression: /${pattern}/`);
+    },
+  };
+  const engine = new Engine(compiled, throwing);
+  const key = JSON.parse(engine.bind("test", "t-2", "/work")).session;
+  for (let i = 0; i < 600; i++) {
+    const r = JSON.parse(engine.fire(key, "enter", JSON.stringify({ stateMachine: "dev", issueId: "GH-1" })));
+    assert.equal(r.ok, false);
+    assert.match(r.text, /host isMatch threw: SyntaxError/);
+  }
+  assert.equal(JSON.parse(engine.view(key)).session, key);
+  assert.ok(engine.exportState().includes(key));
 });

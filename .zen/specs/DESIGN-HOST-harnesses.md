@@ -142,7 +142,7 @@ impl rmcp::ServerHandler for Server {
 
 ### HOST-Wasm
 
-`wasm_bindgen` `Engine` class over `smllm compile` JSON with a `MemoryStore`. One JS host object supplies every host trait: `supports`, `check`, `run` (`""` = success), `read`, `isMatch`, `now`, `random`; params and env cross as JSON strings. Every method returns the core `Reply` as JSON; `stop` returns `null` or the list text; `exportState` / `importState` move the store as JSON so a JS host can persist it. `unsupported()` lists guard/action kinds the host cannot run (NFR-9).
+`wasm_bindgen` `Engine` class over `smllm compile` JSON with a `MemoryStore`. One JS host object supplies every host trait: `supports`, `check`, `run` (`""` = success), `read`, `isMatch`, `now`, `random`; params and env cross as JSON strings. Every method returns the core `Reply` as JSON; `stop` returns `{"decision": "allow" | "block" | "runaway", "text"?}` as JSON (`text`, the events list, for block and runaway; PLAN-003 D3-4). Every host method is imported with `catch`: a throw becomes a failed guard or action, an `Err` from `read`/`isMatch` (so a pattern JS rejects is the core's graceful bad-pattern rejection), `false` from `supports`, `0` from `now`, and a counter from `random`; the text is `host <method> threw: <String(e)>` (PLAN-003 F22); `exportState` / `importState` move the store as JSON so a JS host can persist it. `unsupported()` lists guard/action kinds the host cannot run (NFR-9).
 
 ```rust
 #[wasm_bindgen]
@@ -154,7 +154,7 @@ impl Engine {
     pub fn view(&mut self, key: &str) -> Result<String, JsError>;
     pub fn events(&mut self, key: &str) -> Result<String, JsError>;
     pub fn fire(&mut self, key: Option<String>, event: &str, params: &str) -> Result<String, JsError>;
-    pub fn stop(&mut self, key: &str, stop_hook_active: bool) -> Result<Option<String>, JsError>;
+    pub fn stop(&mut self, key: &str, stop_hook_active: bool) -> Result<String, JsError>;
     #[wasm_bindgen(js_name = promptSubmitted)]
     pub fn prompt_submitted(&mut self, key: &str) -> Result<(), JsError>;
     #[wasm_bindgen(js_name = exportState)]

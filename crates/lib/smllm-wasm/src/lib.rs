@@ -6,40 +6,69 @@
 //! export and import as JSON. Every call returns the core `Reply` as JSON.
 // @zen-component: HOST-Wasm
 
+use core::sync::atomic::{AtomicU32, Ordering};
 use smllm_core::host::{
     Action, Call, Clock, Guard, Host, Ids, InstructionSource, Matcher, MemoryStore, Outcome,
 };
 use smllm_core::model::Config;
 use smllm_core::{Bind, Stop};
+
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 extern "C" {
-    /// The JS host object. Every method is optional to call but must exist.
+    /// The JS host object. Every method must exist. Each is called with
+    /// `catch`: a method that throws is a host failure the engine handles
+    /// (a failed guard or action, a bad pattern), never an unwind through it.
     pub type JsHost;
 
     /// Guard of a host kind: `true` passes.
-    #[wasm_bindgen(method)]
-    fn check(this: &JsHost, kind: &str, params: &str, env: &str, cwd: &str) -> bool;
+    #[wasm_bindgen(method, catch)]
+    fn check(
+        this: &JsHost,
+        kind: &str,
+        params: &str,
+        env: &str,
+        cwd: &str,
+    ) -> Result<bool, JsValue>;
     /// Action of a host kind: `""` = success, else the failure detail.
-    #[wasm_bindgen(method)]
-    fn run(this: &JsHost, kind: &str, params: &str, env: &str, cwd: &str) -> String;
+    #[wasm_bindgen(method, catch)]
+    fn run(
+        this: &JsHost,
+        kind: &str,
+        params: &str,
+        env: &str,
+        cwd: &str,
+    ) -> Result<String, JsValue>;
     /// Host kinds supported (`"command"` …).
-    #[wasm_bindgen(method)]
-    fn supports(this: &JsHost, kind: &str) -> bool;
+    #[wasm_bindgen(method, catch)]
+    fn supports(this: &JsHost, kind: &str) -> Result<bool, JsValue>;
     /// A prompt file's text, or `undefined` when absent.
-    #[wasm_bindgen(method)]
-    fn read(this: &JsHost, file: &str) -> Option<String>;
+    #[wasm_bindgen(method, catch)]
+    fn read(this: &JsHost, file: &str) -> Result<Option<String>, JsValue>;
     /// ECMA-262 `new RegExp(pattern).test(value)`.
-    #[wasm_bindgen(method, js_name = isMatch)]
-    fn is_match(this: &JsHost, pattern: &str, value: &str) -> bool;
+    #[wasm_bindgen(method, catch, js_name = isMatch)]
+    fn is_match(this: &JsHost, pattern: &str, value: &str) -> Result<bool, JsValue>;
     /// `Date.now()`.
-    #[wasm_bindgen(method)]
-    fn now(this: &JsHost) -> f64;
+    #[wasm_bindgen(method, catch)]
+    fn now(this: &JsHost) -> Result<f64, JsValue>;
     /// A random 32-bit unsigned integer.
-    #[wasm_bindgen(method)]
-    fn random(this: &JsHost) -> u32;
+    #[wasm_bindgen(method, catch)]
+    fn random(this: &JsHost) -> Result<u32, JsValue>;
+
+    /// The global `String(value)`: an exception's text (`Error: …`).
+    #[wasm_bindgen(js_name = String)]
+    fn js_string(value: &JsValue) -> String;
 }
+
+/// What a host method threw, as text.
+fn thrown(what: &str, e: &JsValue) -> String {
+    format!("host {what} threw: {}", js_string(e))
+}
+
+/// Ids when the host's `random` throws: distinct per call, so id retries
+/// always end.
+static FALLBACK_IDS: AtomicU32 = AtomicU32::new(0);
 
 struct Js<'a>(&'a JsHost);
 
@@ -55,27 +84,49 @@ fn env_json(env: &[(String, String)]) -> String {
     json(&map)
 }
 
+impl Js<'_> {
+    /// `supports`, a throw meaning no.
+    fn kind_supported(&self, kind: &str) -> bool {
+        self.0.supports(kind).unwrap_or(false)
+    }
+
+    fn random_u32(&self) -> u32 {
+        self.0
+            .random()
+            .unwrap_or_else(|_| FALLBACK_IDS.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
 impl Guard for Js<'_> {
     fn supports(&self, kind: &str) -> bool {
-        self.0.supports(kind)
+        self.kind_supported(kind)
     }
     fn check(&mut self, c: &Call<'_>) -> Outcome {
-        let ok = self
+        match self
             .0
-            .check(c.kind, &json(c.params), &env_json(c.env), c.cwd);
-        Outcome {
-            ok,
-            detail: String::new(),
+            .check(c.kind, &json(c.params), &env_json(c.env), c.cwd)
+        {
+            Ok(ok) => Outcome {
+                ok,
+                detail: String::new(),
+            },
+            Err(e) => Outcome {
+                ok: false,
+                detail: thrown("check", &e),
+            },
         }
     }
 }
 
 impl Action for Js<'_> {
     fn supports(&self, kind: &str) -> bool {
-        self.0.supports(kind)
+        self.kind_supported(kind)
     }
     fn run(&mut self, c: &Call<'_>) -> Outcome {
-        let detail = self.0.run(c.kind, &json(c.params), &env_json(c.env), c.cwd);
+        let detail = self
+            .0
+            .run(c.kind, &json(c.params), &env_json(c.env), c.cwd)
+            .unwrap_or_else(|e| thrown("run", &e));
         Outcome {
             ok: detail.is_empty(),
             detail,
@@ -85,25 +136,27 @@ impl Action for Js<'_> {
 
 impl InstructionSource for Js<'_> {
     fn read(&self, file: &str) -> Result<Option<String>, String> {
-        Ok(self.0.read(file))
+        self.0.read(file).map_err(|e| thrown("read", &e))
     }
 }
 
 impl Matcher for Js<'_> {
     fn is_match(&self, pattern: &str, value: &str) -> Result<bool, String> {
-        Ok(self.0.is_match(pattern, value))
+        self.0
+            .is_match(pattern, value)
+            .map_err(|e| thrown("isMatch", &e))
     }
 }
 
 impl Clock for Js<'_> {
     fn now_ms(&self) -> u64 {
-        self.0.now() as u64
+        self.0.now().unwrap_or(0.0) as u64
     }
 }
 
 impl Ids for Js<'_> {
     fn random(&mut self) -> u64 {
-        (u64::from(self.0.random()) << 32) | u64::from(self.0.random())
+        (u64::from(self.random_u32()) << 32) | u64::from(self.random_u32())
     }
 }
 
@@ -221,15 +274,26 @@ impl Engine {
             .map_err(err)
     }
 
-    /// The stop decision: `null` = may stop, else the events list text.
-    pub fn stop(&mut self, key: &str, stop_hook_active: bool) -> Result<Option<String>, JsError> {
-        match self
+    /// The stop decision as JSON (TURN-4..6): `{"decision": "allow"}` = may
+    /// stop; `{"decision": "block", "text"}` = hold the agent with the events
+    /// list; `{"decision": "runaway", "text"}` = let it stop, showing the
+    /// list to the user (the harness was already continuing because of a
+    /// block, and no event was fired since).
+    pub fn stop(&mut self, key: &str, stop_hook_active: bool) -> Result<String, JsError> {
+        let decision = self
             .with(|e, h| e.stop(h, key, stop_hook_active))
-            .map_err(err)?
-        {
-            Stop::Allow => Ok(None),
-            Stop::Block(t) | Stop::Runaway(t) => Ok(Some(t)),
+            .map_err(err)?;
+        let (name, text) = match decision {
+            Stop::Allow => ("allow", None),
+            Stop::Block(t) => ("block", Some(t)),
+            Stop::Runaway(t) => ("runaway", Some(t)),
+        };
+        let mut out = serde_json::Map::new();
+        out.insert("decision".into(), name.into());
+        if let Some(t) = text {
+            out.insert("text".into(), t.into());
         }
+        Ok(json(&out))
     }
 
     /// A user prompt arrived.

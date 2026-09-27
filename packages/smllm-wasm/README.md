@@ -20,7 +20,16 @@ const engine = new Engine(compiled, {
 const { session, text } = JSON.parse(engine.bind("web", undefined, "/"));
 // Show `text` to the agent; when it picks an event:
 const reply = JSON.parse(engine.fire(session, "enter", JSON.stringify({ stateMachine: "dev" })));
+// When the agent tries to stop (`stopHookActive`: it is already continuing
+// because of an earlier block):
+const stop = JSON.parse(engine.stop(session, stopHookActive));
+// stop.decision "block": hold the agent, show it stop.text (the events list);
+// "runaway": let it stop, show stop.text to the user; "allow": let it stop.
 ```
+
+A host method that throws is treated as a host failure: a failed guard or
+action, or a rejected pattern (`isMatch`), shown in the reply text. The
+engine stays usable.
 
 Sessions and instances live in memory; persist them with `exportState()` /
 `importState(json)`. `unsupported()` lists guard/action kinds the machines
