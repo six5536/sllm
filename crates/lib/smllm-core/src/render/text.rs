@@ -36,9 +36,14 @@ pub(crate) fn header(
     h
 }
 
-/// `session K · idle`.
+/// `session K · idle`; `no session · idle` without a key (a rejected
+/// keyless `enter`).
 pub(crate) fn idle_header(key: &str) -> String {
-    format!("session {key} · idle")
+    if key.is_empty() {
+        "no session · idle".to_string()
+    } else {
+        format!("session {key} · idle")
+    }
 }
 
 /// A param value in double quotes, inner quotes and newlines escaped.
@@ -94,6 +99,7 @@ mod tests {
             "session sm-1 · dev › WORK (visit 3) · issue GH-1"
         );
         assert_eq!(idle_header("sm-1"), "session sm-1 · idle");
+        assert_eq!(idle_header(""), "no session · idle");
     }
 
     #[test]

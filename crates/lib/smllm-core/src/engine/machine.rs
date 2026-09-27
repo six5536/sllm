@@ -29,6 +29,37 @@ impl Gone {
     }
 }
 
+/// An event while the held instance is gone. `enter` is idle's event, and
+/// idle is where a gone instance leaves the session: after a move it goes
+/// on from idle (the reply already said the session is idle). With the
+/// machine unconfigured, `park` and `enter` let go of the instance (its saved
+/// state is untouched) so the session is never stuck; anything else gets
+/// the error reply.
+fn when_gone(
+    turn: &mut Turn<'_, '_>,
+    gone: Gone,
+    params: &[(String, String)],
+) -> Result<Reply, Error> {
+    let event = turn.event.as_str();
+    match gone {
+        Gone::Moved(_) if event == "enter" => idle::fire(turn, params),
+        Gone::Unconfigured(_) if event == "park" || event == "enter" => {
+            if let Some(key) = turn.session.holding.take() {
+                turn.notes.push(format!(
+                    "Let go of instance {} of the unconfigured state machine {}; its saved state is unchanged.",
+                    key.id, key.machine
+                ));
+            }
+            if event == "enter" {
+                return idle::fire(turn, params);
+            }
+            turn.host.store.put_session(&turn.session)?;
+            idle::reply(turn, true, None)
+        }
+        gone => Ok(gone.reply()),
+    }
+}
+
 /// The held instance, or why not. `persist`: drop the session to idle in the
 /// store when it moved (event calls and the stop hook); views never write
 /// (ENG-5).
@@ -91,6 +122,8 @@ fn gone(
 /// Drop to idle with an error (INST-7).
 // @zen-impl: INST-7_AC-1
 pub(crate) fn moved(turn: &mut Turn<'_, '_>, msg: String) -> Result<Reply, Error> {
+    // Nothing was entered: drop the prompts this call gathered.
+    turn.prompts.clear();
     turn.session.holding = None;
     turn.host.store.put_session(&turn.session)?;
     idle::reply(turn, false, Some(msg))
@@ -237,7 +270,7 @@ fn reject(
 pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Result<Reply, Error> {
     let (machine, mut inst) = match held(turn, true)? {
         Ok(p) => p,
-        Err(gone) => return Ok(gone.reply()),
+        Err(gone) => return when_gone(turn, gone, params),
     };
     let state = machine.state(&inst.state);
     let offers = machine_offers(machine, state, &inst);
@@ -313,19 +346,22 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
         }
         _ => {
             let on = state.and_then(|s| s.on(&event)).expect("offered");
-            // setRef is checked before guards run, so a rejected call has no
-            // side effects (TURN-3).
-            let sets_ref = |t: &crate::model::Transition| t.actions.contains(&ActionDef::SetRef);
-            if on.transitions.iter().any(sets_ref)
-                && let Err(msg) = check_set_ref(turn, machine, &inst)
-            {
-                return reject(turn, machine, &mut inst, msg);
-            }
             let Some(t) = turn.pick(&inst, &from, &on.transitions) else {
                 let msg = format!("no transition of {event} matched in {from}; nothing changed");
                 return reject(turn, machine, &mut inst, msg);
             };
-            if machine.state(&inst.state).is_some_and(|s| s.fallback) && t.target.is_some() {
+            // Only the chosen transition's setRef counts; checked before any
+            // action runs, so a rejected call changes nothing (TURN-3).
+            if t.actions.contains(&ActionDef::SetRef)
+                && let Err(msg) = check_set_ref(turn, machine, &inst)
+            {
+                return reject(turn, machine, &mut inst, msg);
+            }
+            // Leaving a fallback state ends the detour; a transition back
+            // into it keeps its way back (`resume`).
+            if machine.state(&inst.state).is_some_and(|s| s.fallback)
+                && t.target.as_deref().is_some_and(|to| to != inst.state)
+            {
                 inst.interrupted = None;
             }
             turn.take(machine, &mut inst, &from, t);
@@ -341,7 +377,8 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
     }
 }
 
-/// `setRef` may run once, with a ref no other instance has (INST-3).
+/// `setRef` may run once, with a ref no other instance has; setting the ref
+/// the instance already has changes nothing (INST-3).
 // @zen-impl: INST-3_AC-1
 fn check_set_ref(
     turn: &mut Turn<'_, '_>,
@@ -349,16 +386,20 @@ fn check_set_ref(
     inst: &Instance,
 ) -> Result<(), String> {
     let kind = &machine.instance.kind;
-    if let Some(r) = &inst.r#ref {
-        return Err(format!(
-            "{kind} {} already has its ref {r}; it is set once",
-            inst.id
-        ));
-    }
     let param = &machine.instance.ref_param;
     let Some((_, value)) = turn.params.iter().find(|(n, _)| n == param) else {
         return Err(format!("{} needs param {param}", turn.event));
     };
+    match &inst.r#ref {
+        Some(r) if r == value => return Ok(()),
+        Some(r) => {
+            return Err(format!(
+                "{kind} {} already has its ref {r}; it is set once",
+                inst.id
+            ));
+        }
+        None => {}
+    }
     let taken = turn
         .host
         .store

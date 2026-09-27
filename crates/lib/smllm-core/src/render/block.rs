@@ -53,13 +53,19 @@ impl Block {
         self
     }
 
-    /// The menu: the call line, then `<events>` (TURN-2).
+    /// The menu: the call line, then `<events>` (TURN-2). Without a key the
+    /// call line has no session (a rejected keyless `enter`).
     // @zen-impl: TURN-2_AC-1
     pub(crate) fn events(&mut self, key: &str, offers: &[Offer]) -> &mut Self {
-        let _ = writeln!(
-            self.out,
-            "Fire one event: smllm({{ session: \"{key}\", event, params }})"
-        );
+        if key.is_empty() {
+            self.out
+                .push_str("Fire one event: smllm({ event, params })\n");
+        } else {
+            let _ = writeln!(
+                self.out,
+                "Fire one event: smllm({{ session: \"{key}\", event, params }})"
+            );
+        }
         self.out.push_str("<events>\n");
         for offer in offers {
             self.out.push_str("- ");

@@ -257,6 +257,7 @@ impl Engine {
             None => return Err(Error::MissingSession),
         };
         let mut turn = Turn::new(&self.config, host, session, event);
+        turn.unsaved = key.is_none();
         turn.session.last_active = turn.now;
         // Saved with the session by every path that records the event.
         turn.session.blocked = false;

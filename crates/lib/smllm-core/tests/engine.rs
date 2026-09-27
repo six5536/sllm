@@ -659,7 +659,7 @@ fn a_view_never_drops_the_session_even_if_its_machine_is_missing() {
         r.text
     );
     assert_eq!(f.stop(&broken, &k, false), Stop::Allow);
-    let r = f.fire(&broken, &k, "park", &[]);
+    let r = f.fire(&broken, &k, "yield", &[]);
     assert!(!r.ok);
     assert_eq!(f.store, before, "nothing written");
     // Fixed config: the session is still where it was.

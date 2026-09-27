@@ -44,7 +44,7 @@ AS AN agent, I WANT to name an instance by its external id, SO THAT I can refer 
 
 ACCEPTANCE CRITERIA
 
-- [x] INST-3_AC-1 [complex]: WHERE a ref is given at `enter` or by a `setRef` action, the system SHALL set it only if the instance has no ref and no other instance of the same state machine has that ref or id; IF the ref is already set or taken THEN the system SHALL reject the call with an error and change nothing
+- [x] INST-3_AC-1 [complex]: WHERE a ref is given at `enter` or by a `setRef` action, the system SHALL set it only if the instance has no ref and no other instance of the same state machine has that ref or id; a ref equal to the instance's own ref SHALL change nothing and not be an error; IF the ref is already set to another value or taken THEN the system SHALL reject the call with an error and change nothing
 
 ### INST-4: One id param [MUST]
 

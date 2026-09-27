@@ -31,6 +31,9 @@ pub(crate) struct Turn<'a, 'h> {
     pub failures: Vec<String>,
     /// Prompt text gathered in order (ACT-2).
     pub prompts: Vec<String>,
+    /// A keyless `enter` made the session: it is saved only if the call is
+    /// accepted, so a rejection must not show its key (TURN-3).
+    pub unsaved: bool,
 }
 
 /// `issueId` → `ISSUE_ID`.
@@ -80,6 +83,7 @@ impl<'a, 'h> Turn<'a, 'h> {
             passed: Vec::new(),
             failures: Vec::new(),
             prompts: Vec::new(),
+            unsaved: false,
         }
     }
 

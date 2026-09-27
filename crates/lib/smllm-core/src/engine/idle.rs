@@ -21,11 +21,17 @@ pub(crate) fn reply(
     ok: bool,
     error: Option<String>,
 ) -> Result<Reply, Error> {
-    let mut b = Block::open(&idle_header(&turn.session.key));
-    list(turn, &mut b, error)?;
+    // A rejected keyless call saved no session: show no key (TURN-3).
+    let key = if turn.unsaved && !ok {
+        String::new()
+    } else {
+        turn.session.key.clone()
+    };
+    let mut b = Block::open(&idle_header(&key));
+    list(turn, &mut b, &key, error)?;
     Ok(Reply {
         ok,
-        session: turn.session.key.clone(),
+        session: key,
         location: Location::default(),
         text: b.close(),
     })
@@ -68,7 +74,8 @@ pub(crate) fn after_final(
         machine.instance.kind,
         inst.label()
     ));
-    list(turn, &mut b, None)?;
+    let key = turn.session.key.clone();
+    list(turn, &mut b, &key, None)?;
     Ok(Reply {
         ok: true,
         session: turn.session.key.clone(),
@@ -77,14 +84,20 @@ pub(crate) fn after_final(
     })
 }
 
-fn list(turn: &mut Turn<'_, '_>, b: &mut Block, error: Option<String>) -> Result<(), Error> {
+fn list(
+    turn: &mut Turn<'_, '_>,
+    b: &mut Block,
+    key: &str,
+    error: Option<String>,
+) -> Result<(), Error> {
     b.lines(&turn.notes)
         .lines(&turn.trace)
         .lines(&turn.failures);
     if let Some(e) = error {
         b.line(&format!("error: {e}"));
     }
-    turn.prompts.clear();
+    // Prompts gathered so far (a parked or suspended state's exit prompts)
+    // come first, then idle's own.
     for a in &turn.config.idle {
         if let ActionDef::Prompt(p) = a {
             turn.prompt(p);
@@ -165,7 +178,7 @@ fn list(turn: &mut Turn<'_, '_>, b: &mut Block, error: Option<String>) -> Result
         }
     }
     let offers = idle_offers(turn.config, suspended.as_ref().map(|(m, i)| (*m, i)));
-    b.events(&turn.session.key, &offers);
+    b.events(key, &offers);
     Ok(())
 }
 
@@ -227,7 +240,16 @@ fn enter(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Result<Reply, 
         return reply(turn, false, Some(msg));
     };
     let ref_param = machine.instance.ref_param.as_str();
-    for (k, _) in params {
+    for (i, (k, _)) in params.iter().enumerate() {
+        // One value per param: a repeat would reach the command environment
+        // unchecked by the ref pattern (NFR-5).
+        if params[..i].iter().any(|(p, _)| p == k) {
+            return reply(
+                turn,
+                false,
+                Some(format!("enter got param {k} more than once")),
+            );
+        }
         if k != "stateMachine" && k != "state" && k != ref_param {
             let msg = format!(
                 "enter has no param {k} for {} (params: stateMachine, {ref_param}, state)",
@@ -448,6 +470,17 @@ fn resume(turn: &mut Turn<'_, '_>) -> Result<Reply, Error> {
             if i.status == Status::Suspended && i.holder.as_deref() == Some(&turn.session.key) =>
         {
             (m, i)
+        }
+        // A briefly invalid machine file must not lose the suspended
+        // instance: report, change nothing.
+        (None, Some(i))
+            if i.status == Status::Suspended && i.holder.as_deref() == Some(&turn.session.key) =>
+        {
+            let msg = format!(
+                "state machine {} is not configured (is its file valid?); fix the config, then resume",
+                key.machine
+            );
+            return reply(turn, false, Some(msg));
         }
         (_, Some(i)) if i.holder.as_deref().is_some_and(|h| h != turn.session.key) => {
             turn.session.suspended = None;
