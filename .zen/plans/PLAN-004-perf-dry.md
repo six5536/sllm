@@ -2,7 +2,7 @@
 
 | Meta               | Value                                                        |
 | ------------------ | ------------------------------------------------------------ |
-| Status             | in-progress (draft, double-checked)                          |
+| Status             | in-progress (ready to implement)                             |
 | Workflow direction | bottom-up (review findings → code → specs touched per phase) |
 | Traces to          | NFR-2, NFR-8, TURN-4..8, CFG-4, CFG-7, STO-2, STO-3, DEC-6, INST-3, INST-9 |
 
@@ -34,8 +34,8 @@ Performance (`P-` ids):
 
 | ID  | Finding (file) → fix | Traces |
 | --- | -------------------- | ------ |
-| P-1 | Each param `pattern` is fully compiled on every load, just to check it is valid, and compiled again when enum values are present (`lower/events.rs:16`, `:180`); about 0.8 ms → cheaper check (Q1); compile once when enum values are present | NFR-2, CFG-7 |
-| P-2 | Every prompt file is read, once per state that names it, and every `enter-<STATE>.md` is probed, on every load, only for the fence warning that `validate` prints (`lower/actions.rs:110`, `:155`); 43 of 48 file opens → run mode: no reads and no probes; each named file is checked for existence once per load, not once per mention (Q4) | NFR-2, CFG-4 |
+| P-1 | Each param `pattern` is fully compiled on every load, just to check it is valid, and compiled again when enum values are present (`lower/events.rs:16`, `:180`); about 0.8 ms → keep the check (D4-1); compile once, reusing it for the enum check | NFR-2, CFG-7 |
+| P-2 | Every prompt file is read, once per state that names it, and every `enter-<STATE>.md` is probed, on every load, only for the fence warning that `validate` prints (`lower/actions.rs:110`, `:155`); 43 of 48 file opens → run mode: no reads and no probes; each named file is checked for existence once per load, not once per mention (D4-4) | NFR-2, CFG-4 |
 | P-3 | user-prompt-submit loads every machine; `prompt_submitted` needs only the session (`harness.rs:343`) → no config load | NFR-2, TURN-8 |
 | P-4 | stop loads every machine before `Engine::stop` allows at once for idle or yielded sessions (`harness.rs:350`) → decide from the session first (one core rule, shared by the engine and the CLI) | NFR-2, TURN-4..6 |
 | P-5 | The session is read two or three times per hook (`for_session`, the session-start check, then the engine) → `for_session` returns the session it read | NFR-2, STO-2 |
@@ -103,33 +103,26 @@ after A1 and after A2.
 | A4 | Runner and store | P-7, P-8, P-12 | host tests; a test that a quick command's output is complete; the duplicate-ref test still fails a duplicate |
 | A5 | Shared helpers | D-5, D-6, D-7, D-8, D-9 (rest) | MCP and wasm smoke tests; harness tests |
 | A6 | Test helpers | D-10 | test count unchanged |
-| A7 | Docs and outcome | NFR-2_AC-1 figures (both disks), DESIGN-CFG (modes), DESIGN-DEC (runner), ARCHITECTURE change log, this plan's §7 | — |
+| A7 | Docs and outcome | NFR-2_AC-1 figures (both disks), DESIGN-CFG (modes), CFG-7 portable pattern note (D4-3), DESIGN-DEC (runner), ARCHITECTURE change log, this plan's §7 | — |
 
 ## 5. Open questions
 
-- Q1: How should the pattern check get cheaper (P-1, about 0.8 ms)?
-  - (a) Recommended: add `regex-syntax` as a direct dependency of `smllm-format` and use its
-    parser for the check. It is already built through `regex` (0.8.11 in `Cargo.lock`), so it
-    adds no code, but it needs your approval. One difference: a pattern that parses but is too
-    big to compile (regex's size limit) would load and fail at fire time; `validate` would still report it.
-  - (b) `Run` skips the check. A bad pattern then fails only when an event using it is fired;
-    `validate` still reports it.
-  - (c) Keep compiling (only the second compile goes). Simplest; keeps 0.8 ms.
-- Q2: Instance scans grow with history (INST-9 keeps completed instances forever). The status
-  line, idle view and ref checks parse every file, and on a slow mount each file costs about
-  0.13 ms. Fix now by moving completed instances to `<machine>/done/` (changes the store layout;
-  needs a fallback read), or defer? Recommended: defer.
-- Q3: Rust's `\d` matches any Unicode digit; JavaScript's (the wasm host) matches only 0–9, so the
-  two hosts can disagree on one pattern. Leave as is and document it in CFG-7 (recommended), or
-  make the CLI ASCII-only (`RegexBuilder::unicode(false)`, which rejects some patterns)?
-- Q4: In `Run`, check that each named prompt file exists (11 stats here, roughly 1.5 ms on
-  the virtiofs mount), or not at all, so a missing file is reported when the prompt is shown (and
-  by `validate`)? Recommended: check existence, once per file; a machine that names a missing
-  file keeps failing at load, as now.
+None; answered in §6 by the usual practice.
 
 ## 6. Decisions
 
-(filled in at GRILL)
+- D4-1 (Q1, pattern check): keep validating with `regex::Regex::new`, the standard check, and
+  compile each pattern once, reusing it for the enum check (option c). No new dependency, no
+  behaviour change; the load keeps the 0.8 ms.
+- D4-2 (Q2, instance history): defer the `done/` layout (YAGNI). It costs nothing at today's sizes,
+  and changing the store layout needs its own plan.
+- D4-3 (Q3, `\d`): no code change. JSON Schema, which `params` follows, says patterns should be
+  ECMA-262 and recommends a portable subset for interoperability, without `\d`, `\w` or `\s`.
+  CFG-7 documents that the hosts' regex engines differ outside that subset (Rust's `\d` is
+  Unicode, JavaScript's is ASCII), so write `[0-9]` for ASCII digits.
+- D4-4 (Q4, prompt files in `Run`): fail fast. `Run` checks that each named prompt file exists,
+  once per path; a missing file fails the machine at load, as now. Only reads and the
+  `enter-<STATE>.md` probes go.
 
 ## 7. Outcome
 
