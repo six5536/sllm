@@ -252,7 +252,7 @@ impl Tool for Smllm {
 // @zen-impl: HOST-6_AC-1
 // @zen-impl: CLI-7_AC-1
 pub fn run(args: &HarnessArgs, installing: bool, explicit: Option<&Path>) -> Result<u8> {
-    let cwd = std::env::current_dir().map_err(|e| Error::io(Path::new("."), e))?;
+    let cwd = paths::cwd()?;
     let tool = Smllm::new(&cwd, explicit)?;
     let scope: Scope = args.scope.parse()?;
     let result = if installing {
@@ -300,9 +300,7 @@ pub(crate) fn bound_key(session_id: Option<&str>) -> Result<Option<String>> {
         return Ok(None);
     };
     let mut store = FsStore::new(paths::user_state_dir()?, Default::default());
-    store
-        .binding("claude", sid)
-        .map_err(|e| Error::msg(e.to_string()))
+    Ok(store.binding("claude", sid)?)
 }
 
 /// One hook call: stdin JSON in, an answer out.
@@ -325,7 +323,7 @@ pub fn answer(hook: &str, input: &HookInput) -> Result<Answer> {
             }
             let cwd = match &input.cwd {
                 Some(c) => PathBuf::from(c),
-                None => std::env::current_dir().map_err(|e| Error::io(Path::new("."), e))?,
+                None => paths::cwd()?,
             };
             let files = paths::lookup(None, &cwd)?;
             if files.is_empty() {
@@ -382,7 +380,7 @@ pub fn hook(args: &HookArgs) -> Result<u8> {
         &mut std::io::stdout().lock(),
         &mut std::io::stderr().lock(),
     )
-    .map_err(|e| Error::io(Path::new("<stdout>"), e))
+    .map_err(output::stdout_err)
 }
 
 #[cfg(test)]

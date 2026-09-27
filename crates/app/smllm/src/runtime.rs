@@ -61,6 +61,36 @@ impl Runtime {
         Self::new(&paths::recorded(&configs))
     }
 
+    /// The runtime of a call: the configs recorded on session `key`, or for
+    /// a keyless call those found from `cwd` (or `--config`).
+    pub fn for_call(key: Option<&str>, explicit: Option<&Path>, cwd: &Path) -> Result<Self> {
+        match key {
+            Some(k) => Self::for_session(k),
+            None => Self::lookup(explicit, cwd),
+        }
+    }
+
+    /// Fire `event` for session `key`; with no key, an `enter` binds a new
+    /// session to `harness` at `cwd` (HOST-3).
+    pub fn fire(
+        &mut self,
+        harness: &str,
+        key: Option<&str>,
+        event: &str,
+        params: &[(String, String)],
+        cwd: &Path,
+    ) -> Result<Reply> {
+        let cwd = cwd.display().to_string();
+        let configs = self.configs.clone();
+        let bind = Bind {
+            harness,
+            host_session: None,
+            cwd: &cwd,
+            configs: &configs,
+        };
+        Ok(self.with(|e, h| e.fire(h, key, event, params, &bind))?)
+    }
+
     /// Run `f` with the engine and a CLI host.
     pub fn with<R>(&mut self, f: impl FnOnce(&Engine, &mut Host<'_>) -> R) -> R {
         let (mut guards, mut actions, mut ids) = (Commands, Commands, OsIds);

@@ -9,6 +9,7 @@ use smllm_core::model::{ActionDef, GuardDef, Machine, Transition};
 use crate::cli::GraphArgs;
 use crate::error::{Error, Result};
 use crate::output::{self, EXIT_OK};
+use crate::paths;
 use crate::runtime::Runtime;
 
 fn guard_label(g: &GuardDef) -> String {
@@ -123,7 +124,7 @@ fn to_json(m: &Machine) -> Value {
 /// `smllm graph [ID] [--json|--mermaid]`.
 // @zen-impl: CLI-10_AC-1
 pub fn graph(args: &GraphArgs, explicit: Option<&Path>) -> Result<u8> {
-    let cwd = std::env::current_dir().map_err(|e| Error::io(Path::new("."), e))?;
+    let cwd = paths::cwd()?;
     let rt = Runtime::lookup(explicit, &cwd)?;
     let machines: Vec<&Machine> = match &args.id {
         Some(id) => vec![

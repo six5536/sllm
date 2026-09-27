@@ -343,7 +343,7 @@ impl<'a, 'h> Turn<'a, 'h> {
 }
 
 /// Shared-before lists, the state's own, shared-after, each labelled.
-fn lists<'m>(
+pub(crate) fn lists<'m>(
     machine: &'m Machine,
     state: &str,
     own: &'m [ActionDef],

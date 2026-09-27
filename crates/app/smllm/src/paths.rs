@@ -40,6 +40,11 @@ pub fn project_config(from: &Path) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// The working directory.
+pub fn cwd() -> Result<PathBuf> {
+    std::env::current_dir().map_err(|e| Error::io(Path::new("."), e))
+}
+
 /// `--config`, else a non-empty `SMLLM_CONFIG`.
 pub fn explicit(flag: Option<&Path>) -> Option<PathBuf> {
     flag.map(Path::to_path_buf).or_else(|| {

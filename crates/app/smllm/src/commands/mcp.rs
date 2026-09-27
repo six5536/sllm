@@ -13,7 +13,7 @@ use rmcp::model::{
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt as _};
 use serde_json::{Map, Value, json};
-use smllm_core::{AGENT_RULES, Bind};
+use smllm_core::AGENT_RULES;
 
 use crate::error::{Error, Result};
 use crate::output::EXIT_OK;
@@ -91,26 +91,13 @@ fn call_inner(
         }
         Some(_) => return Err(Error::msg("params must be an object of strings")),
     }
-    let mut rt = match &session {
-        Some(k) => Runtime::for_session(k)?,
-        None => Runtime::lookup(explicit, cwd)?,
-    };
+    let mut rt = Runtime::for_call(session.as_deref(), explicit, cwd)?;
     let reply = match &event {
         None => {
             let key = session.ok_or(smllm_core::Error::MissingSession)?;
             rt.with(|e, h| e.view(h, &key))?
         }
-        Some(ev) => {
-            let cwd_s = cwd.display().to_string();
-            let configs = rt.configs.clone();
-            let bind = Bind {
-                harness: "mcp",
-                host_session: None,
-                cwd: &cwd_s,
-                configs: &configs,
-            };
-            rt.with(|e, h| e.fire(h, session.as_deref(), ev, &params, &bind))?
-        }
+        Some(ev) => rt.fire("mcp", session.as_deref(), ev, &params, cwd)?,
     };
     Ok((reply.ok, reply.text))
 }
@@ -182,7 +169,7 @@ impl ServerHandler for Server {
 /// `smllm mcp`.
 // @zen-impl: CLI-9_AC-1
 pub fn serve(explicit: Option<&std::path::Path>) -> Result<u8> {
-    let cwd = std::env::current_dir().map_err(|e| Error::io(std::path::Path::new("."), e))?;
+    let cwd = paths::cwd()?;
     let _ = paths::user_state_dir()?;
     let server = Server {
         cwd: Arc::new(cwd),

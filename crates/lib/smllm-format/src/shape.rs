@@ -6,11 +6,56 @@
 //! removes it before serde reads the document.
 // @zen-component: CFG-Source
 
+use std::sync::OnceLock;
+
+use schemars::JsonSchema;
 use serde_json::{Map, Value};
 
 use crate::lower::Checker;
+use crate::source::{
+    CommandParams, EventMeta, InstanceMeta, MachineFile, MachineMeta, ParamsSchema, PromptParams,
+    PropSchema, RefMeta, SharedActionSrc, StateMeta, StateNode, TransitionSrc, VisitsParams,
+};
 
-/// XState keys smllm v1 does not support, with the hint's feature name.
+/// A source type's keys, read from its JSON Schema: the one the serde types
+/// derive, so this walk and the parser can never disagree on a key.
+struct Keys {
+    allowed: Vec<String>,
+    required: Vec<String>,
+}
+
+impl Keys {
+    fn of<T: JsonSchema>() -> Self {
+        let schema = schemars::schema_for!(T);
+        let v = schema.as_value();
+        let names = |key: &str| -> Vec<String> {
+            match v.get(key) {
+                Some(Value::Object(m)) => m.keys().cloned().collect(),
+                Some(Value::Array(a)) => a
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect(),
+                _ => Vec::new(),
+            }
+        };
+        Keys {
+            allowed: names("properties"),
+            required: names("required"),
+        }
+    }
+}
+
+/// The [`Keys`] of a source type, computed once.
+macro_rules! keys {
+    ($t:ty) => {{
+        static KEYS: OnceLock<Keys> = OnceLock::new();
+        KEYS.get_or_init(Keys::of::<$t>)
+    }};
+}
+
+/// XState keys smllm v1 does not support: an error with a v1 hint.
+// @zen-impl: CFG-2_AC-1
 const UNSUPPORTED: [&str; 11] = [
     "states", "initial", "invoke", "after", "context", "output", "tags", "history", "onDone",
     "types", "version",
@@ -55,19 +100,19 @@ impl Walk<'_, '_> {
 
     /// A map with `allowed` keys; `required` must be present. Returns it for
     /// the caller to walk its values.
-    fn map<'v>(
+    fn map<'v, S: AsRef<str>>(
         &mut self,
         path: &[String],
         v: &'v Value,
-        allowed: &[&str],
-        required: &[&str],
+        allowed: &[S],
+        required: &[S],
     ) -> Option<&'v Map<String, Value>> {
         let Value::Object(m) = v else {
             self.wrong(path, "a map", v);
             return None;
         };
         for k in m.keys() {
-            if allowed.contains(&k.as_str()) {
+            if allowed.iter().any(|a| a.as_ref() == k) {
                 continue;
             }
             if UNSUPPORTED.contains(&k.as_str()) {
@@ -82,7 +127,11 @@ impl Walk<'_, '_> {
                     &at(path, k),
                     format!(
                         "unknown key `{k}` (expected one of: {})",
-                        allowed.join(", ")
+                        allowed
+                            .iter()
+                            .map(AsRef::as_ref)
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     ),
                     None,
                     "CFG-1",
@@ -90,7 +139,8 @@ impl Walk<'_, '_> {
             }
         }
         for r in required {
-            if m.get(*r).is_none_or(Value::is_null) {
+            let r = r.as_ref();
+            if m.get(r).is_none_or(Value::is_null) {
                 self.err(path, format!("missing key `{r}`"), None, "CFG-1");
             }
         }
@@ -160,12 +210,8 @@ impl Walk<'_, '_> {
 
     fn machine(&mut self, v: &Value) {
         let root = Vec::new();
-        let Some(m) = self.map(
-            &root,
-            v,
-            &["id", "description", "initial", "meta", "states"],
-            &["id", "initial", "meta", "states"],
-        ) else {
+        let k = keys!(MachineFile);
+        let Some(m) = self.map(&root, v, &k.allowed, &k.required) else {
             return;
         };
         for k in ["id", "description", "initial"] {
@@ -181,22 +227,20 @@ impl Walk<'_, '_> {
 
     fn meta(&mut self, v: &Value) {
         let p = vec!["meta".to_string()];
-        let Some(m) = self.map(
-            &p,
-            v,
-            &["smllm", "instance", "events", "sharedActions"],
-            &["smllm"],
-        ) else {
+        let k = keys!(MachineMeta);
+        let Some(m) = self.map(&p, v, &k.allowed, &k.required) else {
             return;
         };
         self.uint(&at(&p, "smllm"), m.get("smllm"));
         if let Some(i) = present(m.get("instance")) {
             let ip = at(&p, "instance");
-            if let Some(im) = self.map(&ip, i, &["kind", "ref"], &[]) {
+            let k = keys!(InstanceMeta);
+            if let Some(im) = self.map(&ip, i, &k.allowed, &k.required) {
                 self.string(&at(&ip, "kind"), im.get("kind"));
                 if let Some(r) = present(im.get("ref")) {
                     let rp = at(&ip, "ref");
-                    if let Some(rm) = self.map(&rp, r, &["param", "description", "pattern"], &[]) {
+                    let k = keys!(RefMeta);
+                    if let Some(rm) = self.map(&rp, r, &k.allowed, &k.required) {
                         for k in ["param", "description", "pattern"] {
                             self.string(&at(&rp, k), rm.get(k));
                         }
@@ -205,7 +249,8 @@ impl Walk<'_, '_> {
             }
         }
         for (ep, e) in self.each(&at(&p, "events"), m.get("events")) {
-            if let Some(em) = self.map(&ep, e, &["description", "params"], &[]) {
+            let k = keys!(EventMeta);
+            if let Some(em) = self.map(&ep, e, &k.allowed, &k.required) {
                 self.string(&at(&ep, "description"), em.get("description"));
                 if let Some(ps) = present(em.get("params")) {
                     self.params(&at(&ep, "params"), ps);
@@ -217,12 +262,8 @@ impl Walk<'_, '_> {
             Some(Value::Array(items)) => {
                 for (i, it) in items.iter().enumerate() {
                     let sp = at(&at(&p, "sharedActions"), format!("[{i}]"));
-                    if let Some(sm) = self.map(
-                        &sp,
-                        it,
-                        &["states", "position", "entry", "exit"],
-                        &["states", "position"],
-                    ) {
+                    let k = keys!(SharedActionSrc);
+                    if let Some(sm) = self.map(&sp, it, &k.allowed, &k.required) {
                         self.strings(&at(&sp, "states"), sm.get("states"));
                         self.one_of(
                             &at(&sp, "position"),
@@ -241,18 +282,15 @@ impl Walk<'_, '_> {
     }
 
     fn params(&mut self, p: &[String], v: &Value) {
-        let Some(m) = self.map(p, v, &["type", "properties", "required"], &["type"]) else {
+        let k = keys!(ParamsSchema);
+        let Some(m) = self.map(p, v, &k.allowed, &k.required) else {
             return;
         };
         self.string(&at(p, "type"), m.get("type"));
         self.strings(&at(p, "required"), m.get("required"));
         for (pp, prop) in self.each(&at(p, "properties"), m.get("properties")) {
-            if let Some(pm) = self.map(
-                &pp,
-                prop,
-                &["type", "description", "enum", "pattern"],
-                &["type"],
-            ) {
+            let k = keys!(PropSchema);
+            if let Some(pm) = self.map(&pp, prop, &k.allowed, &k.required) {
                 for k in ["type", "description", "pattern"] {
                     self.string(&at(&pp, k), pm.get(k));
                 }
@@ -262,16 +300,8 @@ impl Walk<'_, '_> {
     }
 
     fn state(&mut self, p: &[String], v: &Value) {
-        let keys = [
-            "description",
-            "type",
-            "meta",
-            "entry",
-            "exit",
-            "on",
-            "always",
-        ];
-        let Some(m) = self.map(p, v, &keys, &[]) else {
+        let k = keys!(StateNode);
+        let Some(m) = self.map(p, v, &k.allowed, &k.required) else {
             return;
         };
         self.string(&at(p, "description"), m.get("description"));
@@ -288,12 +318,8 @@ impl Walk<'_, '_> {
         }
         if let Some(meta) = present(m.get("meta")) {
             let mp = at(p, "meta");
-            if let Some(mm) = self.map(
-                &mp,
-                meta,
-                &["entryPoint", "fallback", "paramDescriptions"],
-                &[],
-            ) {
+            let k = keys!(StateMeta);
+            if let Some(mm) = self.map(&mp, meta, &k.allowed, &k.required) {
                 self.boolean(&at(&mp, "entryPoint"), mm.get("entryPoint"));
                 self.boolean(&at(&mp, "fallback"), mm.get("fallback"));
                 for (ep, prompts) in
@@ -332,12 +358,8 @@ impl Walk<'_, '_> {
         if v.is_string() {
             return;
         }
-        let Some(m) = self.map(
-            p,
-            v,
-            &["target", "guard", "actions", "reenter", "description"],
-            &[],
-        ) else {
+        let k = keys!(TransitionSrc);
+        let Some(m) = self.map(p, v, &k.allowed, &k.required) else {
             return;
         };
         self.string(&at(p, "target"), m.get("target"));
@@ -381,7 +403,8 @@ impl Walk<'_, '_> {
         let pp = at(p, "params");
         match m.get("type").and_then(Value::as_str) {
             Some("prompt") => {
-                self.keys(&pp, params, &["text", "file"], &[], |w, k, v| {
+                let k = keys!(PromptParams);
+                self.keys(&pp, params, &k.allowed, &k.required, |w, k, v| {
                     w.string(k, Some(v))
                 });
                 let given = ["text", "file"]
@@ -398,7 +421,7 @@ impl Walk<'_, '_> {
                 }
             }
             Some("command") => self.command(&pp, params),
-            Some("setRef") => self.keys(&pp, params, &[], &[], |_, _, _| {}),
+            Some("setRef") => self.keys::<&str>(&pp, params, &[], &[], |_, _, _| {}),
             Some(t) => self.err(
                 &at(p, "type"),
                 format!("unknown action type `{t}` (expected one of: prompt, command, setRef)"),
@@ -433,8 +456,8 @@ impl Walk<'_, '_> {
             Some("visits") => self.keys(
                 &pp,
                 params,
-                &["state", "atLeast"],
-                &["state", "atLeast"],
+                &keys!(VisitsParams).allowed,
+                &keys!(VisitsParams).required,
                 |w, k, v| {
                     if k.last().is_some_and(|l| l == "atLeast") {
                         w.uint(k, Some(v));
@@ -458,12 +481,9 @@ impl Walk<'_, '_> {
     }
 
     fn command(&mut self, p: &[String], params: Option<&Value>) {
-        self.keys(
-            p,
-            params,
-            &["run", "timeoutSecs", "cwd"],
-            &["run"],
-            |w, k, v| match k.last().map(String::as_str) {
+        let k = keys!(CommandParams);
+        self.keys(p, params, &k.allowed, &k.required, |w, k, v| {
+            match k.last().map(String::as_str) {
                 Some("run") => match v {
                     Value::String(_) => {}
                     Value::Array(items) if items.iter().all(Value::is_string) => {}
@@ -476,18 +496,18 @@ impl Walk<'_, '_> {
                 },
                 Some("timeoutSecs") => w.uint(k, Some(v)),
                 _ => w.string(k, Some(v)),
-            },
-        );
+            }
+        });
     }
 
     /// `params`: a map with `allowed` keys (absent = empty when nothing is
     /// required), each value checked by `check`.
-    fn keys(
+    fn keys<S: AsRef<str>>(
         &mut self,
         p: &[String],
         params: Option<&Value>,
-        allowed: &[&str],
-        required: &[&str],
+        allowed: &[S],
+        required: &[S],
         check: impl Fn(&mut Self, &[String], &Value),
     ) {
         let empty = Value::Object(Map::new());
@@ -495,7 +515,7 @@ impl Walk<'_, '_> {
             return;
         };
         for (k, v) in m {
-            if allowed.contains(&k.as_str()) && !v.is_null() {
+            if allowed.iter().any(|a| a.as_ref() == k) && !v.is_null() {
                 check(self, &at(p, k), v);
             }
         }

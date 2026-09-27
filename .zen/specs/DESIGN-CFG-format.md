@@ -58,7 +58,7 @@ crates/lib/smllm-format/tests/
 ### Architectural Decisions
 
 - XSTATE V5 SUBSET PLUS META: the file is a plain XState v5 config, and smllm data lives only under `meta`, so Stately's tools and a JS XState host can read it (D19). Alternatives: a custom YAML schema, the superdev v2 format
-- DENY UNKNOWN FIELDS ON EVERY SOURCE TYPE: unsupported XState keys fail at parse time, and the error carries a v1 hint (CFG-2_AC-1). Alternatives: parse leniently and warn afterwards
+- DENY UNKNOWN FIELDS ON EVERY SOURCE TYPE: unsupported XState keys are errors with a v1 hint (CFG-2_AC-1), reported by the shape check before serde reads the document. The shape check reads each struct's allowed and required keys from the JSON Schema the source types derive (once per type), so it cannot drift from the parser (PLAN-003 D7). Alternatives: parse leniently and warn afterwards; hand-written key lists (they drifted)
 - HAND-WRITTEN POLYMORPHIC VISITORS: `OneOrMany`, `StringOr` and `OrderedMap` implement `Visitor` directly, so a mistake inside an item reports the real error at its YAML location, not "did not match any variant". Alternatives: `#[serde(untagged)]`
 - JSON SCHEMA FROM THE SOURCE TYPES: `schemars::schema_for!(MachineFile)` means the schema cannot drift from the parser (CFG-15_AC-1). Alternatives: a hand-maintained schema file
 - SERDE-SAPHYR FOR YAML: it is maintained and reports locations; `serde_yaml` is unmaintained (PLAN-001 §12). Alternatives: `serde_norway`
@@ -123,11 +123,11 @@ pub fn locate(text: &str, path: &[&str]) -> Option<usize>;
 
 ### CFG-Load
 
-`load_machine` reads the file and parses it with `serde_saphyr::from_str`. On a parse error it records one `CFG-1` finding with serde-saphyr's line. `parse_message` strips the `line N column M:` prefix and adds a v1 hint when the unknown field or variant is an unsupported XState feature. On success it builds a `Checker` over the source text and calls `lower`.
+`load_machine` reads the file and parses it with `serde_saphyr::from_str`. On a parse error it records one `CFG-1` finding with serde-saphyr's line. `parse_message` strips the `line N column M:` prefix (unsupported XState keys are caught earlier, by the shape check, with their hint). On success it builds a `Checker` over the source text and calls `lower`.
 
-`load_configs` takes the config files in order (user, then project, or a single explicit file). Each TOML file is parsed with `deny_unknown_fields` and kebab-case keys, and a TOML error's span is turned into a line number. It loads every listed machine relative to that config and reports duplicate ids within one config as errors, and ids that differ only in case too (their `state/<id>/` directories would be one on macOS and Windows). A machine whose id is already loaded from an earlier config replaces it, with an info finding. A later config that does not parse withdraws every machine loaded so far, and a machine file of it that does not load withdraws the earlier machine with the id on its top-level `id:` line (warning findings): a broken override leaves the id unconfigured rather than silently using the earlier machine and its state directory (PLAN-003 F8). The last `[idle] on-enter` seen wins. Each machine's `MachineSource.state_dir` is `state/` beside the config that lists it.
+`load_configs` takes the config files in order (user, then project, or a single explicit file). Each TOML file is parsed with `deny_unknown_fields` and kebab-case keys, and a TOML error's span is turned into a line number. It loads every listed machine relative to that config and reports duplicate ids within one config as errors, and ids that differ only in case too (their `state/<id>/` directories would be one on macOS and Windows). A machine whose id is already loaded from an earlier config replaces it, with an info finding. A later config that does not parse withdraws every machine loaded so far, and a machine file of it that does not load withdraws the earlier machine with the id on its top-level `id:` line (warning findings): a broken override leaves the id unconfigured rather than silently using the earlier machine and its state directory (PLAN-003 F8). The last `[idle] on-enter` seen wins; it is lowered by the same `lower_prompt` as a state's prompt actions (fence warnings included). Each machine's `MachineSource.state_dir` is `state/` beside the config that lists it.
 
-IMPLEMENTS: CFG-2_AC-1, CFG-14_AC-1, CFG-15_AC-2
+IMPLEMENTS: CFG-14_AC-1, CFG-15_AC-2
 
 ```rust
 pub enum Origin { User, Project, Explicit }
@@ -216,7 +216,7 @@ Inline `#[cfg(test)]` modules.
 SOURCE: .zen/specs/REQ-CFG-format.md
 
 - CFG-1_AC-1 → CFG-Lower
-- CFG-2_AC-1 → CFG-Load
+- CFG-2_AC-1 → CFG-Source (`shape.rs`)
 - CFG-3_AC-1 → CFG-Lower, ENG-Turn — format checks that targets exist and lowers `reenter`; runtime semantics are in ENG-Turn (smllm-core `engine/turn.rs`); no test marker
 - CFG-4_AC-1 → CFG-Lower (`lower/actions.rs`) — no @zen-impl marker or test marker yet
 - CFG-5_AC-1 → CFG-Lower (`lower_guard`) — evaluation is in DEC-CommandRunner and the core; no markers

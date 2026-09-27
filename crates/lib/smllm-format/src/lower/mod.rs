@@ -6,6 +6,6 @@ mod events;
 mod graph;
 mod machine;
 
-pub(crate) use actions::Files;
+pub(crate) use actions::{Files, lower_prompt};
 pub(crate) use checker::Checker;
 pub(crate) use machine::lower;

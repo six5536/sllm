@@ -254,7 +254,7 @@ fn project_wins_over_user_and_idle_is_replaced() {
     assert!(
         bad.findings.0[0]
             .message
-            .contains("exactly one of file, text")
+            .contains("exactly one of text, file")
     );
     std::fs::remove_dir_all(dir).ok();
 }

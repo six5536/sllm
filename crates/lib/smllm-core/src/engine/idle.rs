@@ -3,14 +3,14 @@
 // @zen-component: IDLE-Idle
 
 use crate::Error;
-use crate::engine::machine::{commit, takeover_note};
+use crate::engine::machine::{self, commit, takeover_note};
 use crate::engine::offer::{check_value, idle_offers};
 use crate::engine::turn::Turn;
 use crate::engine::{Location, Reply, api::random_id};
 use crate::model::{ActionDef, Machine};
 use crate::prelude::*;
 use crate::record::{Instance, Status};
-use crate::render::{Block, header, idle_header, quote};
+use crate::render::{Block, idle_header};
 use crate::utils::{SmallMap, insertion_sort_by_key};
 
 /// The idle list (TURN-7): header, notes, `error:`, idle instructions, state
@@ -44,28 +44,9 @@ pub(crate) fn after_final(
     inst: &Instance,
     arrived: String,
 ) -> Result<Reply, Error> {
-    let mut b = Block::open(&header(
-        &turn.session.key,
-        &machine.id,
-        &inst.state,
-        inst.visits(&inst.state),
-        &machine.instance.kind,
-        inst.label(),
-    ));
-    b.line(&format!("Arrived by: {arrived}"));
-    if !turn.params.is_empty() {
-        let ps: Vec<String> = turn
-            .params
-            .iter()
-            .map(|(k, v)| format!("{k} = {}", quote(v)))
-            .collect();
-        b.line(&format!("Params: {}", ps.join(", ")));
-    }
+    let mut b = machine::head(turn, machine, inst, Some(&arrived));
     let prompts = core::mem::take(&mut turn.prompts);
-    b.lines(&turn.notes)
-        .lines(&turn.trace)
-        .lines(&turn.failures)
-        .instructions(&prompts);
+    b.instructions(&prompts);
     turn.notes.clear();
     turn.trace.clear();
     turn.failures.clear();

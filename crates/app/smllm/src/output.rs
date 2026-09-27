@@ -12,7 +12,8 @@ use crate::error::{Error, Result};
 
 pub use agent_harness_kit::cli::{EXIT_ERRORS, EXIT_OK};
 
-fn stdout_err(e: std::io::Error) -> Error {
+/// A stdout write failure.
+pub fn stdout_err(e: std::io::Error) -> Error {
     Error::io(Path::new("<stdout>"), e)
 }
 

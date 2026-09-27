@@ -5,10 +5,10 @@
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
-use smllm_core::model::{ActionDef, Config, Machine, Prompt};
+use smllm_core::model::{ActionDef, Config, Machine};
 
 use crate::finding::{Finding, Findings, Level};
-use crate::lower::{Checker, Files, lower};
+use crate::lower::{Checker, Files, lower, lower_prompt};
 use crate::source::MachineFile;
 
 /// Which config a file is.
@@ -140,11 +140,13 @@ pub fn load_machine(path: &Path, inline: bool) -> (Option<Machine>, Findings) {
         Ok(v) => v,
         Err(e) => {
             let line = e.location().map(|l| l.line() as usize).filter(|l| *l > 0);
-            let (message, hint) = parse_message(&e.to_string());
-            findings.push(Finding {
-                hint,
-                ..finding(Level::Error, path, line, message, "CFG-1")
-            });
+            findings.push(finding(
+                Level::Error,
+                path,
+                line,
+                parse_message(&e.to_string()),
+                "CFG-1",
+            ));
             return (None, findings);
         }
     };
@@ -172,9 +174,9 @@ pub fn load_machine(path: &Path, inline: bool) -> (Option<Machine>, Findings) {
 }
 
 /// First line of serde-saphyr's message without its `error: line N column M:`
-/// prefix, plus a hint for XState features smllm v1 does not support (CFG-2).
-// @zen-impl: CFG-2_AC-1
-fn parse_message(full: &str) -> (String, Option<String>) {
+/// prefix. (Unsupported XState keys never reach serde: the shape check
+/// reports them first, with their hint.)
+fn parse_message(full: &str) -> String {
     let first = full.lines().next().unwrap_or(full);
     let msg = first.strip_prefix("error: ").unwrap_or(first);
     let msg = match msg.find(": ") {
@@ -184,24 +186,9 @@ fn parse_message(full: &str) -> (String, Option<String>) {
     // serde-saphyr suggests a library option; the author needs the key.
     if let Some(rest) = msg.strip_prefix("duplicate mapping key: ") {
         let key = rest.split(", set ").next().unwrap_or(rest);
-        return (format!("duplicate key `{key}`"), None);
+        return format!("duplicate key `{key}`");
     }
-    let unsupported = [
-        "`states`",
-        "`parallel`",
-        "`history`",
-        "`after`",
-        "`invoke`",
-        "`context`",
-        "`output`",
-        "`tags`",
-        "`assign`",
-    ];
-    let hint = unsupported
-        .iter()
-        .find(|u| msg.contains(&format!("field {u}")) || msg.contains(&format!("variant {u}")))
-        .map(|u| format!("{} is XState, but not in smllm v1's subset (flat atomic/final states; no delays, invocations, context)", u.trim_matches('`')));
-    (msg.to_string(), hint)
+    msg.to_string()
 }
 
 /// Load and combine config files, in order: user then project; the project
@@ -257,7 +244,15 @@ pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded {
         // A later `[idle]` table replaces an earlier one, even without on-enter.
         if let Some(i) = parsed.idle {
             idle = Some(match i.on_enter {
-                Some(p) => idle_prompt(&mut out.findings, &cf.path, dir, p, inline),
+                Some(p) => {
+                    let mut c = Checker::new(&cf.path, &text);
+                    let files = Files { dir, inline };
+                    let at = ["idle".to_string(), "on-enter".to_string()];
+                    let prompt =
+                        lower_prompt(&mut c, &files, &at, p.text.as_deref(), p.file.as_deref());
+                    out.findings.extend(c.findings);
+                    prompt.into_iter().collect()
+                }
                 None => Vec::new(),
             });
         }
@@ -371,84 +366,18 @@ fn declared_id(file: &Path) -> Option<String> {
     (!value.is_empty()).then(|| value.to_string())
 }
 
-fn idle_prompt(
-    findings: &mut Findings,
-    config: &Path,
-    dir: &Path,
-    p: PromptToml,
-    inline: bool,
-) -> Vec<ActionDef> {
-    match (p.file, p.text) {
-        (Some(f), None) => {
-            let full = dir.join(&f);
-            match std::fs::read_to_string(&full) {
-                Ok(t) => {
-                    fence_warning(findings, config, &t);
-                    if inline {
-                        vec![ActionDef::Prompt(Prompt::Text(t))]
-                    } else {
-                        vec![ActionDef::Prompt(Prompt::File(full.display().to_string()))]
-                    }
-                }
-                Err(e) => {
-                    findings.push(finding(
-                        Level::Error,
-                        config,
-                        None,
-                        format!("idle on-enter file {f}: {e}"),
-                        "CLI-3",
-                    ));
-                    Vec::new()
-                }
-            }
-        }
-        (None, Some(t)) => {
-            fence_warning(findings, config, &t);
-            vec![ActionDef::Prompt(Prompt::Text(t))]
-        }
-        _ => {
-            findings.push(finding(
-                Level::Error,
-                config,
-                None,
-                "idle on-enter needs exactly one of file, text".to_string(),
-                "CLI-3",
-            ));
-            Vec::new()
-        }
-    }
-}
-
-/// Idle text containing smllm's fences (TURN-12).
-fn fence_warning(findings: &mut Findings, config: &Path, text: &str) {
-    for f in ["</smllm>", "</instructions>", "</events>"] {
-        if text.contains(f) {
-            findings.push(finding(
-                Level::Warning,
-                config,
-                None,
-                format!("idle on-enter text contains `{f}`, which smllm uses to fence agent text"),
-                "TURN-12",
-            ));
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn parse_messages_lose_the_location_prefix_and_gain_hints() {
-        let (m, h) = parse_message(
-            "error: line 6 column 5: unknown field `states`, expected one of a\n --> x",
+    fn parse_messages_lose_the_location_prefix() {
+        assert_eq!(
+            parse_message("error: line 6 column 5: did not find expected key\n --> x"),
+            "did not find expected key"
         );
-        assert_eq!(m, "unknown field `states`, expected one of a");
-        assert!(h.unwrap().contains("not in smllm v1"));
-        let (m, h) = parse_message("plain");
-        assert_eq!(m, "plain");
-        assert!(h.is_none());
-        let (m, _) = parse_message(
+        assert_eq!(parse_message("plain"), "plain");
+        let m = parse_message(
             "error: line 3 column 1: duplicate mapping key: initial, set DuplicateKeyPolicy in Options if acceptable",
         );
         assert_eq!(m, "duplicate key `initial`");

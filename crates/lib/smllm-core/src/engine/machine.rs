@@ -4,7 +4,7 @@
 
 use crate::Error;
 use crate::engine::offer::{check_params, machine_offers};
-use crate::engine::turn::Turn;
+use crate::engine::turn::{Turn, lists};
 use crate::engine::{Location, Reply, idle};
 use crate::host::HostError;
 use crate::model::{ActionDef, Machine};
@@ -131,43 +131,22 @@ pub(crate) fn moved(turn: &mut Turn<'_, '_>, msg: String) -> Result<Reply, Error
 
 /// No event: entry block (optionally) + events list (ENG-5).
 pub(crate) fn view(turn: &mut Turn<'_, '_>, entry: bool) -> Result<Reply, Error> {
-    let (machine, mut inst) = match held(turn, false)? {
+    let (machine, inst) = match held(turn, false)? {
         Ok(p) => p,
         Err(gone) => return Ok(gone.reply()),
     };
     if entry && let Some(state) = machine.state(&inst.state) {
         // Re-render the state's entry prompts only; commands are not re-run.
-        let prompts: Vec<ActionDef> = entry_prompts(machine, &state.name);
-        for a in &prompts {
-            if let ActionDef::Prompt(p) = a {
-                turn.prompt(p);
+        for (_, list) in lists(machine, &state.name, &state.entry, true) {
+            for a in list {
+                if let ActionDef::Prompt(p) = a {
+                    turn.prompt(p);
+                }
             }
         }
     }
     missing_state_note(turn, machine, &inst);
-    Ok(block(
-        turn, machine, &mut inst, None, true, entry, true, None,
-    ))
-}
-
-/// The prompt actions a state's entry shows, shared ones included.
-fn entry_prompts(machine: &Machine, state: &str) -> Vec<ActionDef> {
-    let mut out = Vec::new();
-    let Some(s) = machine.state(state) else {
-        return out;
-    };
-    let shared = |pos| {
-        machine
-            .shared
-            .iter()
-            .filter(move |sh| sh.position == pos && sh.states.iter().any(|n| n == state))
-            .flat_map(|sh| sh.entry.iter())
-    };
-    let keep = |a: &&ActionDef| matches!(a, ActionDef::Prompt(_));
-    out.extend(shared(crate::model::Position::Before).filter(keep).cloned());
-    out.extend(s.entry.iter().filter(keep).cloned());
-    out.extend(shared(crate::model::Position::After).filter(keep).cloned());
-    out
+    Ok(block(turn, machine, &inst, None, entry, true, None))
 }
 
 fn missing_state_note(turn: &mut Turn<'_, '_>, machine: &Machine, inst: &Instance) {
@@ -182,27 +161,26 @@ fn missing_state_note(turn: &mut Turn<'_, '_>, machine: &Machine, inst: &Instanc
     }
 }
 
-/// Render a machine-state block.
-#[allow(clippy::too_many_arguments)]
-fn block(
-    turn: &mut Turn<'_, '_>,
-    machine: &Machine,
-    inst: &mut Instance,
-    arrived: Option<String>,
-    ok: bool,
-    instructions: bool,
-    events: bool,
-    error: Option<String>,
-) -> Reply {
-    let visit = inst.visits(&inst.state);
-    let mut b = Block::open(&header(
+/// A block opened with the header of where `inst` rests (TURN-1).
+pub(crate) fn open(turn: &Turn<'_, '_>, machine: &Machine, inst: &Instance) -> Block {
+    Block::open(&header(
         &turn.session.key,
         &machine.id,
         &inst.state,
-        visit,
+        inst.visits(&inst.state),
         &machine.instance.kind,
         inst.label(),
-    ));
+    ))
+}
+
+/// [`open`], then `Arrived by`, `Params`, notes, trace and failures.
+pub(crate) fn head(
+    turn: &Turn<'_, '_>,
+    machine: &Machine,
+    inst: &Instance,
+    arrived: Option<&str>,
+) -> Block {
+    let mut b = open(turn, machine, inst);
     if let Some(a) = arrived {
         b.line(&format!("Arrived by: {a}"));
     }
@@ -217,6 +195,21 @@ fn block(
     b.lines(&turn.notes)
         .lines(&turn.trace)
         .lines(&turn.failures);
+    b
+}
+
+/// Render a machine-state block; `ok` unless there is an `error`.
+fn block(
+    turn: &mut Turn<'_, '_>,
+    machine: &Machine,
+    inst: &Instance,
+    arrived: Option<&str>,
+    instructions: bool,
+    events: bool,
+    error: Option<String>,
+) -> Reply {
+    let mut b = head(turn, machine, inst, arrived);
+    let ok = error.is_none();
     if let Some(e) = &error {
         b.line(&format!("error: {e}"));
     }
@@ -248,21 +241,12 @@ pub(crate) fn location(machine: &Machine, inst: &Instance) -> Location {
 fn reject(
     turn: &mut Turn<'_, '_>,
     machine: &Machine,
-    inst: &mut Instance,
+    inst: &Instance,
     msg: String,
 ) -> Result<Reply, Error> {
     turn.params.clear();
     missing_state_note(turn, machine, inst);
-    Ok(block(
-        turn,
-        machine,
-        inst,
-        None,
-        false,
-        false,
-        true,
-        Some(msg),
-    ))
+    Ok(block(turn, machine, inst, None, false, true, Some(msg)))
 }
 
 /// Fire an event in a machine state.
@@ -281,11 +265,11 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
             turn.event,
             names.join(", ")
         );
-        return reject(turn, machine, &mut inst, msg);
+        return reject(turn, machine, &inst, msg);
     };
     match check_params(offer, params, turn.host.matcher) {
         Ok(p) => turn.params = p,
-        Err(e) => return reject(turn, machine, &mut inst, e),
+        Err(e) => return reject(turn, machine, &inst, e),
     }
     let from = inst.state.clone();
     let event = turn.event.clone();
@@ -297,14 +281,7 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
             if let Err(r) = save(turn, machine, &mut inst, Some(&from), Some(&from))? {
                 return Ok(r);
             }
-            let mut b = Block::open(&header(
-                &turn.session.key,
-                &machine.id,
-                &from,
-                inst.visits(&from),
-                &machine.instance.kind,
-                inst.label(),
-            ));
+            let mut b = open(turn, machine, &inst);
             b.line(&format!(
                 "Yielded: staying in {from}. You may end your turn."
             ));
@@ -337,7 +314,7 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
                     all.join(", ")
                 );
                 inst.interrupted = Some(back);
-                return reject(turn, machine, &mut inst, msg);
+                return reject(turn, machine, &inst, msg);
             }
             turn.exit(machine, &mut inst, &from, Some(&back));
             turn.enter(machine, &mut inst, &back, Some(&from));
@@ -348,14 +325,14 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
             let on = state.and_then(|s| s.on(&event)).expect("offered");
             let Some(t) = turn.pick(&inst, &from, &on.transitions) else {
                 let msg = format!("no transition of {event} matched in {from}; nothing changed");
-                return reject(turn, machine, &mut inst, msg);
+                return reject(turn, machine, &inst, msg);
             };
             // Only the chosen transition's setRef counts; checked before any
             // action runs, so a rejected call changes nothing (TURN-3).
             if t.actions.contains(&ActionDef::SetRef)
                 && let Err(msg) = check_set_ref(turn, machine, &inst)
             {
-                return reject(turn, machine, &mut inst, msg);
+                return reject(turn, machine, &inst, msg);
             }
             // Leaving a fallback state ends the detour; a transition back
             // into it keeps its way back (`resume`).
@@ -566,9 +543,8 @@ pub(crate) fn commit(
     Ok(block(
         turn,
         machine,
-        &mut inst,
-        Some(arrived),
-        true,
+        &inst,
+        Some(&arrived),
         true,
         false,
         None,

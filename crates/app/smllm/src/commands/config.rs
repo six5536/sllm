@@ -18,17 +18,13 @@ use crate::output::{self, EXIT_ERRORS, EXIT_OK};
 use crate::paths::{self, CONFIG_FILE, PROJECT_DIR};
 use crate::runtime::Runtime;
 
-fn cwd() -> Result<PathBuf> {
-    std::env::current_dir().map_err(|e| Error::io(Path::new("."), e))
-}
-
 /// `smllm init [--user]`.
 // @zen-impl: CLI-1_AC-1
 pub fn init(args: &InitArgs) -> Result<u8> {
     let path = if args.user {
         paths::user_config_dir()?.join(CONFIG_FILE)
     } else {
-        cwd()?.join(PROJECT_DIR).join(CONFIG_FILE)
+        paths::cwd()?.join(PROJECT_DIR).join(CONFIG_FILE)
     };
     // A file holding only declined harness parts gets the template too,
     // its own text kept after it.
@@ -78,7 +74,7 @@ pub fn new(args: &NewArgs, explicit: Option<&Path>) -> Result<u8> {
         }
         return Ok(EXIT_OK);
     }
-    let here = cwd()?;
+    let here = paths::cwd()?;
     // `--config` / SMLLM_CONFIG, else the nearest project config.
     let config = match paths::explicit(explicit) {
         Some(p) => here.join(p),
@@ -199,7 +195,7 @@ fn saved_states(rt: &mut Runtime) -> Findings {
 /// `smllm validate [PATHS]`.
 // @zen-impl: CLI-3_AC-1
 pub fn validate(args: &ValidateArgs, explicit: Option<&Path>) -> Result<u8> {
-    let here = cwd()?;
+    let here = paths::cwd()?;
     let mut findings = Findings::default();
     if args.paths.is_empty() {
         let files = paths::lookup(explicit, &here)?;
@@ -241,7 +237,7 @@ pub fn validate(args: &ValidateArgs, explicit: Option<&Path>) -> Result<u8> {
 
 /// `smllm compile <FILE> [-o OUT]`.
 pub fn compile_cmd(args: &CompileArgs) -> Result<u8> {
-    let file = cwd()?.join(&args.file);
+    let file = paths::cwd()?.join(&args.file);
     let (json, findings) = compile(&file);
     let Some(json) = json else {
         let report = output::report(&findings);
@@ -254,7 +250,7 @@ pub fn compile_cmd(args: &CompileArgs) -> Result<u8> {
     };
     match &args.out {
         Some(out) => {
-            let out = cwd()?.join(out);
+            let out = paths::cwd()?.join(out);
             write_atomic(&out, &format!("{json}\n"))?;
         }
         None => output::text(&format!("{json}\n"))?,

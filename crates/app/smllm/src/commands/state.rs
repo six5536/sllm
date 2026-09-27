@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use serde_json::json;
+use smllm_core::format_utc;
 use smllm_core::host::Store;
-use smllm_core::{Bind, format_utc};
 
 use crate::cli::{FireArgs, JsonArgs, KeyArgs};
 use crate::error::{Error, Result};
@@ -30,20 +30,10 @@ fn params(raw: &[String]) -> Result<Vec<(String, String)>> {
 // @zen-impl: CLI-4_AC-1
 pub fn fire(args: &FireArgs, explicit: Option<&Path>) -> Result<u8> {
     let ps = params(&args.params)?;
-    let cwd = std::env::current_dir().map_err(|e| Error::io(Path::new("."), e))?;
-    let mut rt = match &args.session {
-        Some(k) => Runtime::for_session(k)?,
-        None => Runtime::lookup(explicit, &cwd)?,
-    };
-    let cwd_s = cwd.display().to_string();
-    let configs = rt.configs.clone();
-    let bind = Bind {
-        harness: "none",
-        host_session: None,
-        cwd: &cwd_s,
-        configs: &configs,
-    };
-    let reply = rt.with(|e, h| e.fire(h, args.session.as_deref(), &args.event, &ps, &bind))?;
+    let cwd = paths::cwd()?;
+    let key = args.session.as_deref();
+    let mut rt = Runtime::for_call(key, explicit, &cwd)?;
+    let reply = rt.fire("none", key, &args.event, &ps, &cwd)?;
     if args.json {
         output::json(&reply)?;
     } else {
@@ -56,7 +46,7 @@ pub fn fire(args: &FireArgs, explicit: Option<&Path>) -> Result<u8> {
 // @zen-impl: CLI-5_AC-1
 pub fn session_list(args: &JsonArgs) -> Result<u8> {
     let store = FsStore::new(paths::user_state_dir()?, HashMap::new());
-    let sessions = store.sessions().map_err(|e| Error::msg(e.to_string()))?;
+    let sessions = store.sessions()?;
     if args.json {
         return output::json(&json!({ "sessions": sessions })).map(|()| EXIT_OK);
     }
@@ -97,16 +87,12 @@ pub fn session_show(args: &KeyArgs) -> Result<u8> {
 /// `smllm instance list` (CLI-6).
 // @zen-impl: CLI-6_AC-1
 pub fn instance_list(args: &JsonArgs, explicit: Option<&Path>) -> Result<u8> {
-    let cwd = std::env::current_dir().map_err(|e| Error::io(Path::new("."), e))?;
+    let cwd = paths::cwd()?;
     let mut rt = Runtime::lookup(explicit, &cwd)?;
     let ids: Vec<String> = rt.loaded.machines.iter().map(|m| m.id.clone()).collect();
     let mut all = Vec::new();
     for id in ids {
-        all.extend(
-            rt.store
-                .instances(&id)
-                .map_err(|e| Error::msg(e.to_string()))?,
-        );
+        all.extend(rt.store.instances(&id)?);
     }
     if args.json {
         return output::json(&json!({ "instances": all })).map(|()| EXIT_OK);
@@ -136,16 +122,12 @@ pub fn instance_list(args: &JsonArgs, explicit: Option<&Path>) -> Result<u8> {
 
 /// `smllm instance show ID`: by id or ref, with history.
 pub fn instance_show(args: &KeyArgs, explicit: Option<&Path>) -> Result<u8> {
-    let cwd = std::env::current_dir().map_err(|e| Error::io(Path::new("."), e))?;
+    let cwd = paths::cwd()?;
     let mut rt = Runtime::lookup(explicit, &cwd)?;
     let ids: Vec<String> = rt.loaded.machines.iter().map(|m| m.id.clone()).collect();
     let mut found = None;
     for id in ids {
-        for i in rt
-            .store
-            .instances(&id)
-            .map_err(|e| Error::msg(e.to_string()))?
-        {
+        for i in rt.store.instances(&id)? {
             if i.id == args.key || i.r#ref.as_deref() == Some(&args.key) {
                 found = Some(i);
             }
@@ -157,10 +139,7 @@ pub fn instance_show(args: &KeyArgs, explicit: Option<&Path>) -> Result<u8> {
             args.key
         ))
     })?;
-    let history = rt
-        .store
-        .history(&inst.machine, &inst.id)
-        .map_err(|e| Error::msg(e.to_string()))?;
+    let history = rt.store.history(&inst.machine, &inst.id)?;
     if args.json {
         return output::json(&json!({ "instance": inst, "history": history })).map(|()| EXIT_OK);
     }

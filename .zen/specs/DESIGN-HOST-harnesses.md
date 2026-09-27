@@ -62,7 +62,7 @@ plugin/                     # Claude Code plugin (hooks.json, .mcp.json, plugin.
 
 ### HOST-Runtime
 
-Per-call wiring. `new` loads configs with `smllm_format::load_configs`, maps each machine id to its `state_dir`, builds `Engine` and `FsStore` (user state dir), and remembers the config paths for new sessions. `lookup` resolves configs from a cwd (CLI-Lookup). `for_session` reads the session with a machine-less store and reloads its recorded configs; an unknown key yields an empty config and the engine reports the unknown session. `with` builds a `Host` from `FsStore`, `Commands` (guards and actions), `Files` (prompt files, regex matcher, clock) and `OsIds`.
+Per-call wiring. `new` loads configs with `smllm_format::load_configs`, maps each machine id to its `state_dir`, builds `Engine` and `FsStore` (user state dir), and remembers the config paths for new sessions. `lookup` resolves configs from a cwd (CLI-Lookup). `for_session` reads the session with a machine-less store and reloads its recorded configs; an unknown key yields an empty config and the engine reports the unknown session. `for_call` picks between them (a key → `for_session`, none → `lookup`); `fire` fires with a `Bind` for a keyless `enter` — the one path `smllm fire` and the MCP tool share. `with` builds a `Host` from `FsStore`, `Commands` (guards and actions), `Files` (prompt files, regex matcher, clock) and `OsIds`.
 
 ```rust
 pub struct Runtime {
@@ -76,6 +76,8 @@ impl Runtime {
     pub fn new(files: &[ConfigFile]) -> Result<Self>;
     pub fn lookup(explicit: Option<&Path>, cwd: &Path) -> Result<Self>;
     pub fn for_session(key: &str) -> Result<Self>;
+    pub fn for_call(key: Option<&str>, explicit: Option<&Path>, cwd: &Path) -> Result<Self>;
+    pub fn fire(&mut self, harness: &str, key: Option<&str>, event: &str, params: &[(String, String)], cwd: &Path) -> Result<Reply>;
     pub fn with<R>(&mut self, f: impl FnOnce(&Engine, &mut Host<'_>) -> R) -> R;
     pub fn bind(&mut self, harness: &str, host_session: Option<&str>, cwd: &str) -> Result<Reply>;
 }

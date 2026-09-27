@@ -64,13 +64,10 @@ fn run() -> Result<u8> {
         Command::Statusline(a) => statusline::statusline(&a),
         Command::Mcp => mcp::serve(explicit),
         Command::Completions(a) => completions(&a),
-        Command::Man => man::render()
-            .map_err(|e| error::Error::io(std::path::Path::new("<stdout>"), e))
-            .and_then(|b| {
-                agent_harness_kit::cli::write_stdout(&b)
-                    .map_err(|e| error::Error::io(std::path::Path::new("<stdout>"), e))?;
-                Ok(output::EXIT_OK)
-            }),
+        Command::Man => man::render().map_err(output::stdout_err).and_then(|b| {
+            agent_harness_kit::cli::write_stdout(&b).map_err(output::stdout_err)?;
+            Ok(output::EXIT_OK)
+        }),
     }
 }
 
@@ -83,7 +80,6 @@ fn completions(args: &CompletionsArgs) -> Result<u8> {
     // (`panic = "abort"`) instead of surfacing an error we can classify.
     let mut buf = Vec::new();
     clap_complete::generate(args.shell, &mut cmd, name, &mut buf);
-    agent_harness_kit::cli::write_stdout(&buf)
-        .map_err(|e| error::Error::io(std::path::Path::new("<stdout>"), e))?;
+    agent_harness_kit::cli::write_stdout(&buf).map_err(output::stdout_err)?;
     Ok(output::EXIT_OK)
 }

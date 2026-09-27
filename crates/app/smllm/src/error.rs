@@ -40,5 +40,11 @@ impl Error {
     }
 }
 
+impl From<smllm_core::host::HostError> for Error {
+    fn from(e: smllm_core::host::HostError) -> Self {
+        Error::Msg(e.to_string())
+    }
+}
+
 /// App result.
 pub type Result<T> = std::result::Result<T, Error>;

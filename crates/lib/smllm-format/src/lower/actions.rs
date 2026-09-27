@@ -91,7 +91,9 @@ pub(crate) fn lower_actions(
     out
 }
 
-fn lower_prompt(
+/// Lower one prompt (`text` or `file`), warning on smllm's fences; also the
+/// config's `[idle] on-enter`.
+pub(crate) fn lower_prompt(
     c: &mut Checker<'_>,
     files: &Files<'_>,
     path: &[String],
@@ -118,7 +120,7 @@ fn lower_prompt(
                     c.error(
                         path,
                         format!("prompt file {f}: {e}"),
-                        Some("paths are relative to the machine file"),
+                        Some("paths are relative to the file that names them"),
                         "CFG-4",
                     );
                     None
