@@ -103,6 +103,19 @@ impl FsStore {
             .collect()
     }
 
+    /// Whether another instance of the machine already has `instance`'s ref,
+    /// as its ref or its id (INST-3). Checked under the machine lock, so two
+    /// sessions entering the same new ref cannot both create an instance.
+    fn ref_taken(&mut self, instance: &Instance) -> Result<bool, HostError> {
+        let Some(r) = instance.r#ref.as_deref() else {
+            return Ok(false);
+        };
+        Ok(self
+            .instances(&instance.machine)?
+            .iter()
+            .any(|i| i.id != instance.id && (i.r#ref.as_deref() == Some(r) || i.id == r)))
+    }
+
     /// Keep instance state out of git (O6: private in v1).
     fn ignore_state(&self, machine_dir: &Path) {
         if let Some(state) = machine_dir.parent() {
@@ -180,6 +193,7 @@ impl Store for FsStore {
     }
 
     // @zen-impl: INST-8_AC-2
+    // @zen-impl: INST-3_AC-1
     fn put_instance(&mut self, instance: &Instance) -> Result<(), HostError> {
         let dir = self.machine_dir(&instance.machine)?;
         fs::create_dir_all(&dir).map_err(other)?;
@@ -194,7 +208,7 @@ impl Store for FsStore {
         let path = dir.join(format!("{}.json", safe(&instance.id)));
         let stored: Option<Instance> = read_json(&path)?;
         let stored = stored.map_or(0, |i| i.version);
-        let result = if instance.version != stored + 1 {
+        let result = if instance.version != stored + 1 || self.ref_taken(instance)? {
             Err(HostError::Conflict)
         } else {
             let text = serde_json::to_string_pretty(instance).map_err(other)?;
@@ -246,6 +260,7 @@ mod tests {
     }
 
     // @zen-test: INST-8_AC-2
+    // @zen-test: INST-3_AC-1
     // @zen-test: STO-3_AC-1
     #[test]
     fn versions_guard_instance_writes_and_history_appends() {
@@ -261,6 +276,18 @@ mod tests {
         assert_eq!(s.instance("dev", "i-1").unwrap().unwrap().version, 2);
         assert_eq!(s.instances("dev").unwrap().len(), 1);
         assert!(d.join("proj/state/.gitignore").is_file());
+        // A second new instance with a ref already taken is a conflict.
+        let mut a = inst(3);
+        a.r#ref = Some("GH-1".into());
+        s.put_instance(&a).unwrap();
+        let mut b = inst(1);
+        b.id = "i-2".into();
+        b.r#ref = Some("GH-1".into());
+        assert_eq!(s.put_instance(&b), Err(HostError::Conflict));
+        b.r#ref = Some("i-1".into());
+        assert_eq!(s.put_instance(&b), Err(HostError::Conflict));
+        b.r#ref = Some("GH-2".into());
+        s.put_instance(&b).unwrap();
         s.append_history(
             "dev",
             "i-1",

@@ -471,3 +471,67 @@ fn the_dev_example_through_final_and_reopen() {
     let o = w.run(&["instance", "show", "GH-3"]);
     assert!(o.stdout.contains("status: active"), "{}", o.stdout);
 }
+
+// Pipelined calls on one session run one at a time: none fails, and the
+// session file stays whole (STO-3, PLAN-003 F2/F3).
+// @zen-test: STO-3_AC-1
+#[test]
+fn mcp_pipelined_calls_on_one_session() {
+    let w = World::showcase("mcp-pipelined");
+    let key = start(&w, "cc-11");
+    let mut child = Command::new(assert_cmd::cargo::cargo_bin("smllm"))
+        .arg("mcp")
+        .current_dir(&w.project)
+        .env("XDG_STATE_HOME", w.root.join("state"))
+        .env("XDG_CONFIG_HOME", w.root.join("config"))
+        .env("HOME", w.root.join("home"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+    let meta = json!({
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": { "name": "t", "version": "1" }
+    });
+    let mut send = |id: u64, args: Value| {
+        let msg = json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call",
+            "params": { "name": "smllm", "arguments": args, "_meta": meta } });
+        writeln!(stdin, "{msg}").unwrap();
+        stdin.flush().unwrap();
+    };
+    let mut id = 0;
+    let mut sent = 0;
+    send(
+        id,
+        json!({ "session": key, "event": "enter", "params": { "stateMachine": "showcase" } }),
+    );
+    sent += 1;
+    for _ in 0..30 {
+        for _ in 0..2 {
+            id += 1;
+            send(id, json!({ "session": key, "event": "yield" }));
+            sent += 1;
+        }
+    }
+    // Closing stdin lets the server exit once it has answered everything.
+    drop(stdin);
+    let mut failures = Vec::new();
+    for _ in 0..sent {
+        let v: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+        if v["result"]["isError"] == true {
+            failures.push(v["result"]["content"][0]["text"].clone());
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+    let status = child.wait().unwrap();
+    assert!(status.success(), "{status}");
+    let sessions = w.root.join("state/smllm/sessions");
+    for e in std::fs::read_dir(&sessions).unwrap().flatten() {
+        let text = std::fs::read_to_string(e.path()).unwrap();
+        serde_json::from_str::<Value>(&text)
+            .unwrap_or_else(|err| panic!("{}: {err}", e.path().display()));
+    }
+}

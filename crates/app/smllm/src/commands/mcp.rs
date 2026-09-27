@@ -3,7 +3,7 @@
 // @zen-component: HOST-Mcp
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use rmcp::model::{
     CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock,
@@ -119,6 +119,9 @@ fn call_inner(
 struct Server {
     cwd: Arc<PathBuf>,
     explicit: Option<Arc<PathBuf>>,
+    /// Held for each tool call: the client may pipeline calls, and two calls
+    /// on one session must not interleave their reads and writes (STO-3).
+    calls: Arc<Mutex<()>>,
 }
 
 impl ServerHandler for Server {
@@ -157,8 +160,11 @@ impl ServerHandler for Server {
         let args = request.arguments.unwrap_or_default();
         let cwd = self.cwd.clone();
         let explicit = self.explicit.clone();
-        // Guards and actions may run commands for minutes: off the runtime.
+        let calls = Arc::clone(&self.calls);
+        // Guards and actions may run commands for minutes: off the runtime,
+        // one call at a time.
         let (ok, text) = tokio::task::spawn_blocking(move || {
+            let _one = calls.lock().unwrap_or_else(PoisonError::into_inner);
             call(&args, &cwd, explicit.as_deref().map(|p| p.as_path()))
         })
         .await
@@ -181,6 +187,7 @@ pub fn serve(explicit: Option<&std::path::Path>) -> Result<u8> {
     let server = Server {
         cwd: Arc::new(cwd),
         explicit: explicit.map(|p| Arc::new(p.to_path_buf())),
+        calls: Arc::default(),
     };
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
