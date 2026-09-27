@@ -1,27 +1,55 @@
 //! Lower `{type, params}` actions and guards (CFG-4, CFG-5, DEC-4..7).
 // @zen-component: CFG-Lower
 
-use std::path::Path;
+use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 
 use smllm_core::SmallMap;
 use smllm_core::model::{ActionDef, GuardDef, Prompt, Value};
 
+use crate::load::Mode;
 use crate::lower::checker::Checker;
 use crate::source::{ActionSrc, Actions, CommandParams, GuardSrc, Run, StringOr};
 
 /// Fences the agent text must not contain (TURN-12).
 const FENCES: [&str; 3] = ["</smllm>", "</instructions>", "</events>"];
 
-/// Where prompt files live and whether to inline them.
+/// Where prompt files live, and what the load does with them.
 pub(crate) struct Files<'a> {
     pub dir: &'a Path,
-    /// `smllm compile`: read prompt files now (browser hosts have no files).
-    pub inline: bool,
+    pub mode: Mode,
+    /// Files [`Mode::Run`] has found already: a file named by many states is
+    /// checked once.
+    found: RefCell<Vec<PathBuf>>,
 }
 
-impl Files<'_> {
+impl<'a> Files<'a> {
+    pub(crate) fn new(dir: &'a Path, mode: Mode) -> Self {
+        Self {
+            dir,
+            mode,
+            found: RefCell::default(),
+        }
+    }
+
     pub(crate) fn resolve(&self, rel: &str) -> String {
         self.dir.join(rel).display().to_string()
+    }
+
+    /// The prompt file's text: `None` in [`Mode::Run`], which only checks
+    /// that the file is there.
+    fn prompt(&self, full: &Path) -> std::io::Result<Option<String>> {
+        if self.mode != Mode::Run {
+            return std::fs::read_to_string(full).map(Some);
+        }
+        if self.found.borrow().iter().any(|p| p == full) {
+            return Ok(None);
+        }
+        if !std::fs::metadata(full)?.is_file() {
+            return Err(std::io::Error::other("not a file"));
+        }
+        self.found.borrow_mut().push(full.to_path_buf());
+        Ok(None)
     }
 }
 
@@ -107,13 +135,14 @@ pub(crate) fn lower_prompt(
         }
         (None, Some(f)) => {
             let full = files.dir.join(f);
-            match std::fs::read_to_string(&full) {
-                Ok(t) => {
-                    check_fences(c, path, &t);
-                    Some(ActionDef::Prompt(if files.inline {
-                        Prompt::Text(t)
-                    } else {
-                        Prompt::File(full.display().to_string())
+            match files.prompt(&full) {
+                Ok(text) => {
+                    if let Some(t) = &text {
+                        check_fences(c, path, t);
+                    }
+                    Some(ActionDef::Prompt(match text {
+                        Some(t) if files.mode == Mode::Inline => Prompt::Text(t),
+                        _ => Prompt::File(full.display().to_string()),
                     }))
                 }
                 Err(e) => {
@@ -148,13 +177,19 @@ pub(crate) fn default_prompt(
     state: &str,
 ) -> Option<ActionDef> {
     let full = files.dir.join(format!("enter-{state}.md"));
-    if files.inline {
-        let t = std::fs::read_to_string(&full).ok()?;
-        check_fences(c, path, &t);
-        return Some(ActionDef::Prompt(Prompt::Text(t)));
-    }
-    if let Ok(t) = std::fs::read_to_string(&full) {
-        check_fences(c, path, &t);
+    match files.mode {
+        // Read when the prompt is shown; no probe for the fence warning.
+        Mode::Run => {}
+        Mode::Check => {
+            if let Ok(t) = std::fs::read_to_string(&full) {
+                check_fences(c, path, &t);
+            }
+        }
+        Mode::Inline => {
+            let t = std::fs::read_to_string(&full).ok()?;
+            check_fences(c, path, &t);
+            return Some(ActionDef::Prompt(Prompt::Text(t)));
+        }
     }
     Some(ActionDef::Prompt(Prompt::DefaultFile(
         full.display().to_string(),

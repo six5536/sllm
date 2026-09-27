@@ -4,7 +4,7 @@
 use smllm_core::model::Config;
 
 use crate::finding::Findings;
-use crate::load::{ConfigFile, Origin, load_configs, load_machine};
+use crate::load::{ConfigFile, Mode, Origin, load_configs, load_machine};
 
 /// Compile a `config.toml` (every machine it lists) or one machine file.
 // @zen-impl: CLI-13_AC-1
@@ -16,11 +16,11 @@ pub fn compile(path: &std::path::Path) -> (Option<String>, Findings) {
                 path: path.to_path_buf(),
                 origin: Origin::Explicit,
             }],
-            true,
+            Mode::Inline,
         );
         (Some(loaded.config), loaded.findings)
     } else {
-        let (m, f) = load_machine(path, true);
+        let (m, f) = load_machine(path, Mode::Inline);
         (
             m.map(|m| Config {
                 machines: vec![m],

@@ -124,6 +124,14 @@ None; answered in §6 by the usual practice.
   once per path; a missing file fails the machine at load, as now. Only reads and the
   `enter-<STATE>.md` probes go.
 
+- Q5 (raised in A1, open): the release profile optimises for size (`opt-level = "z"`). Measured
+  per load: YAML parsing 2.3 ms at `z`; `opt-level = 3` for the whole binary halves it (+1.5 MB,
+  +43%); `opt-level = 3` for only `serde-saphyr`, `granit-parser`, `regex-automata` and
+  `regex-syntax` gives 1.3 ms YAML and faster patterns, about 1.4 ms per load in all, for +330 KB
+  (+9.5%). Keep `z`, or add the per-package overrides?
+
 ## 7. Outcome
 
-(filled in at the end)
+| Phase | Commit / result |
+| ----- | --------------- |
+| A1 | `Mode { Run, Check, Inline }`; one compile per pattern; shape keys from one shared schema (first file 0.5 → 0.23 ms). Stage timing (per load, `z`): read 0.7 ms, YAML 2.3, shape 0.35, lower 1.0 (patterns). `graph`: 86 → 17 file accesses; `/workspaces` 11.4 → 5.4 ms; local disk 4.75 → 4.35 ms |

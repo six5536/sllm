@@ -25,9 +25,20 @@ struct Keys {
 }
 
 impl Keys {
+    /// From `T`'s definition in the machine file's schema, built once; a
+    /// type the schema inlines gets its own.
     fn of<T: JsonSchema>() -> Self {
-        let schema = schemars::schema_for!(T);
-        let v = schema.as_value();
+        static ROOT: OnceLock<schemars::Schema> = OnceLock::new();
+        let root = ROOT.get_or_init(|| schemars::schema_for!(MachineFile));
+        let own;
+        let v = match root.get("$defs").and_then(|d| d.get(T::schema_name().as_ref())) {
+            Some(v) => v,
+            None if T::schema_name() == MachineFile::schema_name() => root.as_value(),
+            None => {
+                own = schemars::schema_for!(T);
+                own.as_value()
+            }
+        };
         let names = |key: &str| -> Vec<String> {
             match v.get(key) {
                 Some(Value::Object(m)) => m.keys().cloned().collect(),

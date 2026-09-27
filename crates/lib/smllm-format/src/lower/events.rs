@@ -12,9 +12,14 @@ use crate::ypath;
 /// Names the `enter` event uses itself (CFG-13).
 const ENTER_PARAMS: [&str; 2] = ["stateMachine", "state"];
 
-pub(crate) fn valid_pattern(c: &mut Checker<'_>, path: &[String], pattern: &str) -> bool {
+/// The compiled pattern, or an error finding when it is not a valid regex.
+pub(crate) fn valid_pattern(
+    c: &mut Checker<'_>,
+    path: &[String],
+    pattern: &str,
+) -> Option<regex::Regex> {
     match regex::Regex::new(pattern) {
-        Ok(_) => true,
+        Ok(re) => Some(re),
         Err(e) => {
             let first = e.to_string().lines().last().unwrap_or_default().to_string();
             c.error(
@@ -23,7 +28,7 @@ pub(crate) fn valid_pattern(c: &mut Checker<'_>, path: &[String], pattern: &str)
                 None,
                 "CFG-7",
             );
-            false
+            None
         }
     }
 }
@@ -46,7 +51,7 @@ pub(crate) fn lower_instance(c: &mut Checker<'_>, src: Option<&InstanceMeta>) ->
         }
         spec.ref_description = r.description.clone();
         if let Some(pat) = &r.pattern
-            && valid_pattern(c, &ypath!["meta", "instance", "ref", "pattern"], pat)
+            && valid_pattern(c, &ypath!["meta", "instance", "ref", "pattern"], pat).is_some()
         {
             spec.ref_pattern = Some(pat.clone());
         }
@@ -175,9 +180,9 @@ fn lower_params(c: &mut Checker<'_>, path: &[String], schema: &ParamsSchema) -> 
         let pattern = prop.pattern.as_ref().filter(|pat| {
             let mut ppp = pp.clone();
             ppp.push("pattern".into());
-            valid_pattern(c, &ppp, pat)
-        });
-        if let Some(re) = pattern.and_then(|p| regex::Regex::new(p).ok()) {
+            let Some(re) = valid_pattern(c, &ppp, pat) else {
+                return false;
+            };
             for v in enum_values.iter().filter(|v| !re.is_match(v)) {
                 c.warning(
                     &pp,
@@ -188,7 +193,8 @@ fn lower_params(c: &mut Checker<'_>, path: &[String], schema: &ParamsSchema) -> 
                     "CFG-7",
                 );
             }
-        }
+            true
+        });
         out.push(ParamSpec {
             name: name.to_string(),
             description: prop.description.clone(),

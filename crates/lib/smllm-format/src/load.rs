@@ -31,6 +31,20 @@ pub struct ConfigFile {
     pub origin: Origin,
 }
 
+/// How much a load does besides lowering (PLAN-004 D4-4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// What the engine needs, for every command but `validate` and `compile`:
+    /// prompt files are checked to exist, not read. Warnings that need their
+    /// text are skipped.
+    Run,
+    /// `smllm validate`: every check, prompt files read.
+    Check,
+    /// `smllm compile`: every check, and prompt files inlined (browser hosts
+    /// have no files).
+    Inline,
+}
+
 /// Where a loaded machine lives.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MachineSource {
@@ -117,10 +131,9 @@ fn finding(
     }
 }
 
-/// Parse and lower one machine file. `inline` reads prompt files now
-/// (`smllm compile`).
+/// Parse and lower one machine file.
 // @zen-impl: CFG-14_AC-1
-pub fn load_machine(path: &Path, inline: bool) -> (Option<Machine>, Findings) {
+pub fn load_machine(path: &Path, mode: Mode) -> (Option<Machine>, Findings) {
     let mut findings = Findings::default();
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
@@ -168,7 +181,7 @@ pub fn load_machine(path: &Path, inline: bool) -> (Option<Machine>, Findings) {
     };
     let dir = path.parent().unwrap_or(Path::new("."));
     let mut c = Checker::new(path, &text);
-    let machine = lower(&mut c, &Files { dir, inline }, &parsed);
+    let machine = lower(&mut c, &Files::new(dir, mode), &parsed);
     findings.extend(c.findings);
     (machine, findings)
 }
@@ -194,7 +207,7 @@ fn parse_message(full: &str) -> String {
 /// Load and combine config files, in order: user then project; the project
 /// wins on a machine id clash, and its `[idle]` replaces the user's (D26).
 // @zen-impl: CFG-15_AC-2
-pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded {
+pub fn load_configs(files: &[ConfigFile], mode: Mode) -> Loaded {
     let mut out = Loaded::default();
     let mut idle: Option<Vec<ActionDef>> = None;
     for cf in files {
@@ -246,7 +259,7 @@ pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded {
             idle = Some(match i.on_enter {
                 Some(p) => {
                     let mut c = Checker::new(&cf.path, &text);
-                    let files = Files { dir, inline };
+                    let files = Files::new(dir, mode);
                     let at = ["idle".to_string(), "on-enter".to_string()];
                     let prompt =
                         lower_prompt(&mut c, &files, &at, p.text.as_deref(), p.file.as_deref());
@@ -259,7 +272,7 @@ pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded {
         let mut seen_here: Vec<String> = Vec::new();
         for rel in &parsed.machines.files {
             let file = dir.join(rel);
-            let (machine, findings) = load_machine(&file, inline);
+            let (machine, findings) = load_machine(&file, mode);
             out.findings.extend(findings);
             let Some(machine) = machine else {
                 withdraw_replaced(&mut out, &file, &cf.path);

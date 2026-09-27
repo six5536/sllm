@@ -6,7 +6,7 @@ use std::path::Path;
 
 use smllm_core::host::{Host, Store};
 use smllm_core::{Bind, Engine, Reply};
-use smllm_format::{ConfigFile, Loaded, load_configs};
+use smllm_format::{ConfigFile, Loaded, Mode, load_configs};
 
 use crate::error::Result;
 use crate::host::{Commands, Files, OsIds};
@@ -26,9 +26,18 @@ pub struct Runtime {
 }
 
 impl Runtime {
-    /// Load `files`.
+    /// Load `files` to run them.
     pub fn new(files: &[ConfigFile]) -> Result<Self> {
-        let loaded = load_configs(files, false);
+        Self::load(files, Mode::Run)
+    }
+
+    /// Load `files` with every check, for `validate`.
+    pub fn checked(files: &[ConfigFile]) -> Result<Self> {
+        Self::load(files, Mode::Check)
+    }
+
+    fn load(files: &[ConfigFile], mode: Mode) -> Result<Self> {
+        let loaded = load_configs(files, mode);
         let machines: HashMap<String, std::path::PathBuf> = loaded
             .machines
             .iter()

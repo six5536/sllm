@@ -9,7 +9,7 @@ use serde_json::json;
 use smllm_core::host::Store;
 use smllm_format::{
     ConfigFile, Finding, Findings, Origin, Severity, compile, config_template, json_schema,
-    load_machine, machine_template,
+    Mode, load_machine, machine_template,
 };
 
 use crate::cli::{CompileArgs, InitArgs, NewArgs, ValidateArgs};
@@ -204,21 +204,21 @@ pub fn validate(args: &ValidateArgs, explicit: Option<&Path>) -> Result<u8> {
                 "no config found: run smllm init, or pass --config",
             ));
         }
-        let mut rt = Runtime::new(&files)?;
+        let mut rt = Runtime::checked(&files)?;
         findings.extend(rt.loaded.findings.clone());
         findings.extend(saved_states(&mut rt));
     } else {
         for p in &args.paths {
             let p = here.join(p);
             if p.extension().is_some_and(|e| e == "toml") {
-                let mut rt = Runtime::new(&[ConfigFile {
+                let mut rt = Runtime::checked(&[ConfigFile {
                     path: p,
                     origin: Origin::Explicit,
                 }])?;
                 findings.extend(rt.loaded.findings.clone());
                 findings.extend(saved_states(&mut rt));
             } else {
-                findings.extend(load_machine(&p, false).1);
+                findings.extend(load_machine(&p, Mode::Check).1);
             }
         }
     }

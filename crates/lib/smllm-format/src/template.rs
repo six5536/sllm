@@ -52,7 +52,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("demo.smllm.yaml");
         std::fs::write(&file, machine_template("demo")).unwrap();
-        let (m, findings) = crate::load_machine(&file, false);
+        let (m, findings) = crate::load_machine(&file, crate::Mode::Check);
         assert!(m.is_some(), "{findings:?}");
         assert!(
             findings.0.iter().all(|f| f.level != crate::Severity::Error),

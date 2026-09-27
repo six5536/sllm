@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use smllm_core::model::{ActionDef, GuardDef, Prompt};
 use smllm_format::{
-    ConfigFile, Origin, Severity, compile, json_schema, load_configs, load_machine,
+    ConfigFile, Mode, Origin, Severity, compile, json_schema, load_configs, load_machine,
 };
 
 fn root() -> PathBuf {
@@ -19,7 +19,7 @@ fn fixture(name: &str) -> PathBuf {
 
 /// Findings as `validate` prints them, the file shown as `f`.
 fn lines(path: &Path) -> Vec<String> {
-    let (_, f) = load_machine(path, false);
+    let (_, f) = load_machine(path, Mode::Check);
     f.0.iter().map(|f| f.to_report("f").to_line()).collect()
 }
 
@@ -32,7 +32,7 @@ fn the_examples_load_cleanly() {
                 path: root().join(ex),
                 origin: Origin::Project,
             }],
-            false,
+            Mode::Check,
         );
         let errs: Vec<String> = loaded
             .findings
@@ -51,7 +51,7 @@ fn the_examples_load_cleanly() {
 // @zen-test: CFG-11_AC-1
 #[test]
 fn the_showcase_lowers_as_written() {
-    let (m, _) = load_machine(&root().join("examples/showcase/showcase.smllm.yaml"), false);
+    let (m, _) = load_machine(&root().join("examples/showcase/showcase.smllm.yaml"), Mode::Check);
     let m = m.unwrap();
     assert_eq!(m.instance.kind, "document");
     assert_eq!(m.instance.ref_param, "documentPath");
@@ -93,7 +93,7 @@ fn the_showcase_lowers_as_written() {
 fn every_rule_violation_is_collected() {
     let found = lines(&fixture("bad/rules.smllm.yaml"));
     insta::assert_snapshot!(found.join("\n"));
-    let (m, _) = load_machine(&fixture("bad/rules.smllm.yaml"), false);
+    let (m, _) = load_machine(&fixture("bad/rules.smllm.yaml"), Mode::Check);
     assert!(m.is_none());
 }
 
@@ -124,7 +124,7 @@ fn version_and_missing_files() {
             .any(|l| l.starts_with("f:6: error: states.A.entry: prompt file nowhere.md")),
         "{found:?}"
     );
-    let (_, f) = load_machine(&fixture("bad/absent.smllm.yaml"), false);
+    let (_, f) = load_machine(&fixture("bad/absent.smllm.yaml"), Mode::Check);
     assert!(f.0[0].message.starts_with("cannot read"));
 }
 
@@ -163,7 +163,7 @@ fn project_wins_over_user_and_idle_is_replaced() {
                 origin: Origin::Project,
             },
         ],
-        false,
+        Mode::Check,
     );
     assert_eq!(loaded.config.machines.len(), 1);
     assert_eq!(
@@ -198,7 +198,7 @@ fn project_wins_over_user_and_idle_is_replaced() {
         format!("{dev}\n  : [broken\n"),
     )
     .unwrap();
-    let broken = load_configs(&both, false);
+    let broken = load_configs(&both, Mode::Check);
     assert!(broken.config.machines.is_empty(), "{:?}", broken.machines);
     assert!(
         broken
@@ -220,7 +220,7 @@ fn project_wins_over_user_and_idle_is_replaced() {
         "[machines]\nfiles = [\"dev.smllm.yaml\", \"dev2.smllm.yaml\"]\n",
     )
     .unwrap();
-    let clash = load_configs(&both, false);
+    let clash = load_configs(&both, Mode::Check);
     assert!(
         clash
             .findings
@@ -231,7 +231,7 @@ fn project_wins_over_user_and_idle_is_replaced() {
     );
     assert_eq!(clash.config.machines.len(), 1);
     std::fs::write(project.join("config.toml"), "[machines\n").unwrap();
-    let broken = load_configs(&both, false);
+    let broken = load_configs(&both, Mode::Check);
     assert!(broken.config.machines.is_empty());
     assert!(
         broken
@@ -247,7 +247,7 @@ fn project_wins_over_user_and_idle_is_replaced() {
             path: project.join("config.toml"),
             origin: Origin::Explicit,
         }],
-        false,
+        Mode::Check,
     );
     assert!(bad.findings.has_errors());
     assert_eq!(bad.findings.0[0].line, Some(2));
@@ -257,7 +257,7 @@ fn project_wins_over_user_and_idle_is_replaced() {
             path: project.join("config.toml"),
             origin: Origin::Explicit,
         }],
-        false,
+        Mode::Check,
     );
     assert!(
         bad.findings.0[0]
@@ -331,7 +331,7 @@ fn set_ref_with_empty_params_and_duplicate_keys() {
     std::fs::create_dir_all(&dir).unwrap();
     let ok = dir.join("ok.smllm.yaml");
     std::fs::write(&ok, "id: ok\ninitial: A\nmeta: {smllm: 1}\nstates:\n  A:\n    entry: {type: prompt, params: {text: hi}}\n    on:\n      named: {target: B, actions: {type: setRef, params: {}}}\n  B: {type: final}\n").unwrap();
-    let (m, f) = load_machine(&ok, false);
+    let (m, f) = load_machine(&ok, Mode::Check);
     assert!(m.is_some(), "{f:?}");
     let dup = dir.join("dup.smllm.yaml");
     std::fs::write(
@@ -355,17 +355,62 @@ fn nulls_are_absent_and_an_empty_prompt_has_a_line() {
     let file = dir.join("tiny.smllm.yaml");
     let tiny = "id: tiny\ndescription: ~\ninitial: A\nmeta:\n  smllm: 1\n  instance:\n  events: ~\nstates:\n  A:\n    description:\n    entry: ~\n    on:\n      go: B\n  B:\n    type: final\n";
     std::fs::write(&file, tiny).unwrap();
-    let (m, f) = load_machine(&file, false);
+    let (m, f) = load_machine(&file, Mode::Check);
     assert!(!f.has_errors(), "{:?}", f.0);
     assert_eq!(m.unwrap().id, "tiny");
     let bad = tiny.replace("    entry: ~\n", "    entry:\n      - type: prompt\n");
     std::fs::write(&file, bad).unwrap();
-    let (m, f) = load_machine(&file, false);
+    let (m, f) = load_machine(&file, Mode::Check);
     assert!(m.is_none());
     let e =
         f.0.iter()
             .find(|f| f.message.contains("exactly one of: text, file"))
             .unwrap();
     assert_eq!(e.line, Some(11), "{e:?}");
+    std::fs::remove_dir_all(dir).ok();
+}
+
+// A run load checks that each named prompt file exists but reads none, and
+// probes no `enter-<STATE>.md`: the fence warnings are `validate`'s
+// (PLAN-004 D4-4).
+// @zen-test: CFG-4_AC-1
+#[test]
+fn a_run_load_checks_prompt_files_without_reading_them() {
+    let dir = std::env::temp_dir().join(format!("smllm-run-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("dir.md")).unwrap();
+    std::fs::write(dir.join("p.md"), "say </smllm>").unwrap();
+    std::fs::write(dir.join("enter-B.md"), "say </events>").unwrap();
+    let file = dir.join("m.smllm.yaml");
+    let machine = |prompt: &str| {
+        format!(
+            "id: m\ninitial: A\nmeta: {{smllm: 1}}\nstates:\n  A:\n    entry: {{type: prompt, params: {{file: {prompt}}}}}\n    on: {{go: B}}\n  B:\n    entry: {{type: prompt, params: {{file: p.md}}}}\n    on: {{go: C}}\n  C: {{type: final}}\n"
+        )
+    };
+    std::fs::write(&file, machine("p.md")).unwrap();
+    let fences = |f: &smllm_format::Findings| f.0.iter().filter(|f| f.rule == "TURN-12").count();
+
+    let (m, f) = load_machine(&file, Mode::Check);
+    assert!(m.is_some(), "{:?}", f.0);
+    assert_eq!(fences(&f), 2, "{:?}", f.0);
+
+    let (m, f) = load_machine(&file, Mode::Run);
+    assert_eq!(fences(&f), 0, "{:?}", f.0);
+    let m = m.unwrap();
+    let a = m.state("A").unwrap();
+    let p = dir.join("p.md").display().to_string();
+    assert!(matches!(&a.entry[..], [ActionDef::Prompt(Prompt::File(f))] if *f == p));
+    let c = m.state("C").unwrap();
+    assert!(matches!(&c.entry[..], [ActionDef::Prompt(Prompt::DefaultFile(_))]));
+
+    for missing in ["nowhere.md", "dir.md"] {
+        std::fs::write(&file, machine(missing)).unwrap();
+        let (m, f) = load_machine(&file, Mode::Run);
+        assert!(m.is_none(), "{missing}");
+        assert!(
+            f.0.iter().any(|f| f.message.starts_with(&format!("prompt file {missing}"))),
+            "{:?}",
+            f.0
+        );
+    }
     std::fs::remove_dir_all(dir).ok();
 }
