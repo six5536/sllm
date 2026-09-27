@@ -2,39 +2,18 @@
 //! the rule it comes from (CFG-14).
 // @zen-component: CFG-Findings
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+pub use agent_harness_kit::report::Severity;
+use agent_harness_kit::report::{self, Report};
 use serde::Serialize;
-
-/// Finding level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Level {
-    /// Must be fixed; the config does not load.
-    Error,
-    /// Probably a mistake.
-    Warning,
-    /// Worth knowing.
-    Info,
-}
-
-impl Level {
-    /// Lower-case name.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Level::Error => "error",
-            Level::Warning => "warning",
-            Level::Info => "info",
-        }
-    }
-}
 
 /// One finding.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Finding {
-    /// Level.
-    pub level: Level,
+    /// Severity.
+    pub level: Severity,
     /// File.
     pub file: PathBuf,
     /// 1-based line, when known.
@@ -50,21 +29,19 @@ pub struct Finding {
 }
 
 impl Finding {
-    /// `<file>:<line>: <level>: <message> (<rule>)`, the hint on the next line.
-    pub fn render(&self) -> String {
-        let mut s = self.file.display().to_string();
-        if let Some(l) = self.line {
-            s.push_str(&format!(":{l}"));
-        }
-        s.push_str(&format!(": {}: ", self.level.as_str()));
+    /// The report line users see: the YAML path and hint folded into the
+    /// message; `shown` renders the file.
+    pub fn to_report(&self, shown: &str) -> report::Finding {
+        let mut msg = String::new();
         if let Some(p) = &self.path {
-            s.push_str(&format!("{p}: "));
+            msg.push_str(p);
+            msg.push_str(": ");
         }
-        s.push_str(&format!("{} ({})", self.message, self.rule));
+        msg.push_str(&self.message);
         if let Some(h) = &self.hint {
-            s.push_str(&format!("\n  hint: {h}"));
+            msg.push_str(&format!(" — {h}"));
         }
-        s
+        report::Finding::new(shown, self.line, self.level, msg, self.rule)
     }
 }
 
@@ -75,11 +52,11 @@ pub struct Findings(pub Vec<Finding>);
 impl Findings {
     /// Whether any is an error.
     pub fn has_errors(&self) -> bool {
-        self.count(Level::Error) > 0
+        self.count(Severity::Error) > 0
     }
 
     /// How many at `level`.
-    pub fn count(&self, level: Level) -> usize {
+    pub fn count(&self, level: Severity) -> usize {
         self.0.iter().filter(|f| f.level == level).count()
     }
 
@@ -91,5 +68,15 @@ impl Findings {
     /// Add all of another set.
     pub fn extend(&mut self, other: Findings) {
         self.0.extend(other.0);
+    }
+
+    /// As the kit's report (what `validate` prints); `shown` renders each
+    /// file.
+    pub fn report(&self, shown: impl Fn(&Path) -> String) -> Report {
+        let mut r = Report::default();
+        for f in &self.0 {
+            r.push(f.to_report(&shown(&f.file)));
+        }
+        r.finish()
     }
 }

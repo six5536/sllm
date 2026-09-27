@@ -55,7 +55,7 @@ mod tests {
         let (m, findings) = crate::load_machine(&file, false);
         assert!(m.is_some(), "{findings:?}");
         assert!(
-            findings.0.iter().all(|f| f.level != crate::Level::Error),
+            findings.0.iter().all(|f| f.level != crate::Severity::Error),
             "{findings:?}"
         );
         let cfg: toml::Table = toml::from_str(config_template()).unwrap();

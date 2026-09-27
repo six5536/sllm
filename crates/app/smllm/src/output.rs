@@ -4,9 +4,9 @@
 use std::path::Path;
 
 use agent_harness_kit::cli::{json_line, write_stdout};
-use agent_harness_kit::report::{Finding, Report, Severity};
+use agent_harness_kit::report::Report;
 use serde::Serialize;
-use smllm_format::{Findings, Level};
+use smllm_format::Findings;
 
 use crate::error::{Error, Result};
 
@@ -37,26 +37,7 @@ pub fn shown(path: &Path) -> String {
         .to_string()
 }
 
-/// smllm-format findings as a report (YAML path and hint folded into the
-/// message).
+/// smllm-format findings as a report, files shown relative to the cwd.
 pub fn report(findings: &Findings) -> Report {
-    let mut r = Report::default();
-    for f in &findings.0 {
-        let mut msg = String::new();
-        if let Some(p) = &f.path {
-            msg.push_str(p);
-            msg.push_str(": ");
-        }
-        msg.push_str(&f.message);
-        if let Some(h) = &f.hint {
-            msg.push_str(&format!(" — {h}"));
-        }
-        let severity = match f.level {
-            Level::Error => Severity::Error,
-            Level::Warning => Severity::Warning,
-            Level::Info => Severity::Info,
-        };
-        r.push(Finding::new(shown(&f.file), f.line, severity, msg, f.rule));
-    }
-    r.finish()
+    findings.report(shown)
 }

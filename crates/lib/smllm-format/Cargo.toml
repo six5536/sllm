@@ -13,6 +13,7 @@ keywords.workspace = true
 categories = ["parser-implementations", "development-tools"]
 
 [dependencies]
+agent-harness-kit.workspace = true
 smllm-core = { workspace = true, features = ["std", "serde"] }
 regex.workspace = true
 schemars.workspace = true

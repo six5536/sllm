@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use smllm_core::BUILTINS;
 use smllm_core::model::{ActionDef, Machine, On, Position, SharedAction, State, Transition};
 
-use crate::finding::Level;
+use crate::finding::Severity;
 use crate::lower::actions::{Files, check_fences, default_prompt, lower_actions, lower_guard};
 use crate::lower::checker::Checker;
 use crate::lower::events::{is_name, lower_events, lower_instance, require_ref};
@@ -321,7 +321,7 @@ pub(crate) fn lower(c: &mut Checker<'_>, files: &Files<'_>, file: &MachineFile) 
         states,
     };
     crate::lower::graph::check(c, &machine);
-    if c.findings.count(Level::Error) > 0 {
+    if c.findings.count(Severity::Error) > 0 {
         None
     } else {
         Some(machine)

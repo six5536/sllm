@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use smllm_core::model::Machine;
 
-use crate::finding::Level;
+use crate::finding::Severity;
 use crate::lower::checker::Checker;
 use crate::lower::machine::reachable;
 use crate::ypath;
@@ -30,7 +30,7 @@ pub(crate) fn check(c: &mut Checker<'_>, m: &Machine) {
     }
     if !m.states.iter().any(|s| s.is_final) {
         c.add(
-            Level::Info,
+            Severity::Info,
             &ypath!["states"],
             "no final state: instances of this machine never complete".to_string(),
             Some("fine for a machine that loops forever; add type: final to finish work"),

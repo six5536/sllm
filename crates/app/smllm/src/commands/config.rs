@@ -8,7 +8,7 @@ use agent_harness_kit::report_text;
 use serde_json::json;
 use smllm_core::host::Store;
 use smllm_format::{
-    ConfigFile, Finding, Findings, Level, Origin, compile, config_template, json_schema,
+    ConfigFile, Finding, Findings, Origin, Severity, compile, config_template, json_schema,
     load_machine, machine_template,
 };
 
@@ -158,7 +158,7 @@ fn saved_states(rt: &mut Runtime) -> Findings {
     for src in rt.loaded.machines.clone() {
         for (file, why) in rt.store.unreadable(&src.id) {
             out.push(Finding {
-                level: Level::Warning,
+                level: Severity::Warning,
                 file,
                 line: None,
                 path: None,
@@ -174,7 +174,7 @@ fn saved_states(rt: &mut Runtime) -> Findings {
         for i in rt.store.instances(&src.id).unwrap_or_default() {
             if !states.contains(&i.state) {
                 out.push(Finding {
-                    level: Level::Warning,
+                    level: Severity::Warning,
                     file: src.file.clone(),
                     line: None,
                     path: None,

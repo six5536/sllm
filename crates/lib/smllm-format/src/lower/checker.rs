@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::finding::{Finding, Findings, Level};
+use crate::finding::{Finding, Findings, Severity};
 use crate::locate::locate;
 
 /// Findings for one file.
@@ -23,7 +23,7 @@ impl<'a> Checker<'a> {
 
     pub(crate) fn add(
         &mut self,
-        level: Level,
+        level: Severity,
         path: &[String],
         message: String,
         hint: Option<&str>,
@@ -61,7 +61,7 @@ impl<'a> Checker<'a> {
         hint: Option<&str>,
         rule: &'static str,
     ) {
-        self.add(Level::Error, path, message, hint, rule);
+        self.add(Severity::Error, path, message, hint, rule);
     }
 
     pub(crate) fn warning(
@@ -71,7 +71,7 @@ impl<'a> Checker<'a> {
         hint: Option<&str>,
         rule: &'static str,
     ) {
-        self.add(Level::Warning, path, message, hint, rule);
+        self.add(Severity::Warning, path, message, hint, rule);
     }
 }
 

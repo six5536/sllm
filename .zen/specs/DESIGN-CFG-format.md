@@ -44,7 +44,7 @@ crates/lib/smllm-format/src/
 │   ├── actions.rs    actions, guards, prompts, default prompt, fences (CFG-Lower)
 │   └── graph.rs      reachability, final states, always loops (CFG-Lower)
 ├── load.rs           load_machine, load_configs, parse_message (CFG-Load)
-├── finding.rs        Finding, Findings, Level (CFG-Findings)
+├── finding.rs        Finding, Findings, Severity (the kit's) (CFG-Findings)
 ├── locate.rs         locate(): line of a YAML path in block or flow YAML
 ├── schema.rs         json_schema()
 ├── template.rs       machine_template(), config_template()
@@ -113,7 +113,7 @@ IMPLEMENTS: CFG-1_AC-1, CFG-6_AC-1, CFG-7_AC-1, CFG-9_AC-1, CFG-12_AC-1, CFG-13_
 pub(crate) struct Files<'a> { pub dir: &'a Path, pub inline: bool }
 pub(crate) struct Checker<'a> { pub file: &'a Path, pub text: &'a str, pub findings: Findings }
 impl Checker<'_> {
-    pub(crate) fn add(&mut self, level: Level, path: &[String], message: String,
+    pub(crate) fn add(&mut self, level: Severity, path: &[String], message: String,
         hint: Option<&str>, rule: &'static str);
 }
 pub(crate) fn lower(c: &mut Checker<'_>, files: &Files<'_>, file: &MachineFile) -> Option<Machine>;
@@ -141,15 +141,15 @@ pub fn compile(path: &Path) -> (Option<String>, Findings);
 
 ### CFG-Findings
 
-A plain value type that every stage appends to. It never short-circuits: stages keep checking after an error, and only the final "any error?" decision drops the machine. `render` produces the one-line text form, with the hint on an indented second line; the CLI renders through agent-harness-kit instead, with the hint inline as `… — <hint> (<rule>)`. The type is serde-serialisable (camelCase) for `--json` output.
+A plain value type that every stage appends to. It never short-circuits: stages keep checking after an error, and only the final "any error?" decision drops the machine. `to_report` / `Findings::report` turn findings into agent-harness-kit's report, the YAML path and hint folded into the message as `<path>: <message> — <hint>`; the CLI prints that report, and the tests snapshot the same lines, so they check what users see. The level is the kit's `Severity` (PLAN-003 D5). The type is serde-serialisable (camelCase) for `--json` output.
 
 ```rust
-pub enum Level { Error, Warning, Info }
-pub struct Finding { pub level: Level, pub file: PathBuf, pub line: Option<usize>,
+pub use agent_harness_kit::report::Severity; // Error, Warning, Info
+pub struct Finding { pub level: Severity, pub file: PathBuf, pub line: Option<usize>,
     pub path: Option<String>, pub message: String, pub hint: Option<String>, pub rule: &'static str }
 pub struct Findings(pub Vec<Finding>);
-impl Finding { pub fn render(&self) -> String; }
-impl Findings { pub fn has_errors(&self) -> bool; pub fn count(&self, level: Level) -> usize; }
+impl Finding { pub fn to_report(&self, shown: &str) -> agent_harness_kit::report::Finding; }
+impl Findings { pub fn has_errors(&self) -> bool; pub fn count(&self, level: Severity) -> usize; pub fn report(&self, shown: impl Fn(&Path) -> String) -> Report; }
 ```
 
 ## Data Models

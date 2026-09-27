@@ -3,7 +3,9 @@
 use std::path::{Path, PathBuf};
 
 use smllm_core::model::{ActionDef, GuardDef, Prompt};
-use smllm_format::{ConfigFile, Level, Origin, compile, json_schema, load_configs, load_machine};
+use smllm_format::{
+    ConfigFile, Origin, Severity, compile, json_schema, load_configs, load_machine,
+};
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")
@@ -15,16 +17,10 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-/// Findings as `line: level: path: message (rule)` without the file.
+/// Findings as `validate` prints them, the file shown as `f`.
 fn lines(path: &Path) -> Vec<String> {
     let (_, f) = load_machine(path, false);
-    f.0.iter()
-        .map(|f| {
-            let r = f.render();
-            let shown = path.display().to_string();
-            r.strip_prefix(&shown).unwrap_or(&r).to_string()
-        })
-        .collect()
+    f.0.iter().map(|f| f.to_report("f").to_line()).collect()
 }
 
 // @zen-test: CFG-1_AC-1
@@ -42,8 +38,8 @@ fn the_examples_load_cleanly() {
             .findings
             .0
             .iter()
-            .filter(|f| f.level != Level::Info)
-            .map(|f| f.render())
+            .filter(|f| f.level != Severity::Info)
+            .map(|f| f.to_report("f").to_line())
             .collect();
         assert!(errs.is_empty(), "{ex}: {errs:#?}");
         assert_eq!(loaded.config.machines.len(), 1);
@@ -107,7 +103,7 @@ fn unsupported_xstate_gets_a_hint() {
     let found = lines(&fixture("bad/xstate.smllm.yaml"));
     assert_eq!(found.len(), 1);
     assert!(
-        found[0].starts_with(":6: error: states.A.after: `after` is not supported (CFG-2)"),
+        found[0].starts_with("f:6: error: states.A.after: `after` is not supported — XState"),
         "{found:?}"
     );
     assert!(found[0].contains("not in smllm v1's subset"), "{found:?}");
@@ -125,7 +121,7 @@ fn version_and_missing_files() {
     assert!(
         found
             .iter()
-            .any(|l| l.starts_with(":6: error: states.A.entry: prompt file nowhere.md")),
+            .any(|l| l.starts_with("f:6: error: states.A.entry: prompt file nowhere.md")),
         "{found:?}"
     );
     let (_, f) = load_machine(&fixture("bad/absent.smllm.yaml"), false);
@@ -179,7 +175,7 @@ fn project_wins_over_user_and_idle_is_replaced() {
             .findings
             .0
             .iter()
-            .any(|f| f.level == Level::Info && f.message.contains("replaces"))
+            .any(|f| f.level == Severity::Info && f.message.contains("replaces"))
     );
     assert!(
         matches!(&loaded.config.idle[0], ActionDef::Prompt(Prompt::File(f)) if f.ends_with("idle.md"))
@@ -204,8 +200,14 @@ fn project_wins_over_user_and_idle_is_replaced() {
     .unwrap();
     let broken = load_configs(&both, false);
     assert!(broken.config.machines.is_empty(), "{:?}", broken.machines);
-    assert!(broken.findings.0.iter().any(|f| f.level == Level::Warning
-        && f.message.contains("is not used while this file")));
+    assert!(
+        broken
+            .findings
+            .0
+            .iter()
+            .any(|f| f.level == Severity::Warning
+                && f.message.contains("is not used while this file"))
+    );
     std::fs::write(project.join("dev.smllm.yaml"), &dev).unwrap();
     // Ids that differ only in case cannot share one config (PLAN-003 F27).
     std::fs::write(
@@ -219,8 +221,14 @@ fn project_wins_over_user_and_idle_is_replaced() {
     )
     .unwrap();
     let clash = load_configs(&both, false);
-    assert!(clash.findings.0.iter().any(|f| f.level == Level::Error
-        && f.message.contains("differs from dev only in case")));
+    assert!(
+        clash
+            .findings
+            .0
+            .iter()
+            .any(|f| f.level == Severity::Error
+                && f.message.contains("differs from dev only in case"))
+    );
     assert_eq!(clash.config.machines.len(), 1);
     std::fs::write(project.join("config.toml"), "[machines\n").unwrap();
     let broken = load_configs(&both, false);

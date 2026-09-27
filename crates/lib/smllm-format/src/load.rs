@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use smllm_core::model::{ActionDef, Config, Machine};
 
-use crate::finding::{Finding, Findings, Level};
+use crate::finding::{Finding, Findings, Severity};
 use crate::lower::{Checker, Files, lower, lower_prompt};
 use crate::source::MachineFile;
 
@@ -100,7 +100,7 @@ struct PromptToml {
 }
 
 fn finding(
-    level: Level,
+    level: Severity,
     file: &Path,
     line: Option<usize>,
     message: String,
@@ -126,7 +126,7 @@ pub fn load_machine(path: &Path, inline: bool) -> (Option<Machine>, Findings) {
         Ok(t) => t,
         Err(e) => {
             findings.push(finding(
-                Level::Error,
+                Severity::Error,
                 path,
                 None,
                 format!("cannot read: {e}"),
@@ -141,7 +141,7 @@ pub fn load_machine(path: &Path, inline: bool) -> (Option<Machine>, Findings) {
         Err(e) => {
             let line = e.location().map(|l| l.line() as usize).filter(|l| *l > 0);
             findings.push(finding(
-                Level::Error,
+                Severity::Error,
                 path,
                 line,
                 parse_message(&e.to_string()),
@@ -162,7 +162,7 @@ pub fn load_machine(path: &Path, inline: bool) -> (Option<Machine>, Findings) {
         Ok(m) => m,
         Err(e) => {
             // The shape check should have caught it; report what serde says.
-            findings.push(finding(Level::Error, path, None, e.to_string(), "CFG-1"));
+            findings.push(finding(Severity::Error, path, None, e.to_string(), "CFG-1"));
             return (None, findings);
         }
     };
@@ -202,7 +202,7 @@ pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded {
             Ok(t) => t,
             Err(e) => {
                 out.findings.push(finding(
-                    Level::Error,
+                    Severity::Error,
                     &cf.path,
                     None,
                     format!("cannot read: {e}"),
@@ -216,7 +216,7 @@ pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded {
             Err(e) => {
                 let line = e.span().map(|s| text[..s.start].matches('\n').count() + 1);
                 out.findings.push(finding(
-                    Level::Error,
+                    Severity::Error,
                     &cf.path,
                     line,
                     e.message().to_string(),
@@ -227,7 +227,7 @@ pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded {
                 out.config.machines.clear();
                 if !ids.is_empty() {
                     out.findings.push(finding(
-                        Level::Warning,
+                        Severity::Warning,
                         &cf.path,
                         None,
                         format!(
@@ -267,7 +267,7 @@ pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded {
             };
             if seen_here.contains(&machine.id) {
                 out.findings.push(finding(
-                    Level::Error,
+                    Severity::Error,
                     &cf.path,
                     None,
                     format!("two machines have id {}", machine.id),
@@ -283,7 +283,7 @@ pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded {
                 .find(|o| o.eq_ignore_ascii_case(&machine.id))
             {
                 out.findings.push(finding(
-                    Level::Error,
+                    Severity::Error,
                     &file,
                     None,
                     format!(
@@ -297,7 +297,7 @@ pub fn load_configs(files: &[ConfigFile], inline: bool) -> Loaded {
             seen_here.push(machine.id.clone());
             if let Some(i) = out.config.machines.iter().position(|m| m.id == machine.id) {
                 out.findings.push(finding(
-                    Level::Info,
+                    Severity::Info,
                     &file,
                     None,
                     format!(
@@ -346,7 +346,7 @@ fn withdraw_replaced(out: &mut Loaded, file: &Path, config: &Path) {
     let earlier = out.machines.remove(i);
     out.config.machines.remove(i);
     out.findings.push(finding(
-        Level::Warning,
+        Severity::Warning,
         file,
         None,
         format!(

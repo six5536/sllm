@@ -20,7 +20,7 @@ pub mod source;
 mod template;
 
 pub use compile::compile;
-pub use finding::{Finding, Findings, Level};
+pub use finding::{Finding, Findings, Severity};
 pub use load::{ConfigFile, Loaded, MachineSource, Origin, load_configs, load_machine};
 pub use locate::locate;
 pub use schema::json_schema;

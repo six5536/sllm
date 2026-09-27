@@ -131,7 +131,7 @@ Turns YAML machines and `config.toml` files into the core model with findings.
 
 RESPONSIBILITIES
 
-- Parse and validate machine files; collect findings (error / warning / info) with file, line, YAML path, hint
+- Parse and validate machine files; collect findings (the kit's error / warning / info severities) with file, line, YAML path, hint, reported through the kit's `Report`
 - Combine user and project configs; give each machine its state directory
 - Generate the format's JSON Schema, templates, and compiled JSON for wasm hosts
 
