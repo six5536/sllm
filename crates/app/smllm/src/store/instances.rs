@@ -120,10 +120,14 @@ const MAX_MARKER: usize = 120;
 /// The marker file of `r#ref`: a bucket of `ref → id` entries, named by
 /// the ref folded to lower case, so refs that differ only in case share a
 /// bucket rather than silently one file on macOS and Windows. A name over
-/// [`MAX_MARKER`] bytes is cut and suffixed with the ref's FNV-1a hash.
+/// [`MAX_MARKER`] bytes is cut and suffixed with the ref's FNV-1a hash; the
+/// empty ref's is `~`.
 fn marker(dir: &Path, r#ref: &str) -> PathBuf {
     let mut name = safe(r#ref).to_ascii_lowercase();
-    if name.len() > MAX_MARKER {
+    if name.is_empty() {
+        // The empty ref (no pattern forbids it): `safe` never yields `~`.
+        name.push('~');
+    } else if name.len() > MAX_MARKER {
         let hash = r#ref.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
             (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
         });

@@ -415,7 +415,12 @@ mod tests {
         // Refs that differ only in case share a marker, not an owner; a long
         // ref gets a short marker name.
         let long = "x/".repeat(150);
-        for (id, r) in [("i-f", "gh-1"), ("i-g", "GH-1"), ("i-h", long.as_str())] {
+        for (id, r) in [
+            ("i-f", "gh-1"),
+            ("i-g", "GH-1"),
+            ("i-h", long.as_str()),
+            ("i-i", ""),
+        ] {
             let mut i = inst(1);
             i.id = id.into();
             i.r#ref = Some(r.into());
@@ -424,6 +429,7 @@ mod tests {
         assert_eq!(s.instance_by_ref("dev", "gh-1").unwrap().unwrap().id, "i-f");
         assert_eq!(s.instance_by_ref("dev", "GH-1").unwrap().unwrap().id, "i-g");
         assert_eq!(s.instance_by_ref("dev", &long).unwrap().unwrap().id, "i-h");
+        assert_eq!(s.instance_by_ref("dev", "").unwrap().unwrap().id, "i-i");
         let mut dup = inst(1);
         dup.id = "i-j".into();
         dup.r#ref = Some("GH-1".into());
