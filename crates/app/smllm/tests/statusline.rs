@@ -3,7 +3,7 @@
 
 mod common;
 
-use common::{World, key_in};
+use common::World;
 use serde_json::{Value, json};
 
 fn status_json(w: &World, sid: &str) -> String {
@@ -16,15 +16,7 @@ fn status_json(w: &World, sid: &str) -> String {
 #[test]
 fn the_row_follows_the_bound_session() {
     let w = World::showcase("statusline");
-    let v = w.hook(
-        "session-start",
-        json!({ "session_id": "cc-1", "cwd": w.project, "hook_event_name": "SessionStart", "source": "startup" }),
-    );
-    let key = key_in(
-        v["hookSpecificOutput"]["additionalContext"]
-            .as_str()
-            .unwrap(),
-    );
+    let key = w.start("cc-1");
     let stdin = status_json(&w, "cc-1");
 
     let o = w.run_stdin(&["statusline", "--color", "never"], &stdin);

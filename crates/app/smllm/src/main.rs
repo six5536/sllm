@@ -14,6 +14,8 @@ mod output;
 mod paths;
 mod runtime;
 mod store;
+#[cfg(test)]
+mod test_support;
 
 use std::process::ExitCode;
 

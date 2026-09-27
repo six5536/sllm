@@ -1,11 +1,22 @@
 //! Loading, validation and lowering of machine files and configs (CFG, TEST-1).
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use smllm_core::model::{ActionDef, GuardDef, Prompt};
 use smllm_format::{
     ConfigFile, Mode, Origin, Severity, compile, json_schema, load_configs, load_machine,
 };
+
+/// A fresh, empty temporary directory, unique per call and process.
+fn temp_dir(name: &str) -> PathBuf {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("smllm-{name}-{}-{n}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")
@@ -131,7 +142,7 @@ fn version_and_missing_files() {
 // @zen-test: CFG-15_AC-2
 #[test]
 fn project_wins_over_user_and_idle_is_replaced() {
-    let dir = std::env::temp_dir().join(format!("smllm-cfg-{}", std::process::id()));
+    let dir = temp_dir("cfg");
     let (user, project) = (dir.join("user"), dir.join("project"));
     std::fs::create_dir_all(&user).unwrap();
     std::fs::create_dir_all(&project).unwrap();
@@ -327,8 +338,7 @@ fn lowering_checks_from_the_review() {
 
 #[test]
 fn set_ref_with_empty_params_and_duplicate_keys() {
-    let dir = std::env::temp_dir().join(format!("smllm-misc-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = temp_dir("misc");
     let ok = dir.join("ok.smllm.yaml");
     std::fs::write(&ok, "id: ok\ninitial: A\nmeta: {smllm: 1}\nstates:\n  A:\n    entry: {type: prompt, params: {text: hi}}\n    on:\n      named: {target: B, actions: {type: setRef, params: {}}}\n  B: {type: final}\n").unwrap();
     let (m, f) = load_machine(&ok, Mode::Check);
@@ -350,8 +360,7 @@ fn set_ref_with_empty_params_and_duplicate_keys() {
 // @zen-test: CFG-14_AC-1
 #[test]
 fn nulls_are_absent_and_an_empty_prompt_has_a_line() {
-    let dir = std::env::temp_dir().join(format!("smllm-nulls-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = temp_dir("nulls");
     let file = dir.join("tiny.smllm.yaml");
     let tiny = "id: tiny\ndescription: ~\ninitial: A\nmeta:\n  smllm: 1\n  instance:\n  events: ~\nstates:\n  A:\n    description:\n    entry: ~\n    on:\n      go: B\n  B:\n    type: final\n";
     std::fs::write(&file, tiny).unwrap();
@@ -376,7 +385,7 @@ fn nulls_are_absent_and_an_empty_prompt_has_a_line() {
 // @zen-test: CFG-4_AC-1
 #[test]
 fn a_run_load_checks_prompt_files_without_reading_them() {
-    let dir = std::env::temp_dir().join(format!("smllm-run-{}", std::process::id()));
+    let dir = temp_dir("run");
     std::fs::create_dir_all(dir.join("dir.md")).unwrap();
     std::fs::write(dir.join("p.md"), "say </smllm>").unwrap();
     std::fs::write(dir.join("enter-B.md"), "say </events>").unwrap();

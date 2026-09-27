@@ -231,7 +231,7 @@ mod tests {
     // @zen-test: STL-11_AC-1
     #[test]
     fn the_hint_looks_for_smllm_in_the_status_line_command_or_its_script() {
-        let dir = std::env::temp_dir().join(format!("smllm-hint-{}", std::process::id()));
+        let dir = crate::test_support::temp_dir("hint");
         std::fs::create_dir_all(dir.join(".claude")).unwrap();
         let (local, user) = (dir.join("local.json"), dir.join("user.json"));
         let set = |p: &Path, command: &str| {

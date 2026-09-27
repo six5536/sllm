@@ -3,21 +3,8 @@
 
 mod common;
 
-use std::io::{BufRead as _, BufReader, Write as _};
-
-use common::{World, key_in};
+use common::World;
 use serde_json::{Value, json};
-
-fn start(w: &World, sid: &str) -> String {
-    let v = w.hook("session-start", json!({ "session_id": sid, "cwd": w.project, "hook_event_name": "SessionStart", "source": "startup" }));
-    let ctx = v["hookSpecificOutput"]["additionalContext"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    assert_eq!(v["hookSpecificOutput"]["hookEventName"], "SessionStart");
-    assert!(ctx.contains("· idle"), "{ctx}");
-    key_in(&ctx)
-}
 
 #[cfg_attr(not(unix), allow(dead_code))] // used by the sh-only tests
 fn fire(w: &World, key: &str, event: &str, params: &[&str]) -> (i32, String) {
@@ -53,9 +40,9 @@ fn stop(w: &World, sid: &str, active: bool) -> Value {
 #[test]
 fn hooks_and_fire_through_the_showcase() {
     let w = World::showcase("session");
-    let key = start(&w, "cc-1");
+    let key = w.start("cc-1");
     // Same harness session id → same key, now as a resume.
-    assert_eq!(start(&w, "cc-1"), key);
+    assert_eq!(w.start("cc-1"), key);
     assert_eq!(stop(&w, "cc-1", false), json!({}), "idle may stop");
 
     let (code, out) = fire(&w, &key, "enter", &["stateMachine=showcase"]);
@@ -128,7 +115,7 @@ fn hooks_and_fire_through_the_showcase() {
         out.contains("Parked:\n- document docs/intro.md (showcase) at REVIEW"),
         "{out}"
     );
-    let key2 = start(&w, "cc-2");
+    let key2 = w.start("cc-2");
     assert_ne!(key2, key);
     fire(
         &w,
@@ -231,48 +218,16 @@ fn fire_without_a_session_binds_one_with_enter() {
 #[test]
 fn mcp_over_stdio() {
     let w = World::showcase("mcp");
-    let key = start(&w, "cc-9");
-    let mut child = w.mcp();
-    struct Rpc {
-        stdin: std::process::ChildStdin,
-        lines: std::io::Lines<BufReader<std::process::ChildStdout>>,
-    }
-    impl Rpc {
-        fn call(&mut self, id: u64, method: &str, params: Value) -> Value {
-            if method.starts_with("notifications/") {
-                writeln!(
-                    self.stdin,
-                    "{}",
-                    json!({ "jsonrpc": "2.0", "method": method })
-                )
-                .unwrap();
-                return Value::Null;
-            }
-            let msg = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
-            writeln!(self.stdin, "{msg}").unwrap();
-            self.stdin.flush().unwrap();
-            loop {
-                let line = self.lines.next().unwrap().unwrap();
-                let v: Value = serde_json::from_str(&line).unwrap();
-                if v["id"] == id {
-                    return v;
-                }
-            }
-        }
-    }
-    let mut rpc_state = Rpc {
-        stdin: child.stdin.take().unwrap(),
-        lines: BufReader::new(child.stdout.take().unwrap()).lines(),
-    };
-    let mut rpc = |id: u64, method: &str, params: Value| rpc_state.call(id, method, params);
-    let init = rpc(
+    let key = w.start("cc-9");
+    let mut mcp = w.mcp();
+    let init = mcp.call(
         1,
         "initialize",
         json!({ "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "t", "version": "1" } }),
     );
     assert_eq!(init["result"]["serverInfo"]["name"], "smllm");
-    rpc(0, "notifications/initialized", Value::Null);
-    let tools = rpc(2, "tools/list", json!({}));
+    mcp.notify("notifications/initialized");
+    let tools = mcp.call(2, "tools/list", json!({}));
     let tool = &tools["result"]["tools"][0];
     assert_eq!(tool["name"], "smllm");
     assert!(
@@ -285,30 +240,14 @@ fn mcp_over_stdio() {
         tool["inputSchema"]["required"].is_null(),
         "session is optional for a keyless enter (HOST-3)"
     );
-    let call = |rpc: &mut dyn FnMut(u64, &str, Value) -> Value, id, args: Value| {
-        let r = rpc(
-            id,
-            "tools/call",
-            json!({ "name": "smllm", "arguments": args }),
-        );
-        (
-            r["result"]["isError"] == true,
-            r["result"]["content"][0]["text"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string(),
-        )
-    };
-    let (err, text) = call(&mut rpc, 3, json!({ "session": key }));
+    let (err, text) = mcp.tool(3, json!({ "session": key }));
     assert!(!err && text.contains("· idle"), "{text}");
-    let (err, text) = call(
-        &mut rpc,
+    let (err, text) = mcp.tool(
         4,
         json!({ "session": key, "event": "enter", "params": { "stateMachine": "showcase" } }),
     );
     assert!(!err && text.contains("› DRAFT"), "{text}");
-    let (err, text) = call(
-        &mut rpc,
+    let (err, text) = mcp.tool(
         5,
         json!({ "session": key, "event": "submit", "params": { "summary": 3 } }),
     );
@@ -316,20 +255,18 @@ fn mcp_over_stdio() {
         err && text.contains("param summary must be a string"),
         "{text}"
     );
-    let (err, text) = call(&mut rpc, 6, json!({ "session": key, "event": "bogus" }));
+    let (err, text) = mcp.tool(6, json!({ "session": key, "event": "bogus" }));
     assert!(err && text.contains("bogus is not offered here"), "{text}");
-    let (err, text) = call(&mut rpc, 7, json!({ "session": "sm-nope" }));
+    let (err, text) = mcp.tool(7, json!({ "session": "sm-nope" }));
     assert!(err && text.contains("no smllm session"), "{text}");
-    let (err, text) = call(
-        &mut rpc,
+    let (err, text) = mcp.tool(
         9,
         json!({ "session": key, "event": "park", "params": [] }),
     );
     assert!(err && text.contains("params must be an object"), "{text}");
-    let (err, text) = call(&mut rpc, 10, json!({ "session": 7 }));
+    let (err, text) = mcp.tool(10, json!({ "session": 7 }));
     assert!(err && text.contains("session must be a string"), "{text}");
-    let (err, text) = call(
-        &mut rpc,
+    let (err, text) = mcp.tool(
         11,
         json!({ "event": "enter", "params": { "stateMachine": "showcase" } }),
     );
@@ -337,12 +274,9 @@ fn mcp_over_stdio() {
         !err && text.contains("› DRAFT"),
         "no session + enter binds one: {text}"
     );
-    let r = rpc(8, "tools/call", json!({ "name": "other", "arguments": {} }));
+    let r = mcp.call(8, "tools/call", json!({ "name": "other", "arguments": {} }));
     assert!(r["error"].is_object());
-    // Close stdin so the server exits on its own (and writes coverage data).
-    drop(rpc_state);
-    let status = child.wait().unwrap();
-    assert!(status.success(), "{status}");
+    mcp.finish();
 }
 
 // A 2026-07-28 client (Claude Code) skips `initialize`: it sends
@@ -353,29 +287,9 @@ fn mcp_over_stdio() {
 #[test]
 fn mcp_over_stdio_at_2026_07_28() {
     let w = World::showcase("mcp-2026");
-    let key = start(&w, "cc-10");
-    let mut child = w.mcp();
-    let mut stdin = child.stdin.take().unwrap();
-    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
-    let meta = json!({
-        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-        "io.modelcontextprotocol/clientCapabilities": {},
-        "io.modelcontextprotocol/clientInfo": { "name": "t", "version": "1" }
-    });
-    // `move`: dropping `rpc` must close stdin so the server exits.
-    let mut rpc = move |id: u64, method: &str, mut params: Value| {
-        params["_meta"] = meta.clone();
-        let msg = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
-        writeln!(stdin, "{msg}").unwrap();
-        stdin.flush().unwrap();
-        loop {
-            let v: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
-            if v["id"] == id {
-                return v;
-            }
-        }
-    };
-    let discover = rpc(1, "server/discover", json!({}));
+    let key = w.start("cc-10");
+    let mut mcp = w.mcp().at_2026_07_28();
+    let discover = mcp.call(1, "server/discover", json!({}));
     assert!(
         discover["result"]["supportedVersions"]
             .as_array()
@@ -383,7 +297,7 @@ fn mcp_over_stdio_at_2026_07_28() {
             .contains(&json!("2026-07-28")),
         "{discover}"
     );
-    let tools = rpc(2, "tools/list", json!({}));
+    let tools = mcp.call(2, "tools/list", json!({}));
     let result = &tools["result"];
     assert_eq!(result["tools"][0]["name"], "smllm", "{tools}");
     assert!(result["ttlMs"].is_u64(), "{tools}");
@@ -391,21 +305,9 @@ fn mcp_over_stdio_at_2026_07_28() {
         result["cacheScope"] == "private" || result["cacheScope"] == "public",
         "{tools}"
     );
-    let call = rpc(
-        3,
-        "tools/call",
-        json!({ "name": "smllm", "arguments": { "session": key } }),
-    );
-    let text = call["result"]["content"][0]["text"]
-        .as_str()
-        .unwrap_or_default();
-    assert!(
-        call["result"]["isError"] != true && text.contains("· idle"),
-        "{call}"
-    );
-    drop(rpc);
-    let status = child.wait().unwrap();
-    assert!(status.success(), "{status}");
+    let (err, text) = mcp.tool(3, json!({ "session": key }));
+    assert!(!err && text.contains("· idle"), "{text}");
+    mcp.finish();
 }
 
 // @zen-test: INST-10_AC-1
@@ -419,7 +321,7 @@ fn the_dev_example_through_final_and_reopen() {
         &common::repo().join("examples/dev"),
         &w.project.join(".smllm"),
     );
-    let key = start(&w, "cc-dev");
+    let key = w.start("cc-dev");
     // Jump straight to an entry point with a ref.
     let (code, out) = fire(
         &w,
@@ -465,20 +367,10 @@ fn the_dev_example_through_final_and_reopen() {
 #[test]
 fn mcp_pipelined_calls_on_one_session() {
     let w = World::showcase("mcp-pipelined");
-    let key = start(&w, "cc-11");
-    let mut child = w.mcp();
-    let mut stdin = child.stdin.take().unwrap();
-    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
-    let meta = json!({
-        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-        "io.modelcontextprotocol/clientCapabilities": {},
-        "io.modelcontextprotocol/clientInfo": { "name": "t", "version": "1" }
-    });
+    let key = w.start("cc-11");
+    let mut mcp = w.mcp().at_2026_07_28();
     let mut send = |id: u64, args: Value| {
-        let msg = json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call",
-            "params": { "name": "smllm", "arguments": args, "_meta": meta } });
-        writeln!(stdin, "{msg}").unwrap();
-        stdin.flush().unwrap();
+        mcp.send(id, "tools/call", json!({ "name": "smllm", "arguments": args }));
     };
     let mut id = 0;
     let mut sent = 0;
@@ -494,18 +386,16 @@ fn mcp_pipelined_calls_on_one_session() {
             sent += 1;
         }
     }
-    // Closing stdin lets the server exit once it has answered everything.
-    drop(stdin);
+    mcp.close();
     let mut failures = Vec::new();
     for _ in 0..sent {
-        let v: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+        let v = mcp.next();
         if v["result"]["isError"] == true {
             failures.push(v["result"]["content"][0]["text"].clone());
         }
     }
     assert!(failures.is_empty(), "{failures:?}");
-    let status = child.wait().unwrap();
-    assert!(status.success(), "{status}");
+    mcp.finish();
     let sessions = w.root.join("state/smllm/sessions");
     for e in std::fs::read_dir(&sessions).unwrap().flatten() {
         let text = std::fs::read_to_string(e.path()).unwrap();

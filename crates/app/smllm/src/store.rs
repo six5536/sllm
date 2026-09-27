@@ -283,7 +283,7 @@ mod tests {
     // @zen-test: STO-3_AC-1
     #[test]
     fn versions_guard_instance_writes_and_history_appends() {
-        let d = std::env::temp_dir().join(format!("smllm-store-{}", std::process::id()));
+        let d = crate::test_support::temp_dir("store");
         let mut s = FsStore::new(
             d.join("user"),
             [("dev".to_string(), d.join("proj/state"))].into(),

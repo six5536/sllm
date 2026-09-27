@@ -2,10 +2,13 @@
 //! dirs (XDG_*/HOME), with the real binary.
 #![allow(dead_code)]
 
+use std::io::{BufRead as _, BufReader, Lines, Write as _};
 use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStdin, ChildStdout};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use assert_cmd::Command;
+use serde_json::{Value, json};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -65,9 +68,9 @@ impl World {
         c
     }
 
-    /// `smllm mcp` in this world, stdin and stdout piped.
-    pub fn mcp(&self) -> std::process::Child {
-        std::process::Command::new(assert_cmd::cargo::cargo_bin("smllm"))
+    /// `smllm mcp` in this world, with a client over its stdio.
+    pub fn mcp(&self) -> Mcp {
+        let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin("smllm"))
             .arg("mcp")
             .current_dir(&self.project)
             .envs(self.user_dirs())
@@ -75,7 +78,13 @@ impl World {
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .spawn()
-            .unwrap()
+            .unwrap();
+        Mcp {
+            stdin: child.stdin.take(),
+            lines: BufReader::new(child.stdout.take().unwrap()).lines(),
+            child,
+            meta: None,
+        }
     }
 
     pub fn run(&self, args: &[&str]) -> Out {
@@ -97,10 +106,21 @@ impl World {
     }
 
     /// Call a Claude Code hook with a JSON event; the parsed stdout.
-    pub fn hook(&self, hook: &str, event: serde_json::Value) -> serde_json::Value {
+    pub fn hook(&self, hook: &str, event: Value) -> Value {
         let o = self.run_stdin(&["harness", "hook", "claude", hook], &event.to_string());
         assert_eq!(o.code, 0, "{hook}: {}", o.stderr);
         serde_json::from_str(&o.stdout).unwrap()
+    }
+
+    /// Start Claude Code session `sid` here: the key of its session, in idle.
+    pub fn start(&self, sid: &str) -> String {
+        let v = self.hook("session-start", json!({ "session_id": sid, "cwd": self.project, "hook_event_name": "SessionStart", "source": "startup" }));
+        assert_eq!(v["hookSpecificOutput"]["hookEventName"], "SessionStart");
+        let ctx = v["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .unwrap();
+        assert!(ctx.contains("· idle"), "{ctx}");
+        key_in(ctx)
     }
 
     pub fn write(&self, rel: &str, text: &str) {
@@ -130,6 +150,86 @@ pub fn copy_dir(from: &Path, to: &Path) {
         } else {
             std::fs::copy(&p, &dest).unwrap();
         }
+    }
+}
+
+/// A JSON-RPC client of `smllm mcp` over stdio.
+pub struct Mcp {
+    child: Child,
+    stdin: Option<ChildStdin>,
+    lines: Lines<BufReader<ChildStdout>>,
+    /// Sent as every request's `_meta`.
+    meta: Option<Value>,
+}
+
+impl Mcp {
+    /// A 2026-07-28 client: no `initialize`; the version is in every
+    /// request's `_meta`.
+    pub fn at_2026_07_28(mut self) -> Self {
+        self.meta = Some(json!({
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+            "io.modelcontextprotocol/clientInfo": { "name": "t", "version": "1" }
+        }));
+        self
+    }
+
+    fn write(&mut self, msg: Value) {
+        let stdin = self.stdin.as_mut().expect("stdin is open");
+        writeln!(stdin, "{msg}").unwrap();
+        stdin.flush().unwrap();
+    }
+
+    /// Send request `id` without waiting for the answer.
+    pub fn send(&mut self, id: u64, method: &str, mut params: Value) {
+        if let Some(m) = &self.meta {
+            params["_meta"] = m.clone();
+        }
+        self.write(json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
+    }
+
+    /// Send a notification.
+    pub fn notify(&mut self, method: &str) {
+        self.write(json!({ "jsonrpc": "2.0", "method": method }));
+    }
+
+    /// The server's next message.
+    pub fn next(&mut self) -> Value {
+        serde_json::from_str(&self.lines.next().unwrap().unwrap()).unwrap()
+    }
+
+    /// Send request `id` and wait for its answer.
+    pub fn call(&mut self, id: u64, method: &str, params: Value) -> Value {
+        self.send(id, method, params);
+        loop {
+            let v = self.next();
+            if v["id"] == id {
+                return v;
+            }
+        }
+    }
+
+    /// Call the smllm tool: whether it is an error, and its text.
+    pub fn tool(&mut self, id: u64, args: Value) -> (bool, String) {
+        let r = self.call(
+            id,
+            "tools/call",
+            json!({ "name": "smllm", "arguments": args }),
+        );
+        let text = r["result"]["content"][0]["text"].as_str().unwrap_or_default();
+        (r["result"]["isError"] == true, text.to_string())
+    }
+
+    /// Close stdin: the server exits once it has answered everything.
+    pub fn close(&mut self) {
+        self.stdin = None;
+    }
+
+    /// Close stdin and expect a clean exit (which writes coverage data).
+    pub fn finish(mut self) {
+        self.close();
+        let status = self.child.wait().unwrap();
+        assert!(status.success(), "{status}");
     }
 }
 

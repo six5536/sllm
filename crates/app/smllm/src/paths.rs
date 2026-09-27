@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn project_config_is_found_upward() {
-        let d = std::env::temp_dir().join(format!("smllm-paths-{}", std::process::id()));
+        let d = crate::test_support::temp_dir("paths");
         let deep = d.join("a/b");
         std::fs::create_dir_all(&deep).unwrap();
         std::fs::create_dir_all(d.join(PROJECT_DIR)).unwrap();

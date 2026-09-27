@@ -387,8 +387,7 @@ mod tests {
                     .is_some_and(|r| !r.trim_start().starts_with('Z'))
             })
         };
-        let dir = std::env::temp_dir().join(format!("smllm-kill-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::test_support::temp_dir("kill");
         let pidfile = dir.join("pid");
         let mut bystander = Command::new("sleep").arg("30").spawn().unwrap();
         let mut p = SmallMap::new();
