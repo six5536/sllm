@@ -150,12 +150,17 @@ fn finding(
 /// Parse and lower one machine file.
 // @zen-impl: CFG-14_AC-1
 pub fn load_machine(path: &Path, mode: Mode) -> (Option<Machine>, Findings) {
-    let (machine, findings, _) = load_machine_inputs(path, mode);
+    let (machine, findings, _) = load_machine_inputs(path, mode, "");
     (machine, findings)
 }
 
-/// [`load_machine`], and the prompt files it read or checked.
-fn load_machine_inputs(path: &Path, mode: Mode) -> (Option<Machine>, Findings, Vec<PathBuf>) {
+/// [`load_machine`], and the prompt files it read or checked. `prefix` is
+/// the machine file's folder relative to the compiled file ([`Mode::Inline`]).
+fn load_machine_inputs(
+    path: &Path,
+    mode: Mode,
+    prefix: &str,
+) -> (Option<Machine>, Findings, Vec<PathBuf>) {
     let mut findings = Findings::default();
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
@@ -203,7 +208,7 @@ fn load_machine_inputs(path: &Path, mode: Mode) -> (Option<Machine>, Findings, V
     };
     let dir = path.parent().unwrap_or(Path::new("."));
     let mut c = Checker::new(path, &text);
-    let files = Files::new(dir, mode);
+    let files = Files::new(dir, mode).with_prefix(prefix);
     let machine = lower(&mut c, &files, &parsed);
     findings.extend(c.findings);
     (machine, findings, files.probed())
@@ -297,7 +302,10 @@ pub fn load_configs(files: &[ConfigFile], mode: Mode) -> Loaded {
         let mut seen_here: Vec<String> = Vec::new();
         for rel in &parsed.machines.files {
             let file = dir.join(rel);
-            let (machine, findings, prompts) = load_machine_inputs(&file, mode);
+            // `rel` as the config wrote it: its folder is the machine's,
+            // relative to the config (D8-22).
+            let prefix = rel.rsplit_once(['/', '\\']).map_or("", |(p, _)| p);
+            let (machine, findings, prompts) = load_machine_inputs(&file, mode, prefix);
             out.findings.extend(findings);
             out.inputs.push(file.clone());
             out.inputs.extend(prompts);

@@ -24,6 +24,11 @@ pub(crate) struct Files<'a> {
     /// Every prompt file the load read or checked, found or not: the result
     /// depends on them (a cached load is stale when one changes, HOST-16).
     probed: RefCell<Vec<PathBuf>>,
+    /// In [`Mode::Inline`], the machine file's folder relative to the
+    /// compiled file, `/`-separated (`""` when they are one folder): a
+    /// command's relative `cwd` is written relative to the compiled file
+    /// (PLAN-008 D8-22).
+    prefix: String,
 }
 
 impl<'a> Files<'a> {
@@ -33,6 +38,34 @@ impl<'a> Files<'a> {
             mode,
             found: RefCell::default(),
             probed: RefCell::default(),
+            prefix: String::new(),
+        }
+    }
+
+    /// For [`Mode::Inline`]: the machine file's folder relative to the
+    /// compiled file, as its config names it.
+    pub(crate) fn with_prefix(mut self, prefix: &str) -> Self {
+        self.prefix = prefix.to_string();
+        self
+    }
+
+    /// A relative `cwd` as the compiled file sees it: the prefix joined with
+    /// `/` on every OS, `.` segments dropped, so the output is the same bytes
+    /// anywhere (PLAN-006 D6-2). An absolute one stays as written.
+    fn compiled_cwd(&self, cwd: &str) -> String {
+        if Path::new(cwd).is_absolute() || cwd.starts_with('/') || cwd.starts_with('\\') {
+            return cwd.to_string();
+        }
+        let parts: Vec<&str> = self
+            .prefix
+            .split(['/', '\\'])
+            .chain(cwd.split(['/', '\\']))
+            .filter(|s| !s.is_empty() && *s != ".")
+            .collect();
+        if parts.is_empty() {
+            ".".to_string()
+        } else {
+            parts.join("/")
         }
     }
 
@@ -262,9 +295,10 @@ fn lower_command(
     }
     if let Some(d) = &cp.cwd {
         // Compiled output holds no path of the machine that compiled it: the
-        // same bytes anywhere, from any folder (PLAN-006 D6-2).
+        // same bytes anywhere, from any folder (PLAN-006 D6-2), relative to
+        // the compiled file, so a host needs one base folder (D8-22).
         let cwd = if files.mode == Mode::Inline {
-            d.clone()
+            files.compiled_cwd(d)
         } else {
             files.resolve(d)
         };

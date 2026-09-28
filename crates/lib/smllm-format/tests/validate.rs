@@ -535,3 +535,30 @@ fn a_load_lists_every_file_it_depends_on() {
     }
     std::fs::remove_dir_all(d).ok();
 }
+
+// A compiled `cwd` is relative to the compiled config file, `/`-separated,
+// so a host resolves every command against one folder (DEC-7, D8-22); an
+// absolute one stays as written.
+// @zen-test: DEC-7_AC-1
+#[test]
+fn compiled_cwd_is_relative_to_the_config() {
+    let d = temp_dir("compile-cwd");
+    std::fs::create_dir_all(d.join("machines")).unwrap();
+    std::fs::write(
+        d.join("config.toml"),
+        "[machines]\nfiles = [\"machines/w.smllm.yaml\"]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        d.join("machines/w.smllm.yaml"),
+        "id: w\ninitial: A\nmeta: {smllm: 1}\nstates:\n  A:\n    entry:\n      - {type: command, params: {run: \"true\", cwd: ./build}}\n      - {type: command, params: {run: \"true\", cwd: .}}\n      - {type: command, params: {run: \"true\", cwd: /abs/dir}}\n    on: {go: B}\n  B: {type: final}\n",
+    )
+    .unwrap();
+    let (out, f) = compile(&d.join("config.toml"));
+    assert!(!f.has_errors(), "{:?}", f.0);
+    let out = out.unwrap();
+    assert!(out.contains(r#""cwd":"machines/build""#), "{out}");
+    assert!(out.contains(r#""cwd":"machines""#), "{out}");
+    assert!(out.contains(r#""cwd":"/abs/dir""#), "{out}");
+    std::fs::remove_dir_all(d).ok();
+}
