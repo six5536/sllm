@@ -23,9 +23,13 @@ std = []
 # Serde derives on the model, instance, session and history types: the compiled
 # machine JSON (`smllm compile`) and the stores' file formats.
 serde = ["dep:serde"]
+# miniserde impls writing and reading the serde feature's JSON, byte for
+# byte: `smllm-wasm` uses them, for a smaller wasm (PLAN-007 D7-1).
+miniserde = ["dep:miniserde"]
 
 [dependencies]
 serde = { workspace = true, optional = true }
+miniserde = { workspace = true, optional = true }
 
 [dev-dependencies]
 insta.workspace = true

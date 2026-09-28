@@ -63,6 +63,7 @@ impl From<HostError> for Error {
 /// Where a session is after a call.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize), serde(rename_all = "camelCase"))]
+#[cfg_attr(feature = "miniserde", derive(miniserde::Serialize))]
 pub struct Location {
     /// State machine, or `None` in idle.
     pub machine: Option<String>,
@@ -71,13 +72,14 @@ pub struct Location {
     /// Instance id.
     pub instance: Option<String>,
     /// Instance ref.
-    #[cfg_attr(feature = "serde", serde(rename = "ref"))]
+    #[cfg_attr(any(feature = "serde", feature = "miniserde"), serde(rename = "ref"))]
     pub r#ref: Option<String>,
 }
 
 /// The answer to a call: the agent text, plus where the session ended up.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize), serde(rename_all = "camelCase"))]
+#[cfg_attr(feature = "miniserde", derive(miniserde::Serialize))]
 pub struct Reply {
     /// False when the event was rejected or the instance moved (exit 1).
     pub ok: bool,

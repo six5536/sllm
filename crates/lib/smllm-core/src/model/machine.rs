@@ -38,6 +38,10 @@ impl Config {
     derive(Serialize, Deserialize),
     serde(rename_all = "camelCase")
 )]
+#[cfg_attr(
+    feature = "miniserde",
+    derive(miniserde::Serialize, miniserde::Deserialize)
+)]
 pub struct Machine {
     /// Unique id within the config.
     pub id: String,
@@ -89,14 +93,21 @@ impl Machine {
     derive(Serialize, Deserialize),
     serde(rename_all = "camelCase")
 )]
+#[cfg_attr(
+    feature = "miniserde",
+    derive(miniserde::Serialize, miniserde::Deserialize)
+)]
 pub struct InstanceSpec {
     /// The kind of instance, used in all generated text (`issue`).
     pub kind: String,
     /// The ref's param name (`issueId`).
+    #[cfg_attr(feature = "miniserde", serde(rename = "refParam"))]
     pub ref_param: String,
     /// The ref param's prompt.
+    #[cfg_attr(feature = "miniserde", serde(rename = "refDescription"))]
     pub ref_description: Option<String>,
     /// The ref's pattern.
+    #[cfg_attr(feature = "miniserde", serde(rename = "refPattern"))]
     pub ref_pattern: Option<String>,
 }
 
@@ -117,6 +128,10 @@ impl Default for InstanceSpec {
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(rename_all = "camelCase")
+)]
+#[cfg_attr(
+    feature = "miniserde",
+    derive(miniserde::Serialize, miniserde::Deserialize)
 )]
 pub struct EventDef {
     /// Default guidance.
@@ -139,6 +154,10 @@ impl EventDef {
     derive(Serialize, Deserialize),
     serde(rename_all = "camelCase")
 )]
+#[cfg_attr(
+    feature = "miniserde",
+    derive(miniserde::Serialize, miniserde::Deserialize)
+)]
 pub struct ParamSpec {
     /// Param name.
     pub name: String,
@@ -147,6 +166,7 @@ pub struct ParamSpec {
     /// Listed in `required`.
     pub required: bool,
     /// `enum` values, empty when unconstrained.
+    #[cfg_attr(feature = "miniserde", serde(rename = "enumValues"))]
     pub enum_values: Vec<String>,
     /// `pattern`.
     pub pattern: Option<String>,
@@ -159,10 +179,16 @@ pub struct ParamSpec {
     derive(Serialize, Deserialize),
     serde(rename_all = "camelCase")
 )]
+#[cfg_attr(
+    feature = "miniserde",
+    derive(miniserde::Serialize, miniserde::Deserialize)
+)]
 pub enum Position {
     /// Before the state's own actions.
+    #[cfg_attr(feature = "miniserde", serde(rename = "before"))]
     Before,
     /// After them.
+    #[cfg_attr(feature = "miniserde", serde(rename = "after"))]
     After,
 }
 
@@ -172,6 +198,10 @@ pub enum Position {
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(rename_all = "camelCase")
+)]
+#[cfg_attr(
+    feature = "miniserde",
+    derive(miniserde::Serialize, miniserde::Deserialize)
 )]
 pub struct SharedAction {
     /// States it applies to.
@@ -191,14 +221,20 @@ pub struct SharedAction {
     derive(Serialize, Deserialize),
     serde(rename_all = "camelCase")
 )]
+#[cfg_attr(
+    feature = "miniserde",
+    derive(miniserde::Serialize, miniserde::Deserialize)
+)]
 pub struct State {
     /// State name.
     pub name: String,
     /// Description.
     pub description: Option<String>,
     /// `type: final`.
+    #[cfg_attr(feature = "miniserde", serde(rename = "isFinal"))]
     pub is_final: bool,
     /// `meta.entryPoint`.
+    #[cfg_attr(feature = "miniserde", serde(rename = "entryPoint"))]
     pub entry_point: bool,
     /// `meta.fallback`.
     pub fallback: bool,
@@ -211,6 +247,7 @@ pub struct State {
     /// `always` (eventless) transitions.
     pub always: Vec<Transition>,
     /// `meta.paramDescriptions`: event → param → prompt (CFG-8).
+    #[cfg_attr(feature = "miniserde", serde(rename = "paramDescriptions"))]
     pub param_descriptions: SmallMap<SmallMap<String>>,
 }
 
@@ -227,6 +264,10 @@ impl State {
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(rename_all = "camelCase")
+)]
+#[cfg_attr(
+    feature = "miniserde",
+    derive(miniserde::Serialize, miniserde::Deserialize)
 )]
 pub struct On {
     /// Event name.
@@ -250,6 +291,10 @@ impl On {
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(rename_all = "camelCase")
+)]
+#[cfg_attr(
+    feature = "miniserde",
+    derive(miniserde::Serialize, miniserde::Deserialize)
 )]
 pub struct Transition {
     /// Target state; `None` = targetless (internal).

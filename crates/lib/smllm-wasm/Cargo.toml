@@ -16,7 +16,6 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-smllm-core = { workspace = true, features = ["serde"] }
+smllm-core = { workspace = true, features = ["miniserde"] }
 wasm-bindgen.workspace = true
-serde = { workspace = true }
-serde_json = { workspace = true }
+miniserde.workspace = true

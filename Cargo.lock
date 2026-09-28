@@ -675,6 +675,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 
 [[package]]
+name = "mini-internal"
+version = "0.1.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34dea53b00d87f21b1535cbef93765c75f159dbbfeef16152f0b6b3bf28f3bb6"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
+]
+
+[[package]]
+name = "miniserde"
+version = "0.1.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8f82621301d3b99a1542736de96e5df69865b235987d6470b28c7aa670cfeb1"
+dependencies = [
+ "itoa",
+ "mini-internal",
+ "zmij",
+]
+
+[[package]]
 name = "multiversion_no_op"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1157,6 +1179,7 @@ name = "smllm-core"
 version = "0.1.0"
 dependencies = [
  "insta",
+ "miniserde",
  "proptest",
  "serde",
  "serde_json",
@@ -1181,8 +1204,7 @@ dependencies = [
 name = "smllm-wasm"
 version = "0.1.0"
 dependencies = [
- "serde",
- "serde_json",
+ "miniserde",
  "smllm-core",
  "wasm-bindgen",
 ]
