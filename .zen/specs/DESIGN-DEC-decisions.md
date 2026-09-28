@@ -46,7 +46,7 @@ flowchart LR
 crates/lib/smllm-core/src/engine/turn.rs      pick, guard, env, settle (ENG-Turn)
 crates/lib/smllm-core/src/model/action.rs     GuardDef, Value (ENG-Model)
 crates/lib/smllm-format/src/lower/graph.rs    always-loop check (CFG-Lower)
-crates/lib/smllm-format/src/lower/actions.rs  params.cwd resolved against the YAML dir
+crates/lib/smllm-format/src/lower/actions.rs  params.cwd resolved against the YAML dir (as written for compile)
 crates/app/smllm/src/host.rs                  DEC-CommandRunner (Commands, run_command)
 ```
 
@@ -85,7 +85,7 @@ The core side (guard evaluation, env, `always`) is ENG-Turn in DESIGN-ENG-engine
 
 ### Core Types
 
-- COMMAND PARAMS: `run` (`Value::Str` shell, `Value::List` exec), `timeoutSecs` (`Value::Int`), `cwd` (`Value::Str`, absolute after lowering)
+- COMMAND PARAMS: `run` (`Value::Str` shell, `Value::List` exec), `timeoutSecs` (`Value::Int`), `cwd` (`Value::Str`, absolute after lowering for running; as written, relative to the machine file, in `compile` output)
 - ENVIRONMENT: `SMLLM_SESSION`, `SMLLM_MACHINE`, `SMLLM_STATE` (source state for guards and transition actions; the list's own state for entry/exit), `SMLLM_EVENT`, `SMLLM_INSTANCE`, `SMLLM_REF` (empty until set), `SMLLM_FROM`/`SMLLM_TO` (actions only), `SMLLM_PARAM_<NAME>`
 
 ```rust

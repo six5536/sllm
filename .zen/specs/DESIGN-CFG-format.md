@@ -161,7 +161,7 @@ impl Findings { pub fn has_errors(&self) -> bool; pub fn count(&self, level: Sev
 
 - SOURCE TYPES: `smllm_format::source::*`, which mirror the file (see CFG-Source). Only parsing and the schema use them
 - MACHINE: `smllm_core::model::Machine`, the lowered, validated form: instance vocabulary resolved, events as `SmallMap<EventDef>` with the ref param made required by `setRef`, and states with `entry`, `exit`, `on`, `always` and `param_descriptions`
-- ACTION AND GUARD: `smllm_core::model::{ActionDef, GuardDef, Prompt, Value}`. Host-run kinds (`command`) become `Host { kind, params }` with a `SmallMap<Value>`; `cwd` is resolved to an absolute path. `visits` becomes `GuardDef::Visits`, which the core evaluates
+- ACTION AND GUARD: `smllm_core::model::{ActionDef, GuardDef, Prompt, Value}`. Host-run kinds (`command`) become `Host { kind, params }` with a `SmallMap<Value>`; `cwd` is resolved to an absolute path (kept as written by `compile`, D6-2). `visits` becomes `GuardDef::Visits`, which the core evaluates
 - CONFIG: `smllm_core::model::Config` holds the machines in load order plus the idle prompt actions. `compile` serialises it
 
 ```rust

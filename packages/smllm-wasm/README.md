@@ -26,7 +26,8 @@ const stop = engine.stop(session, stopHookActive);
 
 Host methods and their defaults: `supports(kind)` (none), `check(kind, params,
 env, cwd)`, `run(kind, params, env, cwd)` (return nothing on success, else the
-failure detail), `read(file)` (`smllm compile` inlines prompt files),
+failure detail; a command's `params.cwd` is as its author wrote it, relative
+to the machine file), `read(file)` (`smllm compile` inlines prompt files),
 `isMatch(pattern, value)` (`new RegExp`), `now()` (`Date.now`), `random()`
 (`crypto.getRandomValues`), `history(machine, id, entry)` (dropped). A host
 method that throws is a host failure: a failed guard or action, or a rejected

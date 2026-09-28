@@ -61,6 +61,7 @@ export interface HistoryEntry {
 /**
  * What the engine needs from its host. Every method is optional:
  * - `supports`, `check`, `run`: host guard/action kinds (`command`); none by default.
+ *   A command's `params.cwd` is as written: relative to its machine file.
  * - `read`: prompt files (`smllm compile` inlines them, so rarely needed).
  * - `isMatch`: `new RegExp(pattern).test(value)` by default.
  * - `now`, `random`: `Date.now()` and `crypto.getRandomValues` by default.
