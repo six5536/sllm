@@ -24,7 +24,12 @@ pub struct MemoryStore {
     pub bindings: SmallMap<String>,
     /// `machine/id` → instance.
     pub instances: SmallMap<Instance>,
-    /// `machine/id` → history.
+    /// `machine/id` → history. Left out of the JSON while empty, as it is
+    /// for hosts that keep the log themselves (`smllm-wasm`).
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "SmallMap::is_empty")
+    )]
     pub history: SmallMap<Vec<HistoryEntry>>,
 }
 

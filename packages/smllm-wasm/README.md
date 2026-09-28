@@ -16,6 +16,7 @@ const engine = new Engine(compiled, {
   isMatch: (pattern, value) => new RegExp(pattern).test(value),
   now: () => Date.now(),
   random: () => crypto.getRandomValues(new Uint32Array(1))[0],
+  history: (machine, id, entry) => {}, // each history entry, as JSON: keep it or drop it
 });
 const { session, text } = JSON.parse(engine.bind("web", undefined, "/"));
 // Show `text` to the agent; when it picks an event:
@@ -32,7 +33,8 @@ action, or a rejected pattern (`isMatch`), shown in the reply text. The
 engine stays usable.
 
 Sessions and instances live in memory; persist them with `exportState()` /
-`importState(json)`. `unsupported()` lists guard/action kinds the machines
+`importState(json)`. History is not kept: each entry goes to `history` as it
+happens, for you to store or drop, so the snapshot holds current state only. `unsupported()` lists guard/action kinds the machines
 use that your host does not support.
 
 MIT licensed. See <https://github.com/six5536/smllm>.

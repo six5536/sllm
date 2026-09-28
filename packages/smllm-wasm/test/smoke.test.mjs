@@ -21,7 +21,9 @@ const host = {
   isMatch: (pattern, value) => new RegExp(pattern).test(value),
   now: () => 1_790_332_320_000,
   random: () => ++n,
+  history: (machine, id, entry) => log.push({ machine, id, entry: JSON.parse(entry) }),
 };
+const log = [];
 
 test("a scripted session runs through the JS API", () => {
   const engine = new Engine(compiled, host);
@@ -46,6 +48,9 @@ test("a scripted session runs through the JS API", () => {
   assert.equal(status.yielded, true);
   assert.equal(status.instance.label, "GH-1");
   const state = engine.exportState();
+  // History goes to the host, not into the snapshot (PLAN-006 D6-4).
+  assert.ok(!("history" in JSON.parse(state)), state);
+  assert.deepEqual(log.map((h) => h.entry.event), ["enter", "accept", "yield"]);
   const again = new Engine(compiled, host);
   again.importState(state);
   assert.equal(JSON.parse(again.view(key)).location.state, "WORK");
@@ -69,4 +74,18 @@ test("a throwing host leaves the engine usable", () => {
   }
   assert.equal(JSON.parse(engine.view(key)).session, key);
   assert.ok(engine.exportState().includes(key));
+});
+
+// A throwing `history` loses the entry, never the transition (PLAN-006 D6-4).
+test("a throwing history callback keeps the transition", () => {
+  const engine = new Engine(compiled, {
+    ...host,
+    history: () => {
+      throw new Error("log is down");
+    },
+  });
+  const key = JSON.parse(engine.bind("test", "t-3", "/work")).session;
+  const r = JSON.parse(engine.fire(key, "enter", JSON.stringify({ stateMachine: "dev", issueId: "GH-2" })));
+  assert.equal(r.ok, true, r.text);
+  assert.equal(JSON.parse(engine.status(key)).state, "TRIAGE");
 });

@@ -8,8 +8,10 @@
 
 use core::sync::atomic::{AtomicU32, Ordering};
 use smllm_core::host::{
-    Action, Call, Clock, Guard, Host, Ids, InstructionSource, Matcher, MemoryStore, Outcome,
+    Action, Call, Clock, Guard, Host, HostError, Ids, InstructionSource, Matcher, MemoryStore,
+    Outcome, Store,
 };
+use smllm_core::record::{HistoryEntry, Instance, Session};
 use smllm_core::model::Config;
 use smllm_core::{Bind, Stop};
 
@@ -55,6 +57,10 @@ extern "C" {
     /// A random 32-bit unsigned integer.
     #[wasm_bindgen(method, catch)]
     fn random(this: &JsHost) -> Result<u32, JsValue>;
+    /// One history entry of instance `id` of `machine`, as JSON: the host
+    /// keeps the log, the engine never reads it back (PLAN-006 D6-4).
+    #[wasm_bindgen(method, catch)]
+    fn history(this: &JsHost, machine: &str, id: &str, entry: &str) -> Result<(), JsValue>;
 
     /// The global `String(value)`: an exception's text (`Error: …`).
     #[wasm_bindgen(js_name = String)]
@@ -160,6 +166,53 @@ impl Ids for Js<'_> {
     }
 }
 
+/// The in-memory store, with history handed to the host: state and log
+/// apart, so a snapshot holds current state only (PLAN-006 D6-4).
+struct WasmStore<'a> {
+    mem: &'a mut MemoryStore,
+    host: &'a JsHost,
+}
+
+impl Store for WasmStore<'_> {
+    fn session(&mut self, key: &str) -> Result<Option<Session>, HostError> {
+        self.mem.session(key)
+    }
+    fn put_session(&mut self, session: &Session) -> Result<(), HostError> {
+        self.mem.put_session(session)
+    }
+    fn binding(&mut self, harness: &str, host_session: &str) -> Result<Option<String>, HostError> {
+        self.mem.binding(harness, host_session)
+    }
+    fn put_binding(
+        &mut self,
+        harness: &str,
+        host_session: &str,
+        key: &str,
+    ) -> Result<(), HostError> {
+        self.mem.put_binding(harness, host_session, key)
+    }
+    fn instance(&mut self, machine: &str, id: &str) -> Result<Option<Instance>, HostError> {
+        self.mem.instance(machine, id)
+    }
+    fn instances(&mut self, machine: &str) -> Result<Vec<Instance>, HostError> {
+        self.mem.instances(machine)
+    }
+    fn put_instance(&mut self, instance: &Instance) -> Result<(), HostError> {
+        self.mem.put_instance(instance)
+    }
+    /// A host that throws loses that entry, never the transition, which is
+    /// already saved.
+    fn append_history(
+        &mut self,
+        machine: &str,
+        id: &str,
+        entry: &HistoryEntry,
+    ) -> Result<(), HostError> {
+        let _ = self.host.history(machine, id, &json(entry));
+        Ok(())
+    }
+}
+
 /// An smllm engine with an in-memory store.
 #[wasm_bindgen]
 pub struct Engine {
@@ -188,8 +241,12 @@ impl Engine {
     fn with<R>(&mut self, f: impl FnOnce(&smllm_core::Engine, &mut Host<'_>) -> R) -> R {
         let (mut g, mut a, mut i) = (Js(&self.host), Js(&self.host), Js(&self.host));
         let s = Js(&self.host);
+        let mut store = WasmStore {
+            mem: &mut self.store,
+            host: &self.host,
+        };
         let mut host = Host {
-            store: &mut self.store,
+            store: &mut store,
             guards: &mut g,
             actions: &mut a,
             source: &s,
@@ -302,7 +359,7 @@ impl Engine {
         self.with(|e, h| e.prompt_submitted(h, key)).map_err(err)
     }
 
-    /// Sessions, instances and history as JSON.
+    /// Sessions, bindings and instances as JSON (history went to the host).
     #[wasm_bindgen(js_name = exportState)]
     pub fn export_state(&self) -> String {
         json(&self.store)
