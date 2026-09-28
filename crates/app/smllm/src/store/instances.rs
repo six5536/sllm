@@ -40,10 +40,7 @@ fn file_name(id: &str) -> String {
 }
 
 /// Run `f` holding the machine's lock (`<machine>/.lock`).
-fn locked<T>(
-    dir: &Path,
-    f: impl FnOnce() -> Result<T, HostError>,
-) -> Result<T, HostError> {
+fn locked<T>(dir: &Path, f: impl FnOnce() -> Result<T, HostError>) -> Result<T, HostError> {
     fs::create_dir_all(dir).map_err(other)?;
     let lock = OpenOptions::new()
         .create(true)
@@ -101,24 +98,59 @@ fn marker(dir: &Path, r#ref: &str) -> PathBuf {
     dir.join(REFS).join(format!("{name}.json"))
 }
 
-/// Record that instance `id` has `r#ref`.
+type Bucket = BTreeMap<String, String>;
+
+/// Record that instance `id` has `r#ref`. An unreadable marker is rebuilt
+/// from the instances first (PLAN-006 D6-7).
 fn add_ref(dir: &Path, r#ref: &str, id: &str) -> Result<(), HostError> {
     let path = marker(dir, r#ref);
-    let mut bucket: BTreeMap<String, String> = read_json(&path)?.unwrap_or_default();
+    let mut bucket: Bucket = match read_json(&path) {
+        Ok(b) => b.unwrap_or_default(),
+        Err(_) => scan(dir, None)
+            .0
+            .into_iter()
+            .filter_map(|i| Some((i.r#ref?, i.id)))
+            .filter(|(r, _)| marker(dir, r) == path)
+            .collect(),
+    };
     bucket.insert(r#ref.to_string(), id.to_string());
     write(&path, &serde_json::to_string(&bucket).map_err(other)?)
 }
 
 /// The instance whose ref is `r#ref`: its marker names it, and it has the
-/// ref (a marker left by a failed write names one that does not).
+/// ref (a marker left by a failed write names one that does not). Markers
+/// are derived from the instances, which hold their refs: an unreadable one
+/// costs a scan, never an error (PLAN-006 D6-7).
 pub(super) fn by_ref(dir: &Path, r#ref: &str) -> Result<Option<Instance>, HostError> {
-    let bucket: Option<BTreeMap<String, String>> = read_json(&marker(dir, r#ref))?;
+    let bucket: Option<Bucket> = match read_json(&marker(dir, r#ref)) {
+        Ok(b) => b,
+        Err(_) => {
+            return Ok(scan(dir, None)
+                .0
+                .into_iter()
+                .find(|i| i.r#ref.as_deref() == Some(r#ref)));
+        }
+    };
     let Some(id) = bucket.as_ref().and_then(|b| b.get(r#ref)) else {
         return Ok(None);
     };
     Ok(find(dir, id)?
         .map(|(_, i)| i)
         .filter(|i| i.r#ref.as_deref() == Some(r#ref)))
+}
+
+/// Marker files that cannot be read, with why: `validate` reports them.
+pub(super) fn unreadable_markers(dir: &Path) -> Vec<(PathBuf, String)> {
+    let Ok(rd) = fs::read_dir(dir.join(REFS)) else {
+        return Vec::new();
+    };
+    let mut out: Vec<(PathBuf, String)> = rd
+        .flatten()
+        .map(|e| e.path())
+        .filter_map(|p| read_json::<Bucket>(&p).err().map(|e| (p, e.to_string())))
+        .collect();
+    out.sort();
+    out
 }
 
 /// The readable instances of one shelf, and the unreadable files with why.

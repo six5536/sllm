@@ -291,6 +291,14 @@ fn new_forms_and_validate_paths() {
         "{}",
         o.stdout
     );
+    // So is an unreadable ref marker (PLAN-006 D6-7).
+    w.write(".smllm/state/other/refs/x.json", "{ nope");
+    let o = w.run(&["validate", "--warnings"]);
+    assert!(
+        o.stdout.contains("ref marker of other cannot be read"),
+        "{}",
+        o.stdout
+    );
     // An explicit config that does not exist.
     assert_eq!(w.run(&["--config", "nope.toml", "validate"]).code, 2);
     w.write(".smllm/config.toml", "[machines]\nfiles = 3\n");

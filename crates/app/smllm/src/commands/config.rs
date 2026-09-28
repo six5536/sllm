@@ -153,6 +153,19 @@ fn relative(base: &Path, path: &Path) -> PathBuf {
 fn saved_states(rt: &mut Runtime) -> Findings {
     let mut out = Findings::default();
     for src in rt.sources.clone() {
+        for (file, why) in rt.store.unreadable_markers(&src.id) {
+            out.push(Finding {
+                level: Severity::Warning,
+                file,
+                line: None,
+                path: None,
+                message: format!("ref marker of {} cannot be read: {why}", src.id),
+                hint: Some(
+                    "smllm finds refs without it (more slowly) and rebuilds it when one of its refs is next set; do not delete it, a missing marker means no such ref".to_string(),
+                ),
+                rule: "STO-1",
+            });
+        }
         let (instances, unreadable) = rt.store.scan(&src.id);
         for (file, why) in unreadable {
             out.push(Finding {

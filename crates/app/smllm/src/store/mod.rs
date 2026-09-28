@@ -119,6 +119,14 @@ impl FsStore {
         }
     }
 
+    /// Ref marker files of `machine` that cannot be read, with why
+    /// (`validate` reports those; smllm reads refs without them).
+    pub fn unreadable_markers(&self, machine: &str) -> Vec<(PathBuf, String)> {
+        self.machine_dir(machine)
+            .map(|dir| instances::unreadable_markers(&dir))
+            .unwrap_or_default()
+    }
+
     /// Keep instance state out of git (O6: private in v1).
     fn ignore_state(&self, machine_dir: &Path) {
         if let Some(state) = machine_dir.parent() {
@@ -406,6 +414,19 @@ mod tests {
         c.id = "i-e".into();
         assert_eq!(s.put_instance(&c), Err(HostError::Conflict));
         assert!(s.instance_by_ref("dev", "nope").unwrap().is_none());
+
+        // A corrupt marker costs a scan, never an error; a write rebuilds it,
+        // and `validate` hears of it (PLAN-006 D6-7).
+        fs::write(dev.join("refs/r9.json"), "{ nope").unwrap();
+        assert_eq!(s.unreadable_markers("dev").len(), 1);
+        assert_eq!(s.instance_by_ref("dev", "R9").unwrap().unwrap().id, "i-d");
+        let mut r10 = inst(1);
+        r10.id = "i-r".into();
+        r10.r#ref = Some("r9".into());
+        s.put_instance(&r10).unwrap();
+        assert!(s.unreadable_markers("dev").is_empty());
+        assert_eq!(s.instance_by_ref("dev", "R9").unwrap().unwrap().id, "i-d");
+        assert_eq!(s.instance_by_ref("dev", "r9").unwrap().unwrap().id, "i-r");
 
         // Refs that differ only in case share a marker, not an owner; a long
         // ref gets a short marker name.
