@@ -109,8 +109,8 @@ test("a throwing history callback keeps the transition", () => {
   assert.equal(engine.status(key).state, "TRIAGE");
 });
 
-// miniserde errors carry no detail; the engine says what could not be read
-// (PLAN-007 D7-1), and bad input never breaks it.
+// Malformed JSON says what could not be read and where (PLAN-007 D7-6), and
+// bad input never breaks the engine.
 test("malformed JSON is rejected with what failed", () => {
   assert.throws(() => new Engine("{", host), /invalid compiled machines/);
   const engine = new Engine(compiled, host);

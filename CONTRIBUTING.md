@@ -125,6 +125,8 @@ See `.zen/specs/ARCHITECTURE.md`. In short:
   `.zen/rules/rust-rules.md`, and check with
   `cargo build -p smllm-core --no-default-features --target wasm32-unknown-unknown`.
 - `crates/lib/smllm-format`: parsing, validation, schema, compile.
+- `crates/lib/smllm-json`: a small `no_std` JSON reader/writer for the wasm build; its output must
+  match serde_json's byte for byte (the core's `json::tests` check it).
 - `crates/lib/agent-harness-kit`: harness plumbing shared with sokf (no smllm dependencies).
 - `crates/lib/smllm-wasm`: wasm-bindgen bindings for `packages/smllm-wasm`.
 - `crates/app/smllm`: the binary.

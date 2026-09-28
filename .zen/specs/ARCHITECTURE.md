@@ -7,6 +7,7 @@ smllm (state machines for LLM agents) puts declarative state machines, written a
 ## System Overview
 
 - Engine (`smllm-core`): `no_std` + `alloc` state machine engine: model, instances, idle and built-in events, guards/actions dispatch, agent text rendering; all IO through host traits
+- JSON (`smllm-json`): `no_std` JSON reader and writer with no dependencies, byte-compatible with serde_json, for the wasm build
 - Format (`smllm-format`): YAML/TOML loading, validation and findings, JSON Schema, compile to JSON
 - Harness kit (`agent-harness-kit`): shared, tool-neutral plumbing factored from sokf: harness parts install/status, marker regions, JSON merges, hook answers, findings, CLI conventions
 - App (`smllm`): CLI, config lookup, file store, command host (guards and actions), Claude Code harness, MCP server
@@ -18,7 +19,6 @@ smllm (state machines for LLM agents) puts declarative state machines, written a
 - `Rust 1 (edition 2024)` — all crates
 - `clap 4` — CLI parsing, completions (`clap_complete 4`), man page (`clap_mangen 0`)
 - `serde 1` / `serde_json 1` — model, store and JSON output formats
-- `miniserde 0` — the same JSON in `smllm-wasm` (smaller than serde_json; PLAN-007)
 - `serde-saphyr 1` — YAML state machine files (`smllm-format` only)
 - `toml 1` / `toml_edit 0` — `config.toml` reading; in-place edits (`new --write`, declined parts)
 - `schemars 1` — JSON Schema of the state machine format
@@ -54,6 +54,7 @@ flowchart LR
         Core[smllm-core engine]
         Format[smllm-format]
         Kit[agent-harness-kit]
+        Json[smllm-json]
     end
     subgraph Js[JS hosts]
         Wasm[smllm-wasm]
@@ -80,6 +81,8 @@ flowchart LR
     Store --> UserState
     Store --> ProjState
     Wasm --> Core
+    Wasm --> Json
+    Core -.->|json feature| Json
 ```
 
 ## Directory Structure
@@ -87,6 +90,7 @@ flowchart LR
 ```
 crates/lib/smllm-core/          # no_std engine: model, engine, host traits, records, render
 crates/lib/smllm-format/        # std: source types, load, validate, lower, schema, compile
+crates/lib/smllm-json/          # no_std JSON reader/writer, serde_json-compatible output (ENG-Json)
 crates/lib/agent-harness-kit/   # std, published: harness, hook, report, cli modules (from sokf)
 crates/lib/smllm-wasm/          # cdylib wasm-bindgen wrapper over smllm-core (publish = false)
 crates/app/smllm/src/           # CLI entry, runtime, store, command host, paths, output
@@ -124,7 +128,7 @@ RESPONSIBILITIES
 CONSTRAINTS
 
 - `no_std` + `alloc`; WASM size rules in `.zen/rules/rust-rules.md`
-- Optional `serde` feature; optional `miniserde` feature writing and reading the same JSON byte for byte (for `smllm-wasm`); `std` feature only adds `std::error::Error`
+- Optional `serde` feature; optional `json` feature writing and reading the same JSON byte for byte through `smllm-json` (for `smllm-wasm`); `std` feature only adds `std::error::Error`
 
 ### smllm-format
 
@@ -135,6 +139,15 @@ RESPONSIBILITIES
 - Parse and validate machine files; collect findings (the kit's error / warning / info severities) with file, line, YAML path, hint, reported through the kit's `Report`
 - Combine user and project configs; give each machine its state directory
 - Generate the format's JSON Schema, templates, and compiled JSON for wasm hosts
+
+### smllm-json
+
+A small `no_std` JSON reader and writer with no dependencies, for the wasm build (ENG-Json, PLAN-007).
+
+RESPONSIBILITIES
+
+- Parse RFC 8259 text into a tree (nesting limit, no float code); read typed values with serde's field rules and field-path errors
+- Write JSON byte-identical to serde_json's
 
 ### agent-harness-kit
 
@@ -177,7 +190,7 @@ RESPONSIBILITIES
 
 CONSTRAINTS
 
-- Depends on `smllm-core` (its `miniserde` feature) and miniserde only; size budget enforced by `scripts/build-wasm.mjs`
+- Depends on `smllm-core` (its `json` feature) and `smllm-json` only; size budget enforced by `scripts/build-wasm.mjs`
 
 ### Claude Code plugin
 
@@ -245,7 +258,7 @@ sequenceDiagram
 ## Architectural Rules
 
 - `smllm-core` has no IO, time, randomness, regex or process spawning; hosts supply them (NFR-1)
-- `smllm-core` builds for `wasm32-unknown-unknown` without default features; `smllm_wasm_bg.wasm` stays within its 154 KiB budget (NFR-8); follow the WASM size rules in `.zen/rules/rust-rules.md`
+- `smllm-core` builds for `wasm32-unknown-unknown` without default features; `smllm_wasm_bg.wasm` stays within its 134 KiB budget (NFR-8); follow the WASM size rules in `.zen/rules/rust-rules.md`
 - Parsing, validation and std-only code live in `smllm-format` or the app, never the core
 - Hooks never wedge the agent: a failure exits 1 with stderr only; no config means `{}` (NFR-4, HOST-7, HOST-8)
 - `smllm statusline` never blanks the host's status line: it always exits 0, printing nothing (or `{}`) on failure (STL-4)
@@ -292,4 +305,4 @@ Pre-0.1 release. Engine, format, store, Claude Code harness, MCP server and wasm
 - 0.4.0 (2026-09-27): Faster hooks (PLAN-004): smllm-format load modes; hooks that need no config load none; kit `parse_toml`
 - 0.5.0 (2026-09-27): Instance shelves (PLAN-005): `Store::instances_with` and `instance_by_ref`; the file store keeps completed instances apart and refs as marker files
 - 0.6.0 (2026-09-28): Idiom review (PLAN-006): no migration (reads never write); ref markers as a derived index; `[state] dir`; reproducible `compile`; WASM history to the host; typed `smllm-wasm` wrapper
-- 0.7.0 (2026-09-28): Smaller wasm (PLAN-007): core `miniserde` feature, smllm-wasm off serde_json; std rebuilt for size on a pinned nightly; no build paths; budget 154 KiB
+- 0.7.0 (2026-09-28): Smaller wasm (PLAN-007): own no_std JSON crate `smllm-json` (core `json` feature), smllm-wasm off serde_json; std rebuilt for size on a pinned nightly; no build paths; budget 134 KiB

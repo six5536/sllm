@@ -14,10 +14,6 @@ use crate::utils::SmallMap;
     derive(Serialize, Deserialize),
     serde(rename_all = "camelCase")
 )]
-#[cfg_attr(
-    feature = "miniserde",
-    derive(miniserde::Serialize, miniserde::Deserialize)
-)]
 pub struct InstanceKey {
     /// State machine id.
     pub machine: String,
@@ -32,22 +28,14 @@ pub struct InstanceKey {
     derive(Serialize, Deserialize),
     serde(rename_all = "camelCase")
 )]
-#[cfg_attr(
-    feature = "miniserde",
-    derive(miniserde::Serialize, miniserde::Deserialize)
-)]
 pub enum Status {
     /// Held by a session.
-    #[cfg_attr(feature = "miniserde", serde(rename = "active"))]
     Active,
     /// Put aside by `unmatched`; `resume` returns.
-    #[cfg_attr(feature = "miniserde", serde(rename = "suspended"))]
     Suspended,
     /// Put aside by `park`.
-    #[cfg_attr(feature = "miniserde", serde(rename = "parked"))]
     Parked,
     /// Reached a final state; kept (INST-9).
-    #[cfg_attr(feature = "miniserde", serde(rename = "completed"))]
     Completed,
 }
 

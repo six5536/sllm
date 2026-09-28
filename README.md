@@ -121,6 +121,7 @@ which is git-ignored. Sessions live in `~/.local/state/smllm/`.
 ```
 crates/lib/smllm-core         the engine: no_std + alloc, host traits for IO (builds for wasm)
 crates/lib/smllm-format       YAML/TOML loading, validation, JSON Schema, compile
+crates/lib/smllm-json         no_std JSON reader/writer for the wasm build (serde_json-compatible)
 crates/lib/agent-harness-kit  harness plumbing shared with sokf (install/status, hooks, reports)
 crates/lib/smllm-wasm         wasm-bindgen bindings → packages/smllm-wasm (npm)
 crates/app/smllm              the CLI: commands, file store, command runner, hooks, MCP server

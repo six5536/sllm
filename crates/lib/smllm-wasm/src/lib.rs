@@ -15,6 +15,7 @@ use smllm_core::model::Config;
 use smllm_core::record::{HistoryEntry, Instance, Session};
 use smllm_core::{Bind, Stop};
 
+use smllm_json::{Fields, FromJson, JsonValue, ToJson};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -78,26 +79,18 @@ static FALLBACK_IDS: AtomicU32 = AtomicU32::new(0);
 
 struct Js<'a>(&'a JsHost);
 
-fn json<T: miniserde::Serialize>(v: &T) -> String {
-    miniserde::json::to_string(v)
+fn json<T: ToJson + ?Sized>(v: &T) -> String {
+    smllm_json::to_string(v)
 }
 
-struct Env<'a>(&'a [(String, String)]);
-impl miniserde::Serialize for Env<'_> {
-    fn begin(&self) -> miniserde::ser::Fragment<'_> {
-        struct It<'a>(core::slice::Iter<'a, (String, String)>);
-        impl miniserde::ser::Map for It<'_> {
-            fn next(&mut self) -> Option<(std::borrow::Cow<'_, str>, &dyn miniserde::Serialize)> {
-                self.0
-                    .next()
-                    .map(|(k, v)| (k.as_str().into(), v as &dyn miniserde::Serialize))
-            }
-        }
-        miniserde::ser::Fragment::Map(Box::new(It(self.0.iter())))
-    }
-}
 fn env_json(env: &[(String, String)]) -> String {
-    json(&Env(env))
+    let mut out = String::new();
+    let mut o = smllm_json::object(&mut out);
+    for (k, v) in env {
+        o.field(k, v);
+    }
+    o.end();
+    out
 }
 
 impl Js<'_> {
@@ -231,67 +224,24 @@ pub struct Engine {
     host: JsHost,
 }
 
-/// A `fire` param value: a string, or `None` for any other JSON value (so
-/// the error can name the param; miniserde errors carry no text).
-struct Param(Option<String>);
-impl miniserde::Deserialize for Param {
-    fn begin(out: &mut Option<Self>) -> &mut dyn miniserde::de::Visitor {
-        use miniserde::Result;
-        use miniserde::de::{Map, Seq, Visitor};
-        miniserde::make_place!(Place);
-        impl Place<Param> {
-            fn other(&mut self) -> Result<()> {
-                self.out = Some(Param(None));
-                Ok(())
-            }
-        }
-        impl Visitor for Place<Param> {
-            fn string(&mut self, s: &str) -> Result<()> {
-                self.out = Some(Param(Some(s.into())));
-                Ok(())
-            }
-            fn null(&mut self) -> Result<()> {
-                self.other()
-            }
-            fn boolean(&mut self, _: bool) -> Result<()> {
-                self.other()
-            }
-            fn negative(&mut self, _: i64) -> Result<()> {
-                self.other()
-            }
-            fn nonnegative(&mut self, _: u64) -> Result<()> {
-                self.other()
-            }
-            fn float(&mut self, _: f64) -> Result<()> {
-                self.other()
-            }
-            fn seq(&mut self) -> Result<Box<dyn Seq + '_>> {
-                self.other()?;
-                <dyn Visitor>::ignore().seq()
-            }
-            fn map(&mut self) -> Result<Box<dyn Map + '_>> {
-                self.other()?;
-                <dyn Visitor>::ignore().map()
-            }
-        }
-        Place::new(out)
-    }
-}
-
-/// `fire`'s params: a JSON object; a non-string is named by key.
+/// `fire`'s params: a JSON object of strings; a non-string is named by key.
 fn parse_params(json: &str) -> Result<Vec<(String, String)>, JsError> {
-    let map: smllm_core::SmallMap<Param> = from_json(json, "params must be a JSON object")?;
-    map.iter()
-        .map(|(k, v)| match &v.0 {
-            Some(s) => Ok((k.to_string(), s.clone())),
-            None => Err(JsError::new(&format!("param {k} must be a string"))),
+    let fields = from_json::<Fields>(json, "params must be a JSON object")?;
+    fields
+        .into_vec()
+        .into_iter()
+        .map(|(k, v)| match v {
+            JsonValue::String(s) => Ok((k, s)),
+            _ => Err(JsError::new(&format!("param {k} must be a string"))),
         })
-        .collect()
+        // A repeated param's last value wins, as when read into a map.
+        .collect::<Result<smllm_core::SmallMap<String>, _>>()
+        .map(|m| m.iter().map(|(k, v)| (k.to_string(), v.clone())).collect())
 }
 
-/// Parse JSON; miniserde's error has no detail, so `what` says what failed.
-fn from_json<T: miniserde::Deserialize>(json: &str, what: &str) -> Result<T, JsError> {
-    miniserde::json::from_str(json).map_err(|_| JsError::new(what))
+/// Parse JSON; `what` says what failed, before the parser's own detail.
+fn from_json<T: FromJson>(json: &str, what: &str) -> Result<T, JsError> {
+    smllm_json::from_str(json).map_err(|e| JsError::new(&format!("{what}: {e}")))
 }
 
 fn err(e: impl core::fmt::Display) -> JsError {
@@ -414,22 +364,14 @@ impl Engine {
             Stop::Block(t) => ("block", Some(t)),
             Stop::Runaway(t) => ("runaway", Some(t)),
         };
-        #[derive(miniserde::Serialize)]
-        struct Allow<'a> {
-            decision: &'a str,
+        let mut out = String::new();
+        let mut o = smllm_json::object(&mut out);
+        o.field("decision", &name);
+        if let Some(text) = &text {
+            o.field("text", text);
         }
-        #[derive(miniserde::Serialize)]
-        struct Out<'a> {
-            decision: &'a str,
-            text: String,
-        }
-        Ok(match text {
-            None => json(&Allow { decision: name }),
-            Some(text) => json(&Out {
-                decision: name,
-                text,
-            }),
-        })
+        o.end();
+        Ok(out)
     }
 
     /// A user prompt arrived.
@@ -447,19 +389,18 @@ impl Engine {
     /// Replace the store from [`Engine::export_state`] JSON.
     #[wasm_bindgen(js_name = importState)]
     pub fn import_state(&mut self, state: &str) -> Result<(), JsError> {
-        #[derive(miniserde::Deserialize)]
-        struct State {
-            sessions: smllm_core::SmallMap<Session>,
-            bindings: smllm_core::SmallMap<String>,
-            instances: smllm_core::SmallMap<Instance>,
-        }
-        let s: State = from_json(state, "invalid state: expected `exportState` JSON")?;
-        self.store = MemoryStore {
-            sessions: s.sessions,
-            bindings: s.bindings,
-            instances: s.instances,
-            history: Default::default(),
+        let read = |state| -> Result<MemoryStore, smllm_json::Error> {
+            let mut f = Fields::from_json(smllm_json::parse(state)?)?;
+            Ok(MemoryStore {
+                sessions: f.req("sessions")?,
+                bindings: f.req("bindings")?,
+                instances: f.req("instances")?,
+                history: Default::default(),
+            })
         };
+        self.store = read(state).map_err(|e| {
+            JsError::new(&format!("invalid state: expected `exportState` JSON: {e}"))
+        })?;
         Ok(())
     }
 }

@@ -31,8 +31,8 @@ extern crate alloc;
 
 mod engine;
 pub mod host;
-#[cfg(feature = "miniserde")]
-mod mini;
+#[cfg(feature = "json")]
+mod json;
 pub mod model;
 mod prelude;
 pub mod record;

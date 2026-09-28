@@ -2,7 +2,7 @@
 
 | Meta               | Value                                                         |
 | ------------------ | ------------------------------------------------------------- |
-| Status             | completed (S1–S4, 2026-09-28) |
+| Status             | completed (S1–S5, 2026-09-28) |
 | Workflow direction | bottom-up (measure → decisions → code → specs)                |
 | Traces to          | NFR-8, HOST-Wasm (DESIGN-HOST), DESIGN-ENG (serde feature), D6-2 (reproducible output) |
 
@@ -43,6 +43,7 @@ Sizes are wasm bytes after `-Oz`, each measured on top of the rows above it unle
 | W-9 | `opt-level = "s"` for the wasm build | +16,744 on miniserde (→173,850) | — | rejected |
 | W-10 | wasm-opt flags: `-Oz --converge` −142, `-O4 -Oz` +3,208 | measured | — | rejected (noise) |
 | W-12 | More Binaryen `wasm-opt` (v132) passes, on miniserde (157,106): `--strip-producers --strip-target-features` −74; `--zero-filled-memory --low-memory-unused` −642; all with `--converge` −866; `--flatten --rereloop -Oz` −1,091; `--gufa`, `--merge-similar-functions`, `-Oz` ×3 ≤ −145 | measured | stripping the two custom sections is free (they hold only toolchain names and features); the memory flags assume a layout detail (nothing below address 1024) for 0.4%; flatten/rereloop costs build time and may cost speed | to decide |
+| W-13 | Replace miniserde with our own `smllm-json` crate (no_std, no dependencies): a recursive-descent parser into a tree (after the user's bitmark parser: RFC 8259 grammar, depth limit, no floats: other numbers stay text), a writer escaping as serde_json does, `FromJson` / `ToJson` with serde's field rules, core's `json` feature; errors name the field (`machines[0].id: expected a string, found an integer`) | 136,735 → 118,761 (−17,974, −13%; gzip ~64.1 K → 50,967, −20%). First cut −423: `collect()` into `Vec<T>` inlined every type's decoder per element type (a plain loop −8.7 KB), and a two-string error made every `Result` large to move (boxed −8.8 KB) | ~1,640 lines of ours (parser 402 with tests, convert 245, write 178, core impls 423, tests 232) replace a dependency; 16 new tests; equivalence with serde as before | decided (D7-6) |
 | W-11 | Shared text: `f64` Display and serde's error strings vanish only with W-5 (or a custom JSON reader) | follows W-5 | — | depends on W-5 |
 
 Stacked: serde 263,192 → W-1..W-4 238,390 → W-5 miniserde 157,106 → W-8 talc 150,026 → W-6 132,687
@@ -83,6 +84,7 @@ Each phase one commit, `npm run -s build:wasm`, `npm run -s test:wasm` and `npm 
 | S2 | D7-4: path remap (W-7) | no `/home/` or registry path in the `.wasm` |
 | S3 | D7-3: build-std on a pinned nightly (W-6) | `build:wasm`, CI and release on the pinned nightly; ~137 KB |
 | S4 | NFR-8 budget → new size + ~15%; DESIGN-HOST, DESIGN-ENG, ARCHITECTURE, CHANGELOG, §6 | — |
+| S5 | D7-6: `smllm-json` replaces miniserde (from `exp/json`); budget → new size + ~15%; docs | smoke tests; core equivalence tests; ~119 KB |
 
 ## 5. Decisions
 
@@ -107,6 +109,10 @@ Each phase one commit, `npm run -s build:wasm`, `npm run -s test:wasm` and `npm 
 - D7-5 (W-12): `wasm-opt` adds `--strip-producers --strip-target-features` (free; they name the
   toolchain). Not the memory-layout flags (0.4%, an assumption a toolchain change could break) nor
   `--flatten --rereloop` (build time, speed).
+- D7-6 (W-13): our own `smllm-json` crate replaces miniserde (user: "We do this absolutely"): −18 KB
+  more (−13%; gzip −20%), no JSON dependency, and errors that name the field or byte. Core's
+  feature is `json`; the equivalence tests and the rust-rules rule carry over. Published with
+  the other crates (core's optional dependency). Supersedes D7-1's library choice.
 - Rejected: W-9 (`opt-level = "s"`, +16.7 KB), W-10 (wasm-opt flags, noise).
 
 ## 6. Outcome
@@ -117,3 +123,4 @@ Each phase one commit, `npm run -s build:wasm`, `npm run -s test:wasm` and `npm 
 | S2 | a40275c: `build-wasm.mjs` remaps `CARGO_HOME`, the checkout and the toolchain's `rust-src` (to `/rustc/<commit>`, where std's own paths point) and fails if the home, `CARGO_HOME`, checkout or `rust-src` path remains; strips the producers and target-features sections. Only `/rustc/<commit>/…` and `/cargo/registry/…` remain. 156,772 bytes |
 | S3 | 6dfb3df: `NIGHTLY = "nightly-2026-09-26"` in `build-wasm.mjs`, which installs it (`rustup toolchain install`, a no-op when present) with `rust-src` and wasm32, so CI, release and local builds share one pin: no workflow change; `.mise.toml` says so (D7-3 said the jobs and mise would install it). 136,735 bytes (133.5 KiB; −48% from 263,192) |
 | S4 | budget 154 KiB (NFR-8_AC-2); DESIGN-NFR, DESIGN-ENG, DESIGN-HOST, ARCHITECTURE 0.7.0, rust-rules (keep the two impls in step), CHANGELOG, this section |
+| S5 | `smllm-json` (see W-13), core `json` feature, miniserde gone; `#![warn(missing_docs)]`, README, `verify-version` lists it; ENG-Json in DESIGN-ENG; ARCHITECTURE, DESIGN-NFR/HOST, README, CONTRIBUTING, rust-rules (loop not `collect`, boxed `Error`); budget 134 KiB. 118,761 bytes (116.0 KiB; −55% from 263,192; gzip 50,967, −55%) |

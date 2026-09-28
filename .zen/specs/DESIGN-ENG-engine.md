@@ -67,6 +67,7 @@ crates/lib/smllm-core/src/
 │   ├── traits.rs       ENG-Host: Store, Guard, Action, InstructionSource, Matcher, Clock, Ids, Host
 │   └── memory.rs       ENG-Host: MemoryStore
 ├── model/              ENG-Model: Config, Machine, State, Transition, ActionDef, GuardDef
+├── json.rs, json/      ENG-Json: smllm-json impls (`json` feature) + serde equivalence tests
 ├── record/             INST-Records, STO-Records (DESIGN-INST)
 ├── render/             TURN-Render (DESIGN-TURN)
 └── utils/              SmallMap, insertion_sort_by_key
@@ -93,7 +94,7 @@ crates/lib/smllm-core/tests/
 
 ### ENG-Model
 
-The validated, lowered model. Plain data with optional `serde` (for `smllm compile` JSON) and `miniserde` (the same JSON byte for byte, for `smllm-wasm`; `src/mini.rs`, PLAN-007 D7-1). Guards and actions are XState `{type, params}`; `visits` and `prompt`/`setRef` are core-evaluated, anything else is a `Host` kind resolved through the host traits (NFR-9). `Prompt::DefaultFile` is the implied `enter-<STATE>.md`, silently skipped when absent.
+The validated, lowered model. Plain data with optional `serde` (for `smllm compile` JSON) and `json` (the same JSON byte for byte through `smllm-json`, for `smllm-wasm`; ENG-Json). Guards and actions are XState `{type, params}`; `visits` and `prompt`/`setRef` are core-evaluated, anything else is a `Host` kind resolved through the host traits (NFR-9). `Prompt::DefaultFile` is the implied `enter-<STATE>.md`, silently skipped when absent.
 
 IMPLEMENTS: DEC-3_AC-1
 
@@ -240,6 +241,21 @@ pub(crate) fn commit(turn: &mut Turn<'_, '_>, m: &Machine, inst: Instance,
 pub(crate) fn takeover_note(turn: &mut Turn<'_, '_>, holder: &str) -> Result<String, Error>;
 ```
 
+### ENG-Json
+
+JSON for `smllm-wasm` without serde (PLAN-007 D7-6): `crates/lib/smllm-json` (no_std, no dependencies) and core's `json` feature. `parse` reads RFC 8259 text into a `JsonValue` tree (recursive descent, nesting at most `MAX_DEPTH` = 128, no raw control characters or lone surrogates, trailing content rejected); integers are `Int(i64)` / `UInt(u64)`, any other number stays its text (`Number`), so no float code is linked. `FromJson` reads a type out of the tree; `Fields` gives serde's derive rules (`req` present, `or_default` may be missing, a duplicate field is an error, unknown fields are ignored; `into_single` for externally tagged enums). `ToJson` writes straight to a `String`; `write_str` escapes as serde_json (`\" \\ \b \t \n \f \r`, other controls `\u00xx`), so output is byte-identical. `Error` is one boxed `{path, message}`: a parse error names the byte offset, a conversion error the field path (`machines[0].id: expected a string, found an integer`). Core's `src/json.rs` implements both traits for every serialised type: structs through `object!` (the derive's JSON names and `req` / `default` / `skip` modes), enums and the untagged `Value` by hand; `json/tests.rs` checks every type and variant encodes as serde does and reads back equal, and that malformed input serde rejects is rejected; the gate runs them (workspace builds enable both features).
+
+IMPLEMENTS: NFR-8_AC-2
+
+```rust
+pub fn parse(input: &str) -> Result<JsonValue, Error>;
+pub fn from_str<T: FromJson>(text: &str) -> Result<T, Error>;
+pub fn to_string<T: ToJson + ?Sized>(value: &T) -> String;
+pub trait FromJson: Sized { fn from_json(value: JsonValue) -> Result<Self, Error>; }
+pub trait ToJson { fn write_json(&self, out: &mut String); }
+pub fn object(out: &mut String) -> ObjectWriter<'_>;  // .field(key, &dyn ToJson) … .end()
+```
+
 ## Data Models
 
 ### Core Types
@@ -359,11 +375,11 @@ SOURCE: .zen/specs/REQ-ENG-engine.md
 ### External Libraries
 
 - serde (1, optional, no default features): model/record (de)serialisation
-- miniserde (0.1, optional, no default features): the same JSON for smllm-wasm
+- smllm-json (0.1, optional): the same JSON for smllm-wasm (ENG-Json)
 - proptest (1.11, dev): property tests
 - insta (1.47, dev): snapshot tests
 
 ## Change Log
 
 - 1.0.0 (2026-09-25): Initial design, documenting the P3 implementation
-- 1.1.0 (2026-09-28): `miniserde` feature (PLAN-007)
+- 1.1.0 (2026-09-28): `json` feature over `smllm-json`, ENG-Json (PLAN-007)

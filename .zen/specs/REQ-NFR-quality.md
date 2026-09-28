@@ -83,7 +83,7 @@ AS A browser host author, I WANT a small wasm build checked on every change, SO 
 ACCEPTANCE CRITERIA
 
 - [ ] NFR-8_AC-1 [event]: WHEN CI runs THEN it SHALL build `smllm-core` for `wasm32-unknown-unknown` without default features, build `smllm-wasm`, and report the `.wasm` size in the job summary
-- [ ] NFR-8_AC-2 [conditional]: IF `smllm_wasm_bg.wasm` (after `wasm-opt -Oz`) exceeds 154 KiB THEN the build SHALL fail — budget set by PLAN-007 at ~15% over the measured 133.5 KiB (first budget: 300 KiB over 258 KiB)
+- [ ] NFR-8_AC-2 [conditional]: IF `smllm_wasm_bg.wasm` (after `wasm-opt -Oz`) exceeds 134 KiB THEN the build SHALL fail — budget set by PLAN-007 at ~15% over the measured 116.0 KiB (first budget: 300 KiB over 258 KiB)
 
 ### NFR-9: Unsupported host kinds [MUST]
 
@@ -100,4 +100,4 @@ ACCEPTANCE CRITERIA
 ## Change Log
 
 - 0.1.0 (2026-09-25): Initial requirements from PLAN-001 §10
-- 0.2.0 (2026-09-28): NFR-8_AC-2 budget 300 → 154 KiB (PLAN-007)
+- 0.2.0 (2026-09-28): NFR-8_AC-2 budget 300 → 134 KiB (PLAN-007)

@@ -14,7 +14,6 @@ use crate::record::{Instance, Status};
 /// A session's status: the `smllm statusline --json` object (STL-5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize), serde(rename_all = "camelCase"))]
-#[cfg_attr(feature = "miniserde", derive(miniserde::Serialize))]
 pub struct SessionStatus {
     /// The session key.
     pub session: String,
@@ -39,7 +38,6 @@ pub struct SessionStatus {
 /// An instance, as a status shows it (STL-5_AC-2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize), serde(rename_all = "camelCase"))]
-#[cfg_attr(feature = "miniserde", derive(miniserde::Serialize))]
 pub struct InstanceStatus {
     /// State machine id.
     pub machine: String,
@@ -48,7 +46,7 @@ pub struct InstanceStatus {
     /// Generated id.
     pub id: String,
     /// External ref, once set.
-    #[cfg_attr(any(feature = "serde", feature = "miniserde"), serde(rename = "ref"))]
+    #[cfg_attr(feature = "serde", serde(rename = "ref"))]
     pub r#ref: Option<String>,
     /// The ref once set, else the id.
     pub label: String,

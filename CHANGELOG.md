@@ -34,8 +34,10 @@ The project is now smllm: state machines for LLM agents (PLAN-001).
   TypeScript declarations, every host method optional), the JSON string API underneath as
   `smllm-wasm/raw`. History goes to the host's `history` callback as it happens, so
   `exportState()` holds current state only. CI builds the core `no_std` for wasm32 and enforces a
-  154 KiB size budget. The wasm is 133.5 KiB (PLAN-007: JSON through miniserde, std rebuilt for
-  size on a pinned nightly), and holds no path of the machine that built it.
+  134 KiB size budget. The wasm is 116.0 KiB (PLAN-007: JSON through our own `smllm-json`, std
+  rebuilt for size on a pinned nightly), and holds no path of the machine that built it.
+- `smllm-json`: a small `no_std` JSON reader and writer with no dependencies, whose output matches
+  serde_json's byte for byte; errors name the failing field or byte.
 - `[state] dir` in `config.toml`: where that file's machines keep their instances, relative to
   it or absolute (default `state/` beside it).
 - `examples/showcase` (the superdev showcase, converted) and `examples/dev`.

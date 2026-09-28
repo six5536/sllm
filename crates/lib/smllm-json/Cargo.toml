@@ -1,0 +1,15 @@
+[package]
+name = "smllm-json"
+description = "A small no_std JSON reader and writer: a parsed tree, conversion traits and serde_json-compatible output."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories = ["no-std", "encoding", "parser-implementations"]
+
+[dependencies]
