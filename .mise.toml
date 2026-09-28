@@ -4,6 +4,8 @@ node = "26"
 python = '3.14'
 # 1.98 is the project toolchain; nightly is used only by the coverage
 # subcommand (cargo +nightly llvm-cov), which needs `coverage(off)` markers.
+# The wasm build uses its own dated nightly, which `npm run build:wasm`
+# installs (scripts/build-wasm.mjs NIGHTLY).
 rust = ['1.98', 'nightly']
 sccache = '0.18'
 zig = "0.16.0"
