@@ -2,7 +2,7 @@
 // Build packages/smllm-wasm: cargo (release, wasm32, std rebuilt for size on
 // a pinned nightly) → wasm-bindgen (web + bundler targets) → wasm-opt -Oz;
 // print the .wasm size (NFR-8). Also regenerates the smoke test's compiled
-// machines from examples/dev.
+// machines from examples/dev, and the wasm example's (examples/wasm).
 //
 // Needs rustup (the script installs NIGHTLY with rust-src and the wasm32
 // target), wasm-bindgen-cli matching the wasm-bindgen crate version, and the
@@ -74,3 +74,4 @@ for (const target of ["web", "bundler"]) {
 // errors fail the build.
 run(join(root, "node_modules/.bin/tsc"), ["-p", pkg]);
 run("cargo", ["run", "--quiet", "--locked", "-p", "smllm", "--", "compile", "examples/dev/config.toml", "-o", "packages/smllm-wasm/test/dev.json"]);
+run("cargo", ["run", "--quiet", "--locked", "-p", "smllm", "--", "compile", "examples/wasm/config.toml", "-o", "examples/wasm/machines.json"]);

@@ -118,6 +118,11 @@ jobs:
       - name: JS smoke test
         run: npm run test:wasm
 
+      # The TypeScript example, type-checked against the generated
+      # declarations and run with the Node host (TEST-3_AC-2).
+      - name: TypeScript example
+        run: npm run test:example
+
   coverage:
     # Runs the full test suite on ubuntu under instrumentation and enforces the
     # per-crate line-coverage gate. Uses nightly so the `coverage(off)` markers on

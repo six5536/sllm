@@ -77,6 +77,7 @@ npm run verify-version
 npm run coverage:check     # slow; needs the nightly toolchain
 npm run build:wasm         # the wasm: size budget, no build paths (installs its nightly)
 npm run test:wasm          # drives the wasm from Node
+npm run test:example       # the TypeScript example: type-checked, then run
 ```
 
 `npm run bench` prints smllm's time per call through the wasm engine, the MCP server and the CLI

@@ -1,0 +1,16 @@
+{
+  // Type-checks the example against smllm-wasm's generated declarations
+  // (TEST-3_AC-2); Node runs the .ts files as they are (type stripping).
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["es2022", "dom", "esnext.disposable"],
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["*.ts"]
+}

@@ -1,0 +1,35 @@
+# The wasm example's machine (examples/wasm/README.md): write a note, have a
+# command check it, file it. Commands run in the session's working directory.
+id: note
+description: Write a note, check it, file it.
+initial: DRAFT
+meta:
+  smllm: 1
+  instance:
+    kind: note
+    ref:
+      param: noteId
+      description: "The note's id, e.g. N-1."
+      pattern: "^N-\\d+$"
+  events:
+    submit:
+      description: Submit the note's text.
+      params:
+        type: object
+        properties:
+          text: { type: string, description: "The note, at least 10 characters." }
+        required: [text]
+states:
+  DRAFT:
+    entry: { type: prompt, params: { text: "Draft the note, then fire submit with its text." } }
+    on:
+      submit:
+        - guard: { type: command, params: { run: 'test "${#SMLLM_PARAM_TEXT}" -ge 10' } }
+          target: FILED
+          actions: { type: command, params: { run: 'printf "%s\n" "$SMLLM_PARAM_TEXT" >> notes.txt' } }
+        - target: DRAFT
+          reenter: true
+          description: The note is too short; write more.
+  FILED:
+    type: final
+    entry: { type: prompt, params: { text: "The note is filed." } }
