@@ -2,7 +2,7 @@
 
 | Meta               | Value                                                        |
 | ------------------ | ------------------------------------------------------------ |
-| Status             | in-progress (draft, to grill)                                |
+| Status             | in-progress (ready to implement)                             |
 | Workflow direction | bottom-up (review → decisions → code → specs)                |
 | Traces to          | STL-3, STO-1, STO-2, CLI-3, CLI-13, CFG (cwd), DEC-7, NFR-8, HOST-Wasm, INST-9 |
 
@@ -28,8 +28,17 @@ the nearest `.smllm/` (like `.git`); the auto-created `state/.gitignore`; `flock
 
 ## 3. Phases
 
-Filled in once the issues are decided: one phase per issue that changes code, each one commit
-with the gate passing; specs updated with the code.
+Each phase is one commit with `npm run -s test:gate` passing, and updates the specs it touches.
+
+| Phase | Decision | Proof |
+| ----- | -------- | ----- |
+| C1 | D6-1: delete the migration | store tests without the migration test; strace: `statusline` on a fresh machine dir writes nothing |
+| C2 | D6-7: marker slow path, rebuild, `validate` warning | store test: a corrupt marker still resolves, is rebuilt by a write, and is reported |
+| C3 | D6-6: `[state] dir` | load test (relative, absolute, default); `validate` error for a shared dir; session test with a moved dir |
+| C4 | D6-2: `compile` keeps `cwd` as written | test: one machine with a `cwd` compiled from two folders is identical; the CLI still resolves it |
+| C5 | D6-4: WASM history to the host | smoke test: `exportState` has no history; the host callback gets each entry; wasm size |
+| C6 | D6-3: typed wrapper, `smllm-wasm/raw` | smoke test through the wrapper and one raw call; `.d.ts` matches the wrapper |
+| C7 | Docs and outcome: CHANGELOG, ARCHITECTURE, README (package), §5 | — |
 
 ## 4. Decisions
 
@@ -68,6 +77,12 @@ with the gate passing; specs updated with the code.
   one id would share state (mypy / Ruff / pytest / Terraform checked: a config setting is the
   common form). `validate` errors when two loaded configs give one machine id the same dir.
   STO-1 gains the setting.
+- D6-7 (I-7): markers are an index derived from the instances (each holds its ref), so their
+  corruption is a slow path, never an error. A reader that cannot read a marker scans the
+  machine's instances for the ref (still no writes, STL-3); `put_instance`, under the lock,
+  rebuilds that marker from the scan; `validate` warns about an unreadable marker (STO-1), as
+  for instance files. A missing marker still means no such ref (markers are written before
+  their instance, under the lock): scanning then would bring back the scan on every new ref.
 
 ## 5. Outcome
 
