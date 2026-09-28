@@ -15,6 +15,7 @@ use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt as _};
 use serde_json::{Map, Value, json};
 use smllm_core::AGENT_RULES;
 
+use crate::cache::ConfigCache;
 use crate::error::{Error, Result};
 use crate::output::EXIT_OK;
 use crate::paths;
@@ -58,8 +59,9 @@ pub fn call(
     args: &Map<String, Value>,
     cwd: &std::path::Path,
     explicit: Option<&std::path::Path>,
+    cache: &mut ConfigCache,
 ) -> (bool, String) {
-    match call_inner(args, cwd, explicit) {
+    match call_inner(args, cwd, explicit, cache) {
         Ok(r) => r,
         Err(e) => (false, format!("error: {e}")),
     }
@@ -69,6 +71,7 @@ fn call_inner(
     args: &Map<String, Value>,
     cwd: &std::path::Path,
     explicit: Option<&std::path::Path>,
+    cache: &mut ConfigCache,
 ) -> Result<(bool, String)> {
     let str_arg = |k: &str| match args.get(k) {
         None | Some(Value::Null) => Ok(None),
@@ -91,7 +94,9 @@ fn call_inner(
         }
         Some(_) => return Err(Error::msg("params must be an object of strings")),
     }
-    let mut rt = Runtime::for_call(session.as_deref(), explicit, cwd)?;
+    // The loaded config outlives the call; it is checked each call (HOST-16).
+    let files = Runtime::call_configs(session.as_deref(), explicit, cwd)?;
+    let rt = cache.runtime(&files)?;
     let reply = match &event {
         None => {
             let key = session.ok_or(smllm_core::Error::MissingSession)?;
@@ -108,7 +113,8 @@ struct Server {
     explicit: Option<Arc<PathBuf>>,
     /// Held for each tool call: the client may pipeline calls, and two calls
     /// on one session must not interleave their reads and writes (STO-3).
-    calls: Arc<Mutex<()>>,
+    /// It guards the loaded configs too (HOST-16).
+    calls: Arc<Mutex<ConfigCache>>,
 }
 
 impl ServerHandler for Server {
@@ -151,8 +157,13 @@ impl ServerHandler for Server {
         // Guards and actions may run commands for minutes: off the runtime,
         // one call at a time.
         let (ok, text) = tokio::task::spawn_blocking(move || {
-            let _one = calls.lock().unwrap_or_else(PoisonError::into_inner);
-            call(&args, &cwd, explicit.as_deref().map(|p| p.as_path()))
+            let mut cache = calls.lock().unwrap_or_else(PoisonError::into_inner);
+            call(
+                &args,
+                &cwd,
+                explicit.as_deref().map(|p| p.as_path()),
+                &mut cache,
+            )
         })
         .await
         .unwrap_or_else(|e| (false, format!("error: {e}")));

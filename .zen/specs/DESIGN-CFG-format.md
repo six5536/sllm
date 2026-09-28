@@ -135,7 +135,8 @@ IMPLEMENTS: CFG-14_AC-1, CFG-15_AC-2
 pub enum Origin { User, Project, Explicit }
 pub struct ConfigFile { pub path: PathBuf, pub origin: Origin }
 pub struct MachineSource { pub id: String, pub file: PathBuf, pub config: PathBuf, pub state_dir: PathBuf }
-pub struct Loaded { pub config: Config, pub machines: Vec<MachineSource>, pub findings: Findings }
+pub struct Loaded { pub config: Config, pub machines: Vec<MachineSource>, pub findings: Findings,
+                    pub inputs: Vec<PathBuf> }  // every file read or checked, found or not (HOST-16)
 pub enum Mode { Run, Check, Inline }
 pub fn load_machine(path: &Path, mode: Mode) -> (Option<Machine>, Findings);
 pub fn load_configs(files: &[ConfigFile], mode: Mode) -> Loaded;
@@ -252,4 +253,4 @@ SOURCE: .zen/specs/REQ-CFG-format.md
 
 - 0.1.0 (2026-09-25): Initial design
 - 0.2.0 (2026-09-27): Load modes, one compile per pattern, one schema for the shape check (PLAN-004)
-- 0.3.0 (2026-09-28): `compile` writes a relative `cwd` relative to the compiled config (PLAN-008 D8-22)
+- 0.3.0 (2026-09-28): `compile` writes a relative `cwd` relative to the compiled config (PLAN-008 D8-22); `Loaded::inputs` (PLAN-008 D8-8)

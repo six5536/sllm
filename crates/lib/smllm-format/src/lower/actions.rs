@@ -21,6 +21,9 @@ pub(crate) struct Files<'a> {
     /// Files [`Mode::Run`] has found already: a file named by many states is
     /// checked once.
     found: RefCell<Vec<PathBuf>>,
+    /// Every prompt file the load read or checked, found or not: the result
+    /// depends on them (a cached load is stale when one changes, HOST-16).
+    probed: RefCell<Vec<PathBuf>>,
 }
 
 impl<'a> Files<'a> {
@@ -29,6 +32,19 @@ impl<'a> Files<'a> {
             dir,
             mode,
             found: RefCell::default(),
+            probed: RefCell::default(),
+        }
+    }
+
+    /// The prompt files this load read or checked.
+    pub(crate) fn probed(self) -> Vec<PathBuf> {
+        self.probed.into_inner()
+    }
+
+    fn probe(&self, path: &Path) {
+        let mut probed = self.probed.borrow_mut();
+        if !probed.iter().any(|p| p == path) {
+            probed.push(path.to_path_buf());
         }
     }
 
@@ -39,6 +55,7 @@ impl<'a> Files<'a> {
     /// The prompt file's text: `None` in [`Mode::Run`], which only checks
     /// that the file is there.
     fn prompt(&self, full: &Path) -> std::io::Result<Option<String>> {
+        self.probe(full);
         if self.mode != Mode::Run {
             return std::fs::read_to_string(full).map(Some);
         }
@@ -181,11 +198,13 @@ pub(crate) fn default_prompt(
         // Read when the prompt is shown; no probe for the fence warning.
         Mode::Run => {}
         Mode::Check => {
+            files.probe(&full);
             if let Ok(t) = std::fs::read_to_string(&full) {
                 check_fences(c, path, &t);
             }
         }
         Mode::Inline => {
+            files.probe(&full);
             let t = std::fs::read_to_string(&full).ok()?;
             check_fences(c, path, &t);
             return Some(ActionDef::Prompt(Prompt::Text(t)));

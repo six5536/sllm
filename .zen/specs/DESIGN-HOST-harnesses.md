@@ -36,6 +36,7 @@ crates/app/smllm/src/
 └── commands/
     ├── harness.rs          # HOST-Claude: Tool impl, hook answers, install/status
     └── mcp.rs              # HOST-Mcp: rmcp ServerHandler, one tool
+crates/app/smllm/src/cache.rs      # HOST-Mcp: ConfigCache (HOST-16)
 crates/lib/smllm-wasm/src/lib.rs   # HOST-Wasm
 packages/smllm-wasm/src/           # HOST-JsPackage (TypeScript, compiled by tsc in build:wasm)
 ├── wrap.ts                 # the typed Engine: objects in and out, tool(), callTool()
@@ -127,12 +128,14 @@ pub fn hook(args: &HookArgs) -> Result<u8>;
 
 ### HOST-Mcp
 
-`serve` builds a current-thread tokio runtime and serves `Server` over `rmcp::transport::stdio()`. `get_info` enables tools and sets `AGENT_RULES` as server instructions. `list_tools` returns one `Tool` from the core's definition (ENG-Engine: `TOOL_NAME`, `tool_description()`, `TOOL_INPUT_SCHEMA` parsed once at start; `session` optional string — omitted only for a keyless `enter`, HOST-3; `event` optional string; `params` object with string values; HOST-13). `call_tool` rejects other names with `invalid_params`, then runs `call` in `spawn_blocking` while holding the `calls` mutex. `call` validates argument types (non-string param → "param X must be a string"), picks `Runtime::for_session(key)` (or lookup from the server's cwd when keyless), then `Engine::call` (view when there is no event, else fire, with a `Bind { harness: "mcp" }` for keyless `enter`). The loaded config comes from the server's `ConfigCache` (HOST-16): keyed by the config files the call discovers; each call `stat`s every file the cached config was built from and re-reads and compares a file whose modification time or size changed, or whose modification time is not older than the cache's build time minus a 2-second margin (git's racy-clean rule; the margin covers a file system clock that differs from the process's); any difference rebuilds, the rest are trusted, so after a tick a call reads no config file (PLAN-008 D8-8, DC-3). A rejected event or error returns `isError: true` with the text.
+`serve` builds a current-thread tokio runtime and serves `Server` over `rmcp::transport::stdio()`. `get_info` enables tools and sets `AGENT_RULES` as server instructions. `list_tools` returns one `Tool` from the core's definition (ENG-Engine: `TOOL_NAME`, `tool_description()`, `TOOL_INPUT_SCHEMA` parsed once at start; `session` optional string — omitted only for a keyless `enter`, HOST-3; `event` optional string; `params` object with string values; HOST-13). `call_tool` rejects other names with `invalid_params`, then runs `call` in `spawn_blocking` while holding the `calls` mutex. `call` validates argument types (non-string param → "param X must be a string"), picks `Runtime::for_session(key)` (or lookup from the server's cwd when keyless), then `Engine::call` (view when there is no event, else fire, with a `Bind { harness: "mcp" }` for keyless `enter`). The loaded config comes from the server's `ConfigCache` (`cache.rs`, HOST-16): keyed by the config files the call discovers (`Runtime::call_configs`); each call `stat`s every file the cached load depended on (`Loaded::inputs`: the configs, their machine files and the prompt files those name, found or not), looks again for one that was missing, and re-reads and compares a file whose modification time or size changed, or whose modification time is not older than the cache's build time minus a 2-second margin (git's racy-clean rule; the margin covers a file system clock that differs from the process's); any difference rebuilds, the rest are trusted, so after a tick a call reads no config file (PLAN-008 D8-8, DC-3). A rejected event or error returns `isError: true` with the text.
 
 IMPLEMENTS: HOST-12_AC-1, HOST-13_AC-1, HOST-16_AC-1, CFG-16_AC-1, CLI-9_AC-1
 
 ```rust
-struct ConfigCache { files: Vec<(PathBuf, SystemTime, u64, Vec<u8>)>, built: SystemTime, runtime: Runtime }
+// cache.rs: one entry per set of config files; each input as last seen (time, size, bytes) or missing
+pub struct ConfigCache { /* entries: configs, inputs, built, runtime */ }
+impl ConfigCache { pub fn runtime(&mut self, files: &[ConfigFile]) -> Result<&mut Runtime>; }
 pub fn call(args: &Map<String, Value>, cwd: &Path, explicit: Option<&Path>) -> (bool, String);
 pub fn serve(explicit: Option<&Path>) -> Result<u8>;
 

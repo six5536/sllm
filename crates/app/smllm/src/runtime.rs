@@ -26,6 +26,8 @@ pub struct Runtime {
     pub store: FsStore,
     /// Config paths, recorded on new sessions.
     pub configs: Vec<String>,
+    /// Every file the load read or checked ([`smllm_format::Loaded::inputs`]).
+    pub inputs: Vec<std::path::PathBuf>,
 }
 
 impl Runtime {
@@ -44,6 +46,7 @@ impl Runtime {
             config,
             machines: sources,
             findings,
+            inputs,
         } = load_configs(files, mode);
         let machines: HashMap<String, std::path::PathBuf> = sources
             .iter()
@@ -56,6 +59,7 @@ impl Runtime {
             findings,
             store,
             configs: files.iter().map(|f| f.path.display().to_string()).collect(),
+            inputs,
         })
     }
 
@@ -76,12 +80,27 @@ impl Runtime {
         Self::new(&paths::recorded(session.map_or(&[], |s| &s.configs[..])))
     }
 
-    /// The runtime of a call: the configs recorded on session `key`, or for
-    /// a keyless call those found from `cwd` (or `--config`).
+    /// The runtime of a call, loaded now: see [`Runtime::call_configs`].
     pub fn for_call(key: Option<&str>, explicit: Option<&Path>, cwd: &Path) -> Result<Self> {
+        Self::new(&Self::call_configs(key, explicit, cwd)?)
+    }
+
+    /// The config files of a call: those recorded on session `key` (none
+    /// when it is unknown), or for a keyless call those found from `cwd` (or
+    /// `--config`).
+    pub fn call_configs(
+        key: Option<&str>,
+        explicit: Option<&Path>,
+        cwd: &Path,
+    ) -> Result<Vec<ConfigFile>> {
         match key {
-            Some(k) => Self::for_session(k),
-            None => Self::lookup(explicit, cwd),
+            Some(k) => {
+                let session = FsStore::user()?.session(k).ok().flatten();
+                Ok(paths::recorded(
+                    session.as_ref().map_or(&[], |s| &s.configs[..]),
+                ))
+            }
+            None => paths::lookup(explicit, cwd),
         }
     }
 

@@ -5,6 +5,7 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![warn(missing_docs)]
 
+mod cache;
 mod cli;
 mod commands;
 mod error;

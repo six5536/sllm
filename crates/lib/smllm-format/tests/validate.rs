@@ -500,3 +500,38 @@ fn compile_output_holds_no_path_of_its_machine() {
     std::fs::remove_dir_all(a).ok();
     std::fs::remove_dir_all(b).ok();
 }
+
+// A load names every file it depended on, a prompt file that is missing
+// included: creating it later must make a cached load stale (HOST-16).
+// @zen-test: HOST-16_AC-1
+#[test]
+fn a_load_lists_every_file_it_depends_on() {
+    let d = temp_dir("inputs");
+    std::fs::write(
+        d.join("config.toml"),
+        "[machines]\nfiles = [\"m.smllm.yaml\", \"gone.smllm.yaml\"]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        d.join("m.smllm.yaml"),
+        "id: m\ninitial: A\nmeta: { smllm: 1 }\nstates:\n  A:\n    entry: { type: prompt, params: { file: a.md } }\n    on: { go: B }\n  B: { type: final }\n",
+    )
+    .unwrap();
+    let loaded = load_configs(
+        &[ConfigFile {
+            path: d.join("config.toml"),
+            origin: Origin::Explicit,
+        }],
+        Mode::Run,
+    );
+    // `a.md` is missing: an error that leaves `m` out, and still an input.
+    assert!(loaded.config.machines.is_empty());
+    for f in ["config.toml", "m.smllm.yaml", "a.md", "gone.smllm.yaml"] {
+        assert!(
+            loaded.inputs.contains(&d.join(f)),
+            "{f}: {:?}",
+            loaded.inputs
+        );
+    }
+    std::fs::remove_dir_all(d).ok();
+}

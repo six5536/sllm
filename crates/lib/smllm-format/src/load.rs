@@ -68,6 +68,10 @@ pub struct Loaded {
     pub machines: Vec<MachineSource>,
     /// Everything found.
     pub findings: Findings,
+    /// Every file the load read or checked, found or not: the configs, their
+    /// machine files and the prompt files those name. The load is stale when
+    /// any of them changes (the MCP server's cache, HOST-16).
+    pub inputs: Vec<PathBuf>,
 }
 
 impl Loaded {
@@ -146,6 +150,12 @@ fn finding(
 /// Parse and lower one machine file.
 // @zen-impl: CFG-14_AC-1
 pub fn load_machine(path: &Path, mode: Mode) -> (Option<Machine>, Findings) {
+    let (machine, findings, _) = load_machine_inputs(path, mode);
+    (machine, findings)
+}
+
+/// [`load_machine`], and the prompt files it read or checked.
+fn load_machine_inputs(path: &Path, mode: Mode) -> (Option<Machine>, Findings, Vec<PathBuf>) {
     let mut findings = Findings::default();
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
@@ -157,7 +167,7 @@ pub fn load_machine(path: &Path, mode: Mode) -> (Option<Machine>, Findings) {
                 format!("cannot read: {e}"),
                 "CFG-14",
             ));
-            return (None, findings);
+            return (None, findings, Vec::new());
         }
     };
     // YAML syntax first (one finding: the document cannot be read further).
@@ -172,7 +182,7 @@ pub fn load_machine(path: &Path, mode: Mode) -> (Option<Machine>, Findings) {
                 parse_message(&e.to_string()),
                 "CFG-1",
             ));
-            return (None, findings);
+            return (None, findings, Vec::new());
         }
     };
     // Then the whole shape, every problem at once (CFG-14).
@@ -180,7 +190,7 @@ pub fn load_machine(path: &Path, mode: Mode) -> (Option<Machine>, Findings) {
     crate::shape::check(&mut shape, &doc);
     if shape.findings.has_errors() {
         findings.extend(shape.findings);
-        return (None, findings);
+        return (None, findings, Vec::new());
     }
     crate::shape::normalise(&mut doc);
     let parsed: MachineFile = match serde_json::from_value(doc) {
@@ -188,14 +198,15 @@ pub fn load_machine(path: &Path, mode: Mode) -> (Option<Machine>, Findings) {
         Err(e) => {
             // The shape check should have caught it; report what serde says.
             findings.push(finding(Severity::Error, path, None, e.to_string(), "CFG-1"));
-            return (None, findings);
+            return (None, findings, Vec::new());
         }
     };
     let dir = path.parent().unwrap_or(Path::new("."));
     let mut c = Checker::new(path, &text);
-    let machine = lower(&mut c, &Files::new(dir, mode), &parsed);
+    let files = Files::new(dir, mode);
+    let machine = lower(&mut c, &files, &parsed);
     findings.extend(c.findings);
-    (machine, findings)
+    (machine, findings, files.probed())
 }
 
 /// First line of serde-saphyr's message without its `error: line N column M:`
@@ -223,6 +234,7 @@ pub fn load_configs(files: &[ConfigFile], mode: Mode) -> Loaded {
     let mut out = Loaded::default();
     let mut idle: Option<Vec<ActionDef>> = None;
     for cf in files {
+        out.inputs.push(cf.path.clone());
         let text = match std::fs::read_to_string(&cf.path) {
             Ok(t) => t,
             Err(e) => {
@@ -276,6 +288,7 @@ pub fn load_configs(files: &[ConfigFile], mode: Mode) -> Loaded {
                     let prompt =
                         lower_prompt(&mut c, &files, &at, p.text.as_deref(), p.file.as_deref());
                     out.findings.extend(c.findings);
+                    out.inputs.extend(files.probed());
                     prompt.into_iter().collect()
                 }
                 None => Vec::new(),
@@ -284,8 +297,10 @@ pub fn load_configs(files: &[ConfigFile], mode: Mode) -> Loaded {
         let mut seen_here: Vec<String> = Vec::new();
         for rel in &parsed.machines.files {
             let file = dir.join(rel);
-            let (machine, findings) = load_machine(&file, mode);
+            let (machine, findings, prompts) = load_machine_inputs(&file, mode);
             out.findings.extend(findings);
+            out.inputs.push(file.clone());
+            out.inputs.extend(prompts);
             let Some(machine) = machine else {
                 withdraw_replaced(&mut out, &file, &cf.path);
                 continue;
