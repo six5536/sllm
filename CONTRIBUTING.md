@@ -79,6 +79,9 @@ npm run build:wasm         # the wasm: size budget, no build paths (installs its
 npm run test:wasm          # drives the wasm from Node
 ```
 
+`npm run bench` prints smllm's time per call through the wasm engine, the MCP server and the CLI
+at three store sizes (NFR-10). It is not a CI gate; run it when a change could affect speed.
+
 `cargo-deny check licenses bans sources` also gates CI, but only fails when you
 change dependencies.
 

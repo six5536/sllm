@@ -1,0 +1,18 @@
+# The benchmark's machine (NFR-10): no commands, so a call measures smllm alone.
+id: bench
+description: A task to work on and finish.
+initial: WORK
+meta:
+  smllm: 1
+  instance:
+    kind: task
+    ref:
+      param: taskId
+      description: "The task id, e.g. T-1."
+states:
+  WORK:
+    entry: { type: prompt, params: { text: "Work on the task, then fire finish." } }
+    on:
+      finish: DONE
+  DONE:
+    type: final

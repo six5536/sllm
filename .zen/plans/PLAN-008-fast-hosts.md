@@ -228,3 +228,26 @@ Found, then decided:
 | ----- | --------------- |
 | F1 | Requirements: IDLE-7 (bounded idle list, `listPaused`), NFR-10 (per-event latency), HOST-13..HOST-16, TEST-3_AC-2, DEC-7 (compile `cwd`); the terms pause / interrupted across 15 specs. Designs: ENG (BUILTINS, `Store::count` / `recent`, `MemoryStore` indexes, ENG_P-5, merge sort, tool definition, `Engine::call`), IDLE, TURN (layout), STO (a shelf per status), HOST (MCP cache, write-through wasm, HOST-JsPackage), NFR (bench, scaling check), CFG / DEC (compile `cwd`), STL |
 | F2 | The terms in code, agent text, status line, snapshots, docs, skills, examples and the unreleased CHANGELOG (34 files); `Instance.interrupted` → `resume_state` (`resumeState`). 194 tests, 6 wasm tests; wasm 118,777 bytes. This repo's local state converted by hand (4 instance files, 19 sessions; no migration code, D6-1) and the binary reinstalled |
+| F3 | `npm run bench` (`scripts/bench.mjs`, machine in `scripts/bench/`: no commands; a temp copy with its own XDG dirs; release CLI). Baseline in §6.1 |
+
+### 6.1 Bench (median ms per call; store size = paused / completed; local disk, this devcontainer)
+
+| path | call | F3 0 / 0 | F3 100 / 1000 | F3 1000 / 1000 |
+| ---- | ---- | ---: | ---: | ---: |
+| wasm | enter | 0.052 | 0.233 | 0.428 |
+| wasm | view | 0.019 | 0.007 | 0.009 |
+| wasm | stop | 0.015 | 0.006 | 0.007 |
+| wasm | pause | 0.054 | 0.331 | 4.312 |
+| mcp | enter | 0.531 | 0.493 | 0.786 |
+| mcp | view | 0.232 | 0.204 | 0.295 |
+| mcp | pause | 0.468 | 1.120 | 11.781 |
+| cli | fire enter | 1.448 | 1.448 | 1.939 |
+| cli | session show | 1.192 | 1.168 | 1.438 |
+| cli | statusline | 1.259 | 1.939 | 7.906 |
+| cli | fire pause | 1.426 | 2.232 | 13.504 |
+
+F3 findings: the release MCP server is already 0.2–0.8 ms per call, and a CLI call ~1.4 ms (§2's 4.5 ms
+`fire yield` was the installed binary on the container's overlay file system; the cause of the gap is not
+established); the growth is where DC-5 said: `pause` (the idle list reads every
+paused instance) and the status line's count (reads every open file); wasm `enter` grows with all instances
+(`instance_by_ref` clones them, D8-6).
