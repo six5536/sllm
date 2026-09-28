@@ -38,8 +38,8 @@ fn status_follows_the_session_through_a_machine_and_idle() {
             visit: None,
             yielded: false,
             instance: None,
-            suspended: None,
-            parked: 0,
+            interrupted: None,
+            paused: 0,
         }
     );
 
@@ -60,18 +60,18 @@ fn status_follows_the_session_through_a_machine_and_idle() {
     f.fire(&e, &k, "yield", &[]);
     assert!(status(&mut f, &e, &k).yielded);
 
-    // Detour: the held instance becomes the suspended one.
+    // Detour: the held instance becomes the interrupted one.
     f.fire(&e, &k, "unmatched", &[]);
     let s = status(&mut f, &e, &k);
     assert!(s.idle && s.instance.is_none());
-    assert_eq!(s.suspended, Some(issue(&id, Some("GH-6"), "suspended")));
+    assert_eq!(s.interrupted, Some(issue(&id, Some("GH-6"), "interrupted")));
 
-    // Parked instances are counted.
+    // Paused instances are counted.
     f.fire(&e, &k, "resume", &[]);
-    f.fire(&e, &k, "park", &[]);
+    f.fire(&e, &k, "pause", &[]);
     let s = status(&mut f, &e, &k);
-    assert!(s.idle && s.suspended.is_none());
-    assert_eq!(s.parked, 1);
+    assert!(s.idle && s.interrupted.is_none());
+    assert_eq!(s.paused, 1);
 }
 
 #[test]
@@ -119,7 +119,7 @@ const EVENTS: &[(&str, &[(&str, &str)])] = &[
     ("accept", &[]),
     ("unmatched", &[]),
     ("resume", &[]),
-    ("park", &[]),
+    ("pause", &[]),
     ("yield", &[]),
     ("answered", &[]),
 ];

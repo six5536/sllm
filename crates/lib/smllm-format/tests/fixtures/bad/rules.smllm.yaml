@@ -5,7 +5,7 @@ meta:
   instance:
     ref: { param: state, pattern: "(" }
   events:
-    park: { params: { type: object, properties: { x: { type: string } } } }
+    pause: { params: { type: object, properties: { x: { type: string } } } }
     go:
       params:
         type: object
@@ -18,7 +18,7 @@ states:
   A:
     entry: setRef
     on:
-      park: B
+      pause: B
       go:
         - guard: { type: visits, params: { state: NOPE, atLeast: 1 } }
           target: B

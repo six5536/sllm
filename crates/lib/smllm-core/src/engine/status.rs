@@ -30,9 +30,9 @@ pub struct SessionStatus {
     /// The held instance.
     pub instance: Option<InstanceStatus>,
     /// The instance put aside by `unmatched`.
-    pub suspended: Option<InstanceStatus>,
-    /// Parked instances of the configured state machines.
-    pub parked: u32,
+    pub interrupted: Option<InstanceStatus>,
+    /// Paused instances of the configured state machines.
+    pub paused: u32,
 }
 
 /// An instance, as a status shows it (STL-5_AC-2).
@@ -50,7 +50,7 @@ pub struct InstanceStatus {
     pub r#ref: Option<String>,
     /// The ref once set, else the id.
     pub label: String,
-    /// `active`, `suspended`, `parked` or `completed`.
+    /// `active`, `interrupted`, `paused` or `completed`.
     pub status: String,
 }
 
@@ -86,13 +86,13 @@ impl Engine {
             Some(k) => read(k, Status::Active)?,
             None => None,
         };
-        let suspended = match &session.suspended {
-            Some(k) => read(k, Status::Suspended)?.map(|(m, i)| InstanceStatus::new(m, &i)),
+        let interrupted = match &session.interrupted {
+            Some(k) => read(k, Status::Interrupted)?.map(|(m, i)| InstanceStatus::new(m, &i)),
             None => None,
         };
-        let mut parked = 0;
+        let mut paused = 0;
         for m in &config.machines {
-            parked += host.store.instances_with(&m.id, Status::Parked)?.len() as u32;
+            paused += host.store.instances_with(&m.id, Status::Paused)?.len() as u32;
         }
         Ok(SessionStatus {
             session: session.key,
@@ -102,8 +102,8 @@ impl Engine {
             visit: held.as_ref().map(|(_, i)| i.visits(&i.state)),
             yielded: session.yielded,
             instance: held.as_ref().map(|(m, i)| InstanceStatus::new(m, i)),
-            suspended,
-            parked,
+            interrupted,
+            paused,
         })
     }
 }

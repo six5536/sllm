@@ -6,7 +6,7 @@ single row for your harness's status line:
 ```
 smllm dev › WORK (visit 3) · issue GH-123
 smllm dev › REVIEW · issue GH-123 · yielded
-smllm idle · 1 suspended · 2 parked
+smllm idle · 1 interrupted · 2 paused
 ```
 
 It reads Claude Code's status JSON on stdin and finds the smllm session bound to its `session_id`.
@@ -53,7 +53,7 @@ claude` reminds you when your status line does not call `smllm statusline`.
 | Where        | Row                                                              |
 | ------------ | ---------------------------------------------------------------- |
 | In a machine | `smllm <machine> › <STATE>[ (visit n)] · <kind> <label>[ · yielded]` |
-| In idle      | `smllm idle[ · n suspended][ · n parked]`                        |
+| In idle      | `smllm idle[ · n interrupted][ · n paused]`                        |
 
 - `(visit n)` appears from the second visit to a state.
 - `<kind> <label>` is the instance, e.g. `issue GH-123`. The label is the instance's ref once
@@ -88,12 +88,12 @@ always present, with `null` when it does not apply.
 | `visit`     | number \| null   | Entries of that state so far                           |
 | `yielded`   | bool             | The agent fired `yield` since your last prompt         |
 | `instance`  | object \| null   | The held instance                                      |
-| `suspended` | object \| null   | The instance put aside by `unmatched`                  |
-| `parked`    | number           | Parked instances of the configured state machines     |
+| `interrupted` | object \| null   | The instance put aside by `unmatched`                  |
+| `paused`    | number           | Paused instances of the configured state machines     |
 
-`instance` and `suspended` are `{machine, kind, id, ref, label, status}`: `kind` is what the
+`instance` and `interrupted` are `{machine, kind, id, ref, label, status}`: `kind` is what the
 machine calls an instance (`meta.instance.kind`), `ref` is `null` until set, `label` is the ref
-or else the id, and `status` is `active`, `suspended`, `parked` or `completed`.
+or else the id, and `status` is `active`, `interrupted`, `paused` or `completed`.
 
 New fields may be added. Before 1.0, a field is renamed or removed only in a minor release.
 
@@ -106,8 +106,8 @@ New fields may be added. Before 1.0, a field is renamed or removed only in a min
   "visit": 3,
   "yielded": false,
   "instance": { "machine": "dev", "kind": "issue", "id": "a1b2c3", "ref": "GH-123", "label": "GH-123", "status": "active" },
-  "suspended": null,
-  "parked": 2
+  "interrupted": null,
+  "paused": 2
 }
 ```
 

@@ -20,9 +20,9 @@ harness-agnostic, with Claude Code supported first.
 - Claude Code hooks: the current state is injected at session start, and stopping is blocked
   (with the events list) until the agent fires an event or `yield`s.
 - Instances: each piece of work (an issue, a document, a plan) moves through a state machine. It
-  gets a generated id and an optional ref that is set once, such as `GH-123`. You can park it,
+  gets a generated id and an optional ref that is set once, such as `GH-123`. You can pause it,
   detour from it, resume it, reopen it, or have another session take it over.
-- Built-in events: `enter`, `resume`, `park`, `unmatched` (a detour), and `yield`.
+- Built-in events: `enter`, `resume`, `pause`, `unmatched` (a detour), and `yield`.
 - Guards (`command`, `visits`) and actions (`prompt`, `command`, `setRef`), in XState's
   `{type, params}` form. Commands receive their input only through environment variables.
 - `smllm statusline`: the current machine, state and instance as a coloured row in Claude Code's
@@ -96,7 +96,7 @@ Fire one event: smllm({ session: "sm-k7f3q2", event, params })
 - submit
 - yield — Stop for now and stay in WORK.
     note (optional): What you are waiting for.
-- park — Put issue GH-123 aside and return to idle.
+- pause — Put issue GH-123 aside and return to idle.
 - unmatched — The request fits none of these; handle it from idle, then resume.
 </events>
 </smllm>

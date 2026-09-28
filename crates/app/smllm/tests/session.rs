@@ -109,10 +109,10 @@ fn hooks_and_fire_through_the_showcase() {
     let (_, out) = fire(&w, &key, "resume", &[]);
     assert!(out.contains("› REVIEW (visit 2)"), "{out}");
 
-    // Park, and a second session takes the instance over.
-    let (_, out) = fire(&w, &key, "park", &[]);
+    // Pause, and a second session takes the instance over.
+    let (_, out) = fire(&w, &key, "pause", &[]);
     assert!(
-        out.contains("Parked:\n- document docs/intro.md (showcase) at REVIEW"),
+        out.contains("Paused:\n- document docs/intro.md (showcase) at REVIEW"),
         "{out}"
     );
     let key2 = w.start("cc-2");
@@ -171,7 +171,7 @@ fn hooks_and_fire_through_the_showcase() {
     assert!(v["location"]["machine"].is_null());
     assert!(w.project.join(".smllm/state/.gitignore").is_file());
     // Unknown key: exit 2 with a hint.
-    let o = w.run(&["fire", "--session", "sm-nope", "park"]);
+    let o = w.run(&["fire", "--session", "sm-nope", "pause"]);
     assert_eq!(o.code, 2);
     assert!(o.stderr.contains("no smllm session sm-nope"));
     let o = w.run(&["fire", "--session", &key, "enter", "--param", "oops"]);
@@ -209,7 +209,7 @@ fn fire_without_a_session_binds_one_with_enter() {
     let v: Value = serde_json::from_str(&o.stdout).unwrap();
     assert!(v["session"].as_str().unwrap().starts_with("sm-"));
     assert_eq!(v["location"]["state"], "DRAFT");
-    assert_eq!(w.run(&["fire", "park"]).code, 2);
+    assert_eq!(w.run(&["fire", "pause"]).code, 2);
 }
 
 // @zen-test: HOST-12_AC-1
@@ -259,7 +259,7 @@ fn mcp_over_stdio() {
     assert!(err && text.contains("bogus is not offered here"), "{text}");
     let (err, text) = mcp.tool(7, json!({ "session": "sm-nope" }));
     assert!(err && text.contains("no smllm session"), "{text}");
-    let (err, text) = mcp.tool(9, json!({ "session": key, "event": "park", "params": [] }));
+    let (err, text) = mcp.tool(9, json!({ "session": key, "event": "pause", "params": [] }));
     assert!(err && text.contains("params must be an object"), "{text}");
     let (err, text) = mcp.tool(10, json!({ "session": 7 }));
     assert!(err && text.contains("session must be a string"), "{text}");

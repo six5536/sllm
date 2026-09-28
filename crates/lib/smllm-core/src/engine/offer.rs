@@ -9,7 +9,7 @@ use crate::record::Instance;
 use crate::utils::join;
 
 /// Built-in event names (IDLE-1).
-pub const BUILTINS: [&str; 5] = ["enter", "resume", "park", "unmatched", "yield"];
+pub const BUILTINS: [&str; 5] = ["enter", "resume", "pause", "unmatched", "yield"];
 
 /// An offered event.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,7 +91,7 @@ pub(crate) fn machine_offers(
             });
         }
         if state.fallback
-            && let Some(back) = &inst.interrupted
+            && let Some(back) = &inst.resume_state
         {
             offers.push(Offer {
                 name: "resume".to_string(),
@@ -118,10 +118,10 @@ pub(crate) fn machine_offers(
         });
     }
     offers.push(Offer {
-        name: "park".to_string(),
+        name: "pause".to_string(),
         description: builtin_description(
             Some(machine),
-            "park",
+            "pause",
             format!("Put {kind} {label} aside and return to idle."),
         ),
         params: Vec::new(),
@@ -143,8 +143,11 @@ pub(crate) fn machine_offers(
     offers
 }
 
-/// Events offered in idle: `enter`, and `resume` when an instance is suspended.
-pub(crate) fn idle_offers(config: &Config, suspended: Option<(&Machine, &Instance)>) -> Vec<Offer> {
+/// Events offered in idle: `enter`, and `resume` when an instance is interrupted.
+pub(crate) fn idle_offers(
+    config: &Config,
+    interrupted: Option<(&Machine, &Instance)>,
+) -> Vec<Offer> {
     let mut ref_params: Vec<&str> = Vec::new();
     for m in &config.machines {
         if !ref_params.contains(&m.instance.ref_param.as_str()) {
@@ -187,7 +190,7 @@ pub(crate) fn idle_offers(config: &Config, suspended: Option<(&Machine, &Instanc
         // No machines, so no id param to name.
         offers[0].params.remove(1);
     }
-    if let Some((m, inst)) = suspended {
+    if let Some((m, inst)) = interrupted {
         offers.push(Offer {
             name: "resume".to_string(),
             description: builtin_description(

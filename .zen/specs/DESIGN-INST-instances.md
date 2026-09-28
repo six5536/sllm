@@ -57,7 +57,7 @@ crates/app/smllm/src/store.rs   STO-FileStore: lock + version compare (INST-8_AC
 
 ### INST-Records
 
-The instance and history record types, serialised camelCase with the `serde` feature (`ref` for `r#ref`). `visits` counts entries per state (ENG-3); `interrupted` is the state `unmatched` left for a fallback state (IDLE-2).
+The instance and history record types, serialised camelCase with the `serde` feature (`ref` for `r#ref`). `visits` counts entries per state (ENG-3); `resumeState` is the state `unmatched` left for a fallback state (IDLE-2).
 
 ```rust
 pub struct InstanceKey { pub machine: String, pub id: String }
@@ -66,7 +66,7 @@ impl Status { pub fn as_str(self) -> &'static str; }
 pub struct Instance {
     pub id: String, pub machine: String, pub r#ref: Option<String>, pub state: String,
     pub status: Status, pub holder: Option<String>, pub version: u64,
-    pub visits: SmallMap<u32>, pub interrupted: Option<String>,
+    pub visits: SmallMap<u32>, pub resume_state: Option<String>,
     pub created: u64, pub updated: u64,
 }
 impl Instance {

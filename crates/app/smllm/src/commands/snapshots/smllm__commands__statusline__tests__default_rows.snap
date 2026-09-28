@@ -7,7 +7,7 @@ smllm dev › WORK · issue GH-123
 smllm dev › WORK (visit 3) · issue GH-123
 smllm dev › WORK (visit 3) · issue GH-123 · yielded
 smllm idle
-smllm idle · 1 suspended · 2 parked
-smllm idle · 1 parked
+smllm idle · 1 interrupted · 2 paused
+smllm idle · 1 paused
 \e[2msmllm\e[0m \e[36mdev\e[0m › \e[1mWORK\e[0m \e[2m(visit 3)\e[0m · \e[35missue GH-123\e[0m · \e[33myielded\e[0m
-\e[2msmllm\e[0m idle · \e[2m1 suspended\e[0m · \e[2m2 parked\e[0m
+\e[2msmllm\e[0m idle · \e[2m1 interrupted\e[0m · \e[2m2 paused\e[0m

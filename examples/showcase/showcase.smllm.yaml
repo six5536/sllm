@@ -112,11 +112,11 @@ states:
     meta: { fallback: true }
     entry: { type: prompt, params: { text: "Handle the request that fitted nothing, then fire resume." } }
 
-  # A state may declare no transitions at all; it still offers yield, park and
+  # A state may declare no transitions at all; it still offers yield, pause and
   # unmatched.
-  PARKED:
+  PAUSED:
     meta: { entryPoint: true }
-    entry: { type: prompt, params: { text: "Nothing to do here; park when ready." } }
+    entry: { type: prompt, params: { text: "Nothing to do here; pause when ready." } }
 
   DONE:
     type: final

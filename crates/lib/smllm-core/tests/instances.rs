@@ -166,14 +166,14 @@ fn a_rejected_keyless_enter_shows_no_key() {
     assert!(r.ok && r.session.starts_with("sm-"), "{}", r.text);
 }
 
-// Exit prompts are shown on park and suspend too (PLAN-003 F14).
+// Exit prompts are shown on pause and interrupt too (PLAN-003 F14).
 // @zen-test: ACT-2_AC-1
 #[test]
-fn exit_prompts_show_on_park() {
+fn exit_prompts_show_on_pause() {
     let (e, mut f) = (engine2(), fake());
     let k = key_of(&f.bind(&e, None));
     f.fire(&e, &k, "enter", &[("stateMachine", "help")]);
-    let r = f.fire(&e, &k, "park", &[]);
+    let r = f.fire(&e, &k, "pause", &[]);
     assert!(
         r.ok && r.text.contains("Leaving ASK: note where you were."),
         "{}",
@@ -204,11 +204,11 @@ fn enter_refuses_a_repeated_param() {
     );
 }
 
-// `resume` while the machine is unconfigured keeps the instance suspended
+// `resume` while the machine is unconfigured keeps the instance interrupted
 // (PLAN-003 F16).
 // @zen-test: IDLE-2_AC-1
 #[test]
-fn resume_with_the_machine_missing_keeps_the_suspended_instance() {
+fn resume_with_the_machine_missing_keeps_the_interrupted_instance() {
     let (e, mut f) = (engine2(), fake());
     let k = key_of(&f.bind(&e, None));
     f.fire(
@@ -248,11 +248,11 @@ fn a_self_transition_in_the_fallback_keeps_resume() {
     assert_eq!(r.location.state.as_deref(), Some("ASK"));
 }
 
-// The error says "fix the config, or park": park and enter work, letting
+// The error says "fix the config, or pause": pause and enter work, letting
 // go of the instance without touching it (PLAN-003 F7).
 // @zen-test: INST-7_AC-1
 #[test]
-fn park_or_enter_leaves_an_unconfigured_machine() {
+fn pause_or_enter_leaves_an_unconfigured_machine() {
     let (e, mut f) = (engine(), fake());
     let k = key_of(&f.bind(&e, None));
     f.fire(
@@ -265,7 +265,7 @@ fn park_or_enter_leaves_an_unconfigured_machine() {
         machines: vec![helpdesk()],
         idle: vec![],
     });
-    let r = f.fire(&broken, &k, "park", &[]);
+    let r = f.fire(&broken, &k, "pause", &[]);
     assert!(r.ok && r.text.contains("· idle"), "{}", r.text);
     assert!(r.text.contains("Let go of instance"), "{}", r.text);
     // Back with the config fixed, the instance is where it was.
@@ -300,8 +300,8 @@ fn a_ref_cannot_forge_a_fence() {
     assert!(r.ok, "{}", r.text);
     assert_eq!(r.text.matches("<smllm>").count(), 1, "{}", r.text);
     assert_eq!(r.text.matches("</smllm>").count(), 1, "{}", r.text);
-    // Parked, it shows in every session's idle list: still one fence.
-    let r = f.fire(&e, &k, "park", &[]);
+    // Paused, it shows in every session's idle list: still one fence.
+    let r = f.fire(&e, &k, "pause", &[]);
     assert_eq!(r.text.matches("<smllm>").count(), 1, "{}", r.text);
     assert!(!r.text.contains("\nsession sm-fake"), "{}", r.text);
     let err = f.with(|h| e.view(h, forged)).unwrap_err().to_string();

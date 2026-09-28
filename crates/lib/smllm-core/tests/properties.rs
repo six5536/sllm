@@ -10,7 +10,7 @@ use support::*;
 const EVENTS: &[&str] = &[
     "enter",
     "resume",
-    "park",
+    "pause",
     "unmatched",
     "yield",
     "issueCreated",

@@ -97,8 +97,8 @@ fn the_showcase_lowers_as_written() {
             .iter()
             .any(|a| matches!(a, ActionDef::Prompt(Prompt::DefaultFile(_))))
     );
-    let parked = m.state("PARKED").unwrap();
-    assert!(parked.on.is_empty());
+    let paused = m.state("PAUSED").unwrap();
+    assert!(paused.on.is_empty());
 }
 
 // @zen-test: CFG-13_AC-1

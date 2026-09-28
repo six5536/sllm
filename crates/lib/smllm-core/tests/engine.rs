@@ -197,7 +197,7 @@ fn invalid_calls_change_nothing() {
         ("reject", vec![]),
         ("reject", vec![("reason", "x"), ("severity", "huge")]),
         ("reject", vec![("reason", "x"), ("bogus", "y")]),
-        ("park", vec![("x", "y")]),
+        ("pause", vec![("x", "y")]),
     ] {
         let r = f.fire(&e, &k, ev, &ps);
         assert!(!r.ok, "{ev}");
@@ -210,7 +210,7 @@ fn invalid_calls_change_nothing() {
 
 // @zen-test: IDLE-6_AC-1
 #[test]
-fn park_and_enter_again() {
+fn pause_and_enter_again() {
     let (e, mut f) = (engine(), fake());
     let k = key_of(&f.bind(&e, None));
     f.fire(
@@ -219,11 +219,11 @@ fn park_and_enter_again() {
         "enter",
         &[("stateMachine", "dev"), ("issueId", "GH-4")],
     );
-    let r = f.fire(&e, &k, "park", &[]);
+    let r = f.fire(&e, &k, "pause", &[]);
     assert!(r.location.machine.is_none());
-    assert!(r.text.contains("Parked issue GH-4 at TRIAGE."));
+    assert!(r.text.contains("Paused issue GH-4 at TRIAGE."));
     assert!(
-        r.text.contains("Parked:\n- issue GH-4 (dev) at TRIAGE"),
+        r.text.contains("Paused:\n- issue GH-4 (dev) at TRIAGE"),
         "{}",
         r.text
     );
@@ -236,7 +236,7 @@ fn park_and_enter_again() {
     assert!(r.text.contains("(visit 2)"), "{}", r.text);
     assert!(r.text.contains("Arrived by: enter\n"));
     // Jump to an entry point.
-    f.fire(&e, &k, "park", &[]);
+    f.fire(&e, &k, "pause", &[]);
     let r = f.fire(
         &e,
         &k,
@@ -253,7 +253,7 @@ fn park_and_enter_again() {
         r.text
     );
     // Not an entry point.
-    f.fire(&e, &k, "park", &[]);
+    f.fire(&e, &k, "pause", &[]);
     let r = f.fire(
         &e,
         &k,
@@ -319,7 +319,7 @@ fn unmatched_detours_via_idle_or_the_fallback_state() {
     );
     let r = f.fire(&e, &k, "unmatched", &[]);
     assert!(
-        r.text.contains("Suspended: issue GH-6 (dev) at TRIAGE"),
+        r.text.contains("Interrupted: issue GH-6 (dev) at TRIAGE"),
         "{}",
         r.text
     );
@@ -337,7 +337,7 @@ fn unmatched_detours_via_idle_or_the_fallback_state() {
     assert!(r.text.contains("(visit 2)"));
 
     // Fallback state: unmatched goes there, resume returns.
-    f.fire(&e, &k, "park", &[]);
+    f.fire(&e, &k, "pause", &[]);
     f.fire(&e, &k, "enter", &[("stateMachine", "help")]);
     let r = f.fire(&e, &k, "unmatched", &[]);
     assert_eq!(r.location.state.as_deref(), Some("ASIDE"), "{}", r.text);
@@ -350,8 +350,8 @@ fn unmatched_detours_via_idle_or_the_fallback_state() {
     assert!(menu.text.contains("handle it from idle"), "{}", menu.text);
     let r = f.fire(&e, &k, "resume", &[]);
     assert_eq!(r.location.state.as_deref(), Some("ASK"));
-    // A second suspend parks the first suspended instance.
-    f.fire(&e, &k, "park", &[]);
+    // A second interrupt pauses the first interrupted instance.
+    f.fire(&e, &k, "pause", &[]);
     f.fire(
         &e,
         &k,
@@ -367,7 +367,7 @@ fn unmatched_detours_via_idle_or_the_fallback_state() {
     );
     let r = f.fire(&e, &k, "unmatched", &[]);
     assert!(
-        r.text.contains("Parked the previously suspended GH-6."),
+        r.text.contains("Paused the previously interrupted GH-6."),
         "{}",
         r.text
     );
@@ -466,7 +466,7 @@ fn a_missing_saved_state_is_repaired_by_enter_with_any_state() {
         "enter",
         &[("stateMachine", "dev"), ("issueId", "GH-1")],
     );
-    f.fire(&e, &k, "park", &[]);
+    f.fire(&e, &k, "pause", &[]);
     // Config changed under the saved instance.
     f.with(|h| {
         let mut i = h.store.instances("dev").unwrap().pop().unwrap();
@@ -507,9 +507,9 @@ fn idle_rejects_unknown_events_and_params() {
     let k = key_of(&f.bind(&e, None));
     for (ev, ps, msg) in [
         (
-            "park",
+            "pause",
             vec![],
-            "park is not offered in idle (offered: enter)",
+            "pause is not offered in idle (offered: enter)",
         ),
         ("enter", vec![], "enter needs param stateMachine"),
         (
@@ -547,7 +547,7 @@ fn unknown_sessions_are_errors_with_a_hint() {
     let err = f.with(|h| e.view(h, "sm-zzz").unwrap_err());
     assert!(err.to_string().contains("no smllm session sm-zzz"));
     let err = f.with(|h| {
-        e.fire(h, None, "park", &[], &smllm_core::Bind::default())
+        e.fire(h, None, "pause", &[], &smllm_core::Bind::default())
             .unwrap_err()
     });
     assert_eq!(err, smllm_core::Error::MissingSession);
@@ -591,13 +591,13 @@ fn unsupported_kinds_are_listed() {
 
 // @zen-test: IDLE-2_AC-1
 #[test]
-fn the_fallback_state_keeps_its_way_back_across_a_suspend() {
+fn the_fallback_state_keeps_its_way_back_across_a_interrupt() {
     let (e, mut f) = (engine(), fake());
     let k = key_of(&f.bind(&e, None));
     f.fire(&e, &k, "enter", &[("stateMachine", "help")]);
     let r = f.fire(&e, &k, "unmatched", &[]);
     assert_eq!(r.location.state.as_deref(), Some("ASIDE"));
-    // unmatched in the fallback state suspends to idle; resume comes back
+    // unmatched in the fallback state interrupts to idle; resume comes back
     // to ASIDE, which still offers resume → ASK.
     f.fire(&e, &k, "unmatched", &[]);
     let r = f.fire(&e, &k, "resume", &[]);
@@ -667,7 +667,7 @@ fn a_view_never_drops_the_session_even_if_its_machine_is_missing() {
 }
 
 #[test]
-fn the_suspended_slot_never_parks_another_sessions_instance() {
+fn the_interrupted_slot_never_pauses_another_sessions_instance() {
     let (e, mut f) = (engine(), fake());
     let a = key_of(&f.bind(&e, Some("a")));
     let b = key_of(&f.bind(&e, Some("b")));
@@ -678,7 +678,7 @@ fn the_suspended_slot_never_parks_another_sessions_instance() {
         &[("stateMachine", "dev"), ("issueId", "GH-1")],
     );
     f.fire(&e, &a, "unmatched", &[]);
-    // b takes GH-1 over and suspends it itself.
+    // b takes GH-1 over and interrupts it itself.
     f.fire(
         &e,
         &b,
@@ -686,9 +686,9 @@ fn the_suspended_slot_never_parks_another_sessions_instance() {
         &[("stateMachine", "dev"), ("issueId", "GH-1")],
     );
     f.fire(&e, &b, "unmatched", &[]);
-    // a's idle list no longer shows GH-1 as its suspended instance.
+    // a's idle list no longer shows GH-1 as its interrupted instance.
     let r = f.view(&e, &a);
-    assert!(!r.text.contains("Suspended:"), "{}", r.text);
+    assert!(!r.text.contains("Interrupted:"), "{}", r.text);
     f.fire(
         &e,
         &a,
@@ -697,7 +697,7 @@ fn the_suspended_slot_never_parks_another_sessions_instance() {
     );
     let r = f.fire(&e, &a, "unmatched", &[]);
     assert!(
-        !r.text.contains("Parked the previously suspended"),
+        !r.text.contains("Paused the previously interrupted"),
         "{}",
         r.text
     );

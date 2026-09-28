@@ -10,7 +10,7 @@ AFFECTED LAYERS: smllm-core (engine), app validate
 
 ### High-Level Architecture
 
-`enter` resolves the machine, validates params, finds or creates the instance, classifies the arrival, then `start`s it (active, held, `interrupted` cleared unless the target is the fallback state, which keeps its way back per IDLE-2, enter target, settle) and reuses ENG-Machine's `commit`.
+`enter` resolves the machine, validates params, finds or creates the instance, classifies the arrival, then `start`s it (active, held, `resumeState` cleared unless the target is the fallback state, which keeps its way back per IDLE-2, enter target, settle) and reuses ENG-Machine's `commit`.
 
 ```mermaid
 flowchart TD
@@ -154,7 +154,7 @@ SOURCE: .zen/specs/REQ-IDLE-idle.md
 - IDLE-5_AC-1 → ENG-Machine (`commit`), IDLE-Idle (`after_final`); covered by the `final` snapshot without a @zen-test marker
 - IDLE-7_AC-1 → IDLE-Idle (`list`: `Store::recent` / `count`, merge sort)
 - IDLE-7_AC-2 → IDLE-Idle (`list_paused`), ENG-Offers (`listPaused` offered only when cut short)
-- IDLE-6_AC-1 → IDLE-Idle (`Arrival::Jump`) — jump recorded in history as an `enter` entry from→to; the "jump" wording is header-only; tested in `park_and_enter_again` without a @zen-test marker
+- IDLE-6_AC-1 → IDLE-Idle (`Arrival::Jump`) — jump recorded in history as an `enter` entry from→to; the "jump" wording is header-only; tested in `pause_and_enter_again` without a @zen-test marker
 
 ## Change Log
 

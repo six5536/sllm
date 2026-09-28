@@ -6,7 +6,7 @@ description: Use when the user wants smllm's state (state machine, state, instan
 # smllm in the Claude Code status line
 
 `smllm statusline` reads Claude Code's status JSON on stdin and prints one row for the session it
-is bound to, e.g. `smllm dev › WORK (visit 3) · issue GH-123`, or `smllm idle · 2 parked`. It
+is bound to, e.g. `smllm dev › WORK (visit 3) · issue GH-123`, or `smllm idle · 2 paused`. It
 prints nothing when there is nothing to show and always exits 0. `smllm statusline --json` prints
 the same fields as JSON for custom rows. Reference: https://github.com/six5536/smllm/blob/main/docs/statusline.md
 
@@ -65,8 +65,8 @@ state=$(jq -r '.state // empty' <<<"$s")
 if [ -n "$state" ]; then printf '\n\033[1;33m%s\033[0m' "$state"; fi
 ```
 
-Fields: `session`, `idle`, `machine`, `state`, `visit`, `yielded`, `parked`, and `instance` /
-`suspended` (`null` or `{machine, kind, id, ref, label, status}`); `{}` when there is nothing to
+Fields: `session`, `idle`, `machine`, `state`, `visit`, `yielded`, `paused`, and `instance` /
+`interrupted` (`null` or `{machine, kind, id, ref, label, status}`); `{}` when there is nothing to
 show. Use `jq` only if it is installed (`command -v jq`).
 
 ## Verify

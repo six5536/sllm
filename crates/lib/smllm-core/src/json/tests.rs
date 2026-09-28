@@ -45,7 +45,7 @@ fn session() -> Session {
         cwd: "/w".into(),
         configs: vec!["a".into()],
         holding: Some(key()),
-        suspended: None,
+        interrupted: None,
         yielded: true,
         blocked: false,
         created: u64::MAX,
@@ -59,11 +59,11 @@ fn instance() -> Instance {
         machine: "m".into(),
         r#ref: Some("GH-1".into()),
         state: "S".into(),
-        status: Status::Parked,
+        status: Status::Paused,
         holder: None,
         version: 3,
         visits: [("S", 2u32)].into_iter().collect(),
-        interrupted: None,
+        resume_state: None,
         created: 1,
         updated: 2,
     }
@@ -93,8 +93,8 @@ fn records_are_the_same_both_ways() {
     same(&key());
     for s in [
         Status::Active,
-        Status::Suspended,
-        Status::Parked,
+        Status::Interrupted,
+        Status::Paused,
         Status::Completed,
     ] {
         same(&s);
@@ -136,8 +136,8 @@ fn engine_answers_are_written_the_same() {
         visit: Some(2),
         yielded: false,
         instance: Some(inst),
-        suspended: None,
-        parked: 3,
+        interrupted: None,
+        paused: 3,
     });
 }
 

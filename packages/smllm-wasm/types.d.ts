@@ -30,7 +30,7 @@ export interface InstanceStatus {
   id: string;
   ref: string | null;
   label: string;
-  status: "active" | "suspended" | "parked" | "completed";
+  status: "active" | "interrupted" | "paused" | "completed";
 }
 
 /** Where a session is, as data (the `smllm statusline --json` object). */
@@ -42,8 +42,8 @@ export interface SessionStatus {
   visit: number | null;
   yielded: boolean;
   instance: InstanceStatus | null;
-  suspended: InstanceStatus | null;
-  parked: number;
+  interrupted: InstanceStatus | null;
+  paused: number;
 }
 
 /** One history entry, handed to `Host.history` as it happens. */

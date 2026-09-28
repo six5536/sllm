@@ -1,5 +1,5 @@
 //! Events fired inside a state machine: its own events and the built-ins
-//! `yield`, `park`, `unmatched`, `resume` (from a fallback state).
+//! `yield`, `pause`, `unmatched`, `resume` (from a fallback state).
 // @zen-component: ENG-Machine
 
 use crate::Error;
@@ -33,7 +33,7 @@ impl Gone {
 /// An event while the held instance is gone. `enter` is idle's event, and
 /// idle is where a gone instance leaves the session: after a move it goes
 /// on from idle (the reply already said the session is idle). With the
-/// machine unconfigured, `park` and `enter` let go of the instance (its saved
+/// machine unconfigured, `pause` and `enter` let go of the instance (its saved
 /// state is untouched) so the session is never stuck; anything else gets
 /// the error reply.
 fn when_gone(
@@ -44,7 +44,7 @@ fn when_gone(
     let event = turn.event.as_str();
     match gone {
         Gone::Moved(_) if event == "enter" => idle::fire(turn, params),
-        Gone::Unconfigured(_) if event == "park" || event == "enter" => {
+        Gone::Unconfigured(_) if event == "pause" || event == "enter" => {
             if let Some(key) = turn.session.holding.take() {
                 turn.notes.push(format!(
                     "Let go of instance {} of the unconfigured state machine {}; its saved state is unchanged.",
@@ -75,7 +75,7 @@ pub(crate) fn held<'c>(
         .expect("caller checked holding");
     let Some(machine) = turn.config.machine(&key.machine) else {
         let msg = format!(
-            "state machine {} is not configured (is its file valid?); fix the config, or park",
+            "state machine {} is not configured (is its file valid?); fix the config, or pause",
             key.machine
         );
         return idle::reply(turn, false, Some(msg)).map(|r| Err(Gone::Unconfigured(Box::new(r))));
@@ -179,7 +179,7 @@ fn missing_state_note(turn: &mut Turn<'_, '_>, machine: &Machine, inst: &Instanc
     if machine.state(&inst.state).is_none() {
         let names = join(machine.state_names());
         turn.notes.push(format!(
-            "Saved state {} no longer exists in {}. Fire park, then enter with a state: {}.",
+            "Saved state {} no longer exists in {}. Fire pause, then enter with a state: {}.",
             inst.state, machine.id, names
         ));
     }
@@ -312,13 +312,13 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
                 text: b.close(),
             })
         }
-        "park" => {
+        "pause" => {
             turn.exit(machine, &mut inst, &from, None);
-            inst.status = Status::Parked;
+            inst.status = Status::Paused;
             inst.holder = None;
             turn.session.holding = None;
             turn.notes.push(format!(
-                "Parked {} {} at {from}.",
+                "Paused {} {} at {from}.",
                 machine.instance.kind,
                 inst.label()
             ));
@@ -326,14 +326,14 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
         }
         "unmatched" => unmatched(turn, machine, inst, &from),
         "resume" => {
-            let back = inst.interrupted.take().unwrap_or_default();
+            let back = inst.resume_state.take().unwrap_or_default();
             if machine.state(&back).is_none() {
                 let all = join(machine.state_names());
                 let msg = format!(
-                    "the interrupted state {back} no longer exists; leave with one of this state's events, or park and enter with a state: {}",
+                    "the interrupted state {back} no longer exists; leave with one of this state's events, or pause and enter with a state: {}",
                     all
                 );
-                inst.interrupted = Some(back);
+                inst.resume_state = Some(back);
                 return reject(turn, machine, &inst, msg);
             }
             turn.exit(machine, &mut inst, &from, Some(&back));
@@ -359,7 +359,7 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
             if machine.state(&inst.state).is_some_and(|s| s.fallback)
                 && t.target.as_deref().is_some_and(|to| to != inst.state)
             {
-                inst.interrupted = None;
+                inst.resume_state = None;
             }
             turn.take(machine, &mut inst, &from, t);
             turn.settle(machine, &mut inst);
@@ -418,7 +418,7 @@ fn check_set_ref(
     Ok(())
 }
 
-/// `unmatched`: to the fallback state, or suspend and go to idle (IDLE-2).
+/// `unmatched`: to the fallback state, or interrupt and go to idle (IDLE-2).
 // @zen-impl: IDLE-2_AC-1
 fn unmatched(
     turn: &mut Turn<'_, '_>,
@@ -430,7 +430,7 @@ fn unmatched(
         && fb.name != from
     {
         turn.exit(machine, &mut inst, from, Some(&fb.name));
-        inst.interrupted = Some(from.to_string());
+        inst.resume_state = Some(from.to_string());
         turn.enter(machine, &mut inst, &fb.name, Some(from));
         turn.settle(machine, &mut inst);
         return commit(
@@ -442,15 +442,15 @@ fn unmatched(
         );
     }
     turn.exit(machine, &mut inst, from, None);
-    inst.status = Status::Suspended;
+    inst.status = Status::Interrupted;
     let key = inst.key();
-    // One suspended slot: an older one is parked.
-    if let Some(old) = turn.session.suspended.replace(key.clone())
+    // One interrupted slot: an older one is paused.
+    if let Some(old) = turn.session.interrupted.replace(key.clone())
         && old != key
         && let Some(mut o) = turn.host.store.instance(&old.machine, &old.id)?
-        && o.held_by(&turn.session.key, Status::Suspended)
+        && o.held_by(&turn.session.key, Status::Interrupted)
     {
-        o.status = Status::Parked;
+        o.status = Status::Paused;
         o.holder = None;
         o.version += 1;
         o.updated = turn.now;
@@ -458,14 +458,14 @@ fn unmatched(
         match turn.host.store.put_instance(&o) {
             Ok(()) => turn
                 .notes
-                .push(format!("Parked the previously suspended {}.", o.label())),
+                .push(format!("Paused the previously interrupted {}.", o.label())),
             Err(HostError::Conflict) => {}
             Err(e) => return Err(e.into()),
         }
     }
     turn.session.holding = None;
     turn.notes.push(format!(
-        "Suspended {} {} at {from}. Handle the request, then fire resume from idle.",
+        "Interrupted {} {} at {from}. Handle the request, then fire resume from idle.",
         machine.instance.kind,
         inst.label()
     ));

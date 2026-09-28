@@ -17,7 +17,7 @@ The project is now smllm: state machines for LLM agents (PLAN-001).
 ### Added
 
 - `smllm-core`: the `no_std` engine. It handles instances, idle, the built-in events (`enter`,
-  `resume`, `park`, `unmatched`, `yield`), guarded transitions, `always` states, actions, visit
+  `resume`, `pause`, `unmatched`, `yield`), guarded transitions, `always` states, actions, visit
   counts, and the `<smllm>` agent text. The host supplies storage, commands, prompt files,
   patterns, time and randomness.
 - `smllm-format`: machine files written as an XState v5 subset in YAML. It validates them with
@@ -70,9 +70,9 @@ From a full code review (PLAN-003):
 - MCP tool calls on one session could tear the session file; two sessions could create duplicate
   instances for one new ref.
 - The stop hook let the agent stop after its first block in a turn, even after it fired events.
-- A session holding an instance of a removed or renamed machine could not leave it; `park` and
+- A session holding an instance of a removed or renamed machine could not leave it; `pause` and
   `enter` now work. Setting the ref an instance already has is no longer an error. Other engine
-  edge cases: `setRef` on unchosen branches, `enter` after a takeover, exit prompts on `park`,
+  edge cases: `setRef` on unchosen branches, `enter` after a takeover, exit prompts on `pause`,
   repeated `enter` params, `resume` while a machine file is invalid, self-transitions in the
   fallback state.
 - A ref or other agent input could forge `<smllm>` fences in replies and idle lists.

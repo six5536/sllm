@@ -38,7 +38,7 @@ states:
         - target: ARENA
           actions:
             type: prompt
-            params: { text: "The gate will not open for a nameless release: fire park, then enter gauntlet again with a version param." }
+            params: { text: "The gate will not open for a nameless release: fire pause, then enter gauntlet again with a version param." }
 
   SCRIBE:
     entry:

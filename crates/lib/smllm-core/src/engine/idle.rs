@@ -15,7 +15,7 @@ use crate::utils::join;
 use crate::utils::{SmallMap, insertion_sort_by};
 
 /// The idle list (TURN-7): header, notes, `error:`, idle instructions, state
-/// machines, suspended and parked instances, events.
+/// machines, interrupted and paused instances, events.
 // @zen-impl: TURN-7_AC-1
 pub(crate) fn reply(
     turn: &mut Turn<'_, '_>,
@@ -78,7 +78,7 @@ fn list(
     if let Some(e) = error {
         b.line(&format!("error: {e}"));
     }
-    // Prompts gathered so far (a parked or suspended state's exit prompts)
+    // Prompts gathered so far (a paused or interrupted state's exit prompts)
     // come first, then idle's own.
     for a in &turn.config.idle {
         if let ActionDef::Prompt(p) = a {
@@ -114,37 +114,37 @@ fn list(
         b.line(&starts);
     }
 
-    let suspended = match &turn.session.suspended {
+    let interrupted = match &turn.session.interrupted {
         Some(k) => owned(
             turn.config,
             turn.host.store,
             k,
-            Status::Suspended,
+            Status::Interrupted,
             &turn.session.key,
         )?,
         None => None,
     };
-    if let Some((m, i)) = &suspended {
+    if let Some((m, i)) = &interrupted {
         b.line(&format!(
-            "Suspended: {} {} ({}) at {}",
+            "Interrupted: {} {} ({}) at {}",
             m.instance.kind,
             i.label(),
             m.id,
             i.state
         ));
     }
-    let mut parked = Vec::new();
+    let mut paused = Vec::new();
     for m in &turn.config.machines {
-        for i in turn.host.store.instances_with(&m.id, Status::Parked)? {
-            parked.push((m, i));
+        for i in turn.host.store.instances_with(&m.id, Status::Paused)? {
+            paused.push((m, i));
         }
     }
-    insertion_sort_by(&mut parked, |(m, i), (n, j)| {
+    insertion_sort_by(&mut paused, |(m, i), (n, j)| {
         m.id.cmp(&n.id).then_with(|| i.label().cmp(j.label()))
     });
-    if !parked.is_empty() {
-        b.line("Parked:");
-        for (m, i) in &parked {
+    if !paused.is_empty() {
+        b.line("Paused:");
+        for (m, i) in &paused {
             b.line(&format!(
                 "- {} {} ({}) at {}",
                 m.instance.kind,
@@ -154,7 +154,7 @@ fn list(
             ));
         }
     }
-    let offers = idle_offers(turn.config, suspended.as_ref().map(|(m, i)| (*m, i)));
+    let offers = idle_offers(turn.config, interrupted.as_ref().map(|(m, i)| (*m, i)));
     b.events(key, &offers);
     Ok(())
 }
@@ -163,7 +163,7 @@ fn list(
 pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Result<Reply, Error> {
     match turn.event.as_str() {
         "enter" => enter(turn, params),
-        "resume" if turn.session.suspended.is_some() => {
+        "resume" if turn.session.interrupted.is_some() => {
             if let Some((n, _)) = params.first() {
                 return reply(
                     turn,
@@ -174,7 +174,7 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
             resume(turn)
         }
         _ => {
-            let offered = if turn.session.suspended.is_some() {
+            let offered = if turn.session.interrupted.is_some() {
                 "enter, resume"
             } else {
                 "enter"
@@ -323,7 +323,7 @@ fn enter(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Result<Reply, 
 
     if let Some(h) = inst.holder.clone()
         && h != turn.session.key
-        && matches!(inst.status, Status::Active | Status::Suspended)
+        && matches!(inst.status, Status::Active | Status::Interrupted)
     {
         let note = takeover_note(turn, &h)?;
         turn.notes.push(note);
@@ -358,14 +358,14 @@ fn start(
     from: Option<&str>,
 ) {
     let key = inst.key();
-    if turn.session.suspended.as_ref() == Some(&key) {
-        turn.session.suspended = None;
+    if turn.session.interrupted.as_ref() == Some(&key) {
+        turn.session.interrupted = None;
     }
     inst.status = Status::Active;
     inst.holder = Some(turn.session.key.clone());
     // Entering the fallback state keeps its way back (IDLE-2).
     if !machine.state(target).is_some_and(|s| s.fallback) {
-        inst.interrupted = None;
+        inst.resume_state = None;
     }
     turn.session.holding = Some(key);
     turn.enter(machine, inst, target, from);
@@ -426,22 +426,22 @@ fn new_instance(
         holder: None,
         version: 0,
         visits: SmallMap::new(),
-        interrupted: None,
+        resume_state: None,
         created: turn.now,
         updated: turn.now,
     })
 }
 
-/// `resume` from idle: back to the suspended instance's saved state.
+/// `resume` from idle: back to the interrupted instance's saved state.
 fn resume(turn: &mut Turn<'_, '_>) -> Result<Reply, Error> {
-    let key = turn.session.suspended.clone().expect("checked");
+    let key = turn.session.interrupted.clone().expect("checked");
     let machine = turn.config.machine(&key.machine);
     let inst = turn.host.store.instance(&key.machine, &key.id)?;
     let (machine, mut inst) = match (machine, inst) {
-        (Some(m), Some(i)) if i.held_by(&turn.session.key, Status::Suspended) => (m, i),
-        // A briefly invalid machine file must not lose the suspended
+        (Some(m), Some(i)) if i.held_by(&turn.session.key, Status::Interrupted) => (m, i),
+        // A briefly invalid machine file must not lose the interrupted
         // instance: report, change nothing.
-        (None, Some(i)) if i.held_by(&turn.session.key, Status::Suspended) => {
+        (None, Some(i)) if i.held_by(&turn.session.key, Status::Interrupted) => {
             let msg = format!(
                 "state machine {} is not configured (is its file valid?); fix the config, then resume",
                 key.machine
@@ -449,7 +449,7 @@ fn resume(turn: &mut Turn<'_, '_>) -> Result<Reply, Error> {
             return reply(turn, false, Some(msg));
         }
         (_, Some(i)) if i.holder.as_deref().is_some_and(|h| h != turn.session.key) => {
-            turn.session.suspended = None;
+            turn.session.interrupted = None;
             turn.host.store.put_session(&turn.session)?;
             let msg = format!(
                 "{} moved to session {}",
@@ -459,12 +459,12 @@ fn resume(turn: &mut Turn<'_, '_>) -> Result<Reply, Error> {
             return reply(turn, false, Some(msg));
         }
         _ => {
-            turn.session.suspended = None;
+            turn.session.interrupted = None;
             turn.host.store.put_session(&turn.session)?;
             return reply(
                 turn,
                 false,
-                Some("the suspended instance is no longer suspended".to_string()),
+                Some("the interrupted instance is no longer interrupted".to_string()),
             );
         }
     };

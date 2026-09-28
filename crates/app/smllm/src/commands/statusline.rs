@@ -117,8 +117,8 @@ pub(crate) fn row(s: &SessionStatus, color: bool) -> String {
         }
         _ => {
             out.push_str(" idle");
-            let suspended = u32::from(s.suspended.is_some());
-            for (n, what) in [(suspended, "suspended"), (s.parked, "parked")] {
+            let interrupted = u32::from(s.interrupted.is_some());
+            for (n, what) in [(interrupted, "interrupted"), (s.paused, "paused")] {
                 if n > 0 {
                     out.push_str(&format!(" · {}", paint(dim, &format!("{n} {what}"))));
                 }
@@ -177,15 +177,15 @@ mod tests {
                 label: "GH-123".into(),
                 status: "active".into(),
             }),
-            suspended: None,
-            parked: 2,
+            interrupted: None,
+            paused: 2,
         }
     }
 
-    fn idle(suspended: bool, parked: u32) -> SessionStatus {
+    fn idle(interrupted: bool, paused: u32) -> SessionStatus {
         let mut s = working(1, false);
         let inst = s.instance.take().map(|mut i| {
-            i.status = "suspended".into();
+            i.status = "interrupted".into();
             i
         });
         SessionStatus {
@@ -193,8 +193,8 @@ mod tests {
             machine: None,
             state: None,
             visit: None,
-            suspended: inst.filter(|_| suspended),
-            parked,
+            interrupted: inst.filter(|_| interrupted),
+            paused,
             ..s
         }
     }

@@ -134,7 +134,7 @@ object!(Instance {
     holder: "holder" default,
     version: "version" req,
     visits: "visits" default,
-    interrupted: "interrupted" default,
+    resume_state: "resumeState" default,
     created: "created" req,
     updated: "updated" req,
 });
@@ -146,7 +146,7 @@ object!(Session {
     cwd: "cwd" req,
     configs: "configs" default,
     holding: "holding" default,
-    suspended: "suspended" default,
+    interrupted: "interrupted" default,
     yielded: "yielded" default,
     blocked: "blocked" default,
     created: "created" req,
@@ -192,8 +192,8 @@ object!(SessionStatus {
     visit: "visit" default,
     yielded: "yielded" req,
     instance: "instance" default,
-    suspended: "suspended" default,
-    parked: "parked" req,
+    interrupted: "interrupted" default,
+    paused: "paused" req,
 });
 
 object!(InstanceStatus {
@@ -265,8 +265,8 @@ impl FromJson for Status {
     fn from_json(value: JsonValue) -> Result<Self, Error> {
         let all = [
             Status::Active,
-            Status::Suspended,
-            Status::Parked,
+            Status::Interrupted,
+            Status::Paused,
             Status::Completed,
         ];
         unit(value, &all.map(|s| (s.as_str(), s)))

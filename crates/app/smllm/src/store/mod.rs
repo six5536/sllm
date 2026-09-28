@@ -188,7 +188,7 @@ impl Store for FsStore {
         Ok(self.scan(machine).0)
     }
 
-    /// One shelf: a parked list reads no completed instance.
+    /// One shelf: a paused list reads no completed instance.
     fn instances_with(
         &mut self,
         machine: &str,
@@ -254,7 +254,7 @@ mod tests {
             holder: None,
             version: v,
             visits: SmallMap::new(),
-            interrupted: None,
+            resume_state: None,
             created: 0,
             updated: 0,
         }
@@ -360,7 +360,7 @@ mod tests {
             [("dev".to_string(), d.join("state"))].into(),
         );
         // A machine with no state yet reads as empty, and writes nothing.
-        assert!(s.instances_with("dev", Status::Parked).unwrap().is_empty());
+        assert!(s.instances_with("dev", Status::Paused).unwrap().is_empty());
         assert!(s.instance_by_ref("dev", "R1").unwrap().is_none());
         assert!(s.history("dev", "i-a").unwrap().is_empty());
         assert!(!d.join("state").exists());
@@ -384,20 +384,20 @@ mod tests {
         assert_eq!(s.scan("dev").1.len(), 1);
         fs::remove_file(dev.join("open/i-c.json")).unwrap();
 
-        // Completing moves the file; a parked list never reads `done/`.
+        // Completing moves the file; a paused list never reads `done/`.
         a.version = 2;
         a.status = Status::Completed;
         s.put_instance(&a).unwrap();
         assert!(dev.join("done/i-a.json").is_file() && !dev.join("open/i-a.json").exists());
         let mut misplaced = inst(1);
         misplaced.id = "i-x".into();
-        misplaced.status = Status::Parked;
+        misplaced.status = Status::Paused;
         fs::write(
             dev.join("done/i-x.json"),
             serde_json::to_string(&misplaced).unwrap(),
         )
         .unwrap();
-        assert!(s.instances_with("dev", Status::Parked).unwrap().is_empty());
+        assert!(s.instances_with("dev", Status::Paused).unwrap().is_empty());
         fs::remove_file(dev.join("done/i-x.json")).unwrap();
 
         // A ref's marker; one left by a failed write does not hold the ref.

@@ -1,4 +1,4 @@
-//! Instances on disk (PLAN-005): live ones (active, suspended, parked) in
+//! Instances on disk (PLAN-005): live ones (active, interrupted, paused) in
 //! `<machine>/open/`, completed ones in `<machine>/done/`, each ref in a
 //! marker file under `<machine>/refs/`, and each history in
 //! `<machine>/history/<id>.jsonl`. The layout is the index: status lines and

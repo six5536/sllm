@@ -32,7 +32,7 @@ pub struct Session {
     pub holding: Option<InstanceKey>,
     /// The instance put aside by `unmatched` (IDLE: detour).
     #[cfg_attr(feature = "serde", serde(default))]
-    pub suspended: Option<InstanceKey>,
+    pub interrupted: Option<InstanceKey>,
     /// The agent fired `yield` since the last user prompt (TURN-4, TURN-8).
     #[cfg_attr(feature = "serde", serde(default))]
     pub yielded: bool,

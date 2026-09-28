@@ -93,7 +93,7 @@ if (!run(["completions", "bash"], 0).stdout.includes("_smllm()")) {
 }
 
 // --- Failure paths: a bad argument and a usage error both exit 2 ------------
-const unknown = runIn(["fire", "--session", "sm-nope", "park"], 2);
+const unknown = runIn(["fire", "--session", "sm-nope", "pause"], 2);
 if (!unknown.stderr.startsWith("error: ")) {
   fail(`a failed run should explain itself on stderr: ${JSON.stringify(unknown.stderr)}`);
 }

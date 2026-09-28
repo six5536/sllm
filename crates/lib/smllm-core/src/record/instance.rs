@@ -32,9 +32,9 @@ pub enum Status {
     /// Held by a session.
     Active,
     /// Put aside by `unmatched`; `resume` returns.
-    Suspended,
-    /// Put aside by `park`.
-    Parked,
+    Interrupted,
+    /// Put aside by `pause`.
+    Paused,
     /// Reached a final state; kept (INST-9).
     Completed,
 }
@@ -44,8 +44,8 @@ impl Status {
     pub fn as_str(self) -> &'static str {
         match self {
             Status::Active => "active",
-            Status::Suspended => "suspended",
-            Status::Parked => "parked",
+            Status::Interrupted => "interrupted",
+            Status::Paused => "paused",
             Status::Completed => "completed",
         }
     }
@@ -80,7 +80,7 @@ pub struct Instance {
     pub visits: SmallMap<u32>,
     /// The state `unmatched` left for the fallback state (IDLE-2).
     #[cfg_attr(feature = "serde", serde(default))]
-    pub interrupted: Option<String>,
+    pub resume_state: Option<String>,
     /// Created, unix ms.
     pub created: u64,
     /// Last change, unix ms.

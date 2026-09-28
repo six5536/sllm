@@ -121,6 +121,8 @@ wasm or package is touched) passing, and updates the specs it touches. The wasm 
   the session's `suspended` field, the status line's JSON key and text). Interrupted = a detour
   by `unmatched`, back with `resume` (the fallback-state path already records the `interrupted`
   state); paused = stopped for later, back with `enter` and the ref.
+  The instance's own `interrupted` field (the state a fallback detour returns to) becomes
+  `resumeState`, so "interrupted" means one thing (F2).
 - D8-5 (A-1): one stable merge sort in `utils` (O(n log n), a scratch buffer) replaces
   `insertion_sort_by`, whose only use is the paused list: sort all paused by `updated` (most
   recent first), ties by machine then label; idle takes the first 10, `listPaused` all. The
@@ -225,3 +227,4 @@ Found, then decided:
 | Phase | Commit / result |
 | ----- | --------------- |
 | F1 | Requirements: IDLE-7 (bounded idle list, `listPaused`), NFR-10 (per-event latency), HOST-13..HOST-16, TEST-3_AC-2, DEC-7 (compile `cwd`); the terms pause / interrupted across 15 specs. Designs: ENG (BUILTINS, `Store::count` / `recent`, `MemoryStore` indexes, ENG_P-5, merge sort, tool definition, `Engine::call`), IDLE, TURN (layout), STO (a shelf per status), HOST (MCP cache, write-through wasm, HOST-JsPackage), NFR (bench, scaling check), CFG / DEC (compile `cwd`), STL |
+| F2 | The terms in code, agent text, status line, snapshots, docs, skills, examples and the unreleased CHANGELOG (34 files); `Instance.interrupted` → `resume_state` (`resumeState`). 194 tests, 6 wasm tests; wasm 118,777 bytes. This repo's local state converted by hand (4 instance files, 19 sessions; no migration code, D6-1) and the binary reinstalled |
