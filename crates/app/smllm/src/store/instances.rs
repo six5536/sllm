@@ -1,9 +1,10 @@
 //! Instances on disk (PLAN-005): live ones (active, suspended, parked) in
 //! `<machine>/open/`, completed ones in `<machine>/done/`, each ref in a
 //! marker file under `<machine>/refs/`, and each history in
-//! `<machine>/history/<id>.jsonl`. The layout is
-//! the index: status lines and idle lists read `open/` only, and a ref is one
-//! file, however much history `done/` keeps (INST-9).
+//! `<machine>/history/<id>.jsonl`. The layout is the index: status lines and
+//! idle lists read `open/` only, and a ref is one file, however much history
+//! `done/` keeps (INST-9). Reads never write; a write creates the folders it
+//! needs (PLAN-006 D6-1).
 // @zen-component: STO-FileStore
 
 use std::collections::BTreeMap;
@@ -19,8 +20,6 @@ const OPEN: &str = "open";
 const DONE: &str = "done";
 const REFS: &str = "refs";
 const HISTORY: &str = "history";
-/// An older layout's history file: `<machine>/<id>.history.jsonl`.
-const OLD_HISTORY: &str = ".history.jsonl";
 
 /// Instance `id`'s history: `<machine>/history/<id>.jsonl`.
 pub(super) fn history_path(dir: &Path, id: &str) -> PathBuf {
@@ -41,7 +40,7 @@ fn file_name(id: &str) -> String {
 }
 
 /// Run `f` holding the machine's lock (`<machine>/.lock`).
-pub(super) fn locked<T>(
+fn locked<T>(
     dir: &Path,
     f: impl FnOnce() -> Result<T, HostError>,
 ) -> Result<T, HostError> {
@@ -56,63 +55,6 @@ pub(super) fn locked<T>(
     let result = f();
     let _ = lock.unlock();
     result
-}
-
-/// Bring an older layout (`<machine>/<id>.json`) to the shelves, once. The
-/// fast path is one stat: `open/` exists only once a migration is complete.
-pub(super) fn migrate(dir: &Path) -> Result<(), HostError> {
-    if dir.join(OPEN).is_dir() || !dir.is_dir() {
-        return Ok(());
-    }
-    locked(dir, || migrate_locked(dir))
-}
-
-/// [`migrate`] under the lock. Files move to `done/` or to `open.new/`,
-/// which becomes `open/` last, so a crash part-way resumes next time. A
-/// file that does not parse goes to `open/`, where `validate` reports it.
-fn migrate_locked(dir: &Path) -> Result<(), HostError> {
-    let open = dir.join(OPEN);
-    if open.is_dir() {
-        return Ok(());
-    }
-    let staging = dir.join("open.new");
-    for d in [
-        &staging,
-        &dir.join(DONE),
-        &dir.join(REFS),
-        &dir.join(HISTORY),
-    ] {
-        fs::create_dir_all(d).map_err(other)?;
-    }
-    for e in fs::read_dir(dir).map_err(other)?.flatten() {
-        let p = e.path();
-        let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        if !p.is_file() {
-            continue;
-        }
-        if let Some(id) = name.strip_suffix(OLD_HISTORY) {
-            fs::rename(&p, dir.join(HISTORY).join(format!("{id}.jsonl"))).map_err(other)?;
-            continue;
-        }
-        if !name.ends_with(".json") {
-            continue;
-        }
-        let inst = read_json::<Instance>(&p).ok().flatten();
-        if let Some(Instance {
-            id, r#ref: Some(r), ..
-        }) = &inst
-        {
-            add_ref(dir, r, id)?;
-        }
-        let to = match &inst {
-            Some(i) if i.status == Status::Completed => dir.join(DONE),
-            _ => staging.clone(),
-        };
-        fs::rename(&p, to.join(name)).map_err(other)?;
-    }
-    fs::rename(&staging, &open).map_err(other)
 }
 
 /// Instance `id` and where it is: `open/` first, where most reads find it.
@@ -201,9 +143,6 @@ fn scan_shelf(dir: &Path, out: &mut (Vec<Instance>, Vec<(PathBuf, String)>)) {
 /// `status`, sorted by id.
 pub(super) fn scan(dir: &Path, status: Option<Status>) -> (Vec<Instance>, Vec<(PathBuf, String)>) {
     let mut out = (Vec::new(), Vec::new());
-    if migrate(dir).is_err() {
-        return out;
-    }
     match status {
         Some(s) => {
             scan_shelf(&dir.join(shelf(s)), &mut out);
@@ -229,7 +168,6 @@ pub(super) fn scan(dir: &Path, status: Option<Status>) -> (Vec<Instance>, Vec<(P
 // @zen-impl: INST-3_AC-1
 pub(super) fn put(dir: &Path, instance: &Instance) -> Result<(), HostError> {
     locked(dir, || {
-        migrate_locked(dir)?;
         let stored = find(dir, &instance.id)?;
         let version = stored.as_ref().map_or(0, |(_, i)| i.version);
         if instance.version != version + 1 {
@@ -252,6 +190,7 @@ pub(super) fn put(dir: &Path, instance: &Instance) -> Result<(), HostError> {
         match stored {
             Some((from, _)) if from != target => {
                 write(&from, &text)?;
+                fs::create_dir_all(dir.join(shelf(instance.status))).map_err(other)?;
                 fs::rename(&from, &target).map_err(other)
             }
             _ => write(&target, &text),

@@ -99,7 +99,6 @@ impl FsStore {
     /// The history of an instance.
     pub fn history(&self, machine: &str, id: &str) -> Result<Vec<HistoryEntry>, HostError> {
         let dir = self.machine_dir(machine)?;
-        instances::migrate(&dir)?;
         let Some(text) = fs_kit::read_text(&instances::history_path(&dir, id)).map_err(other)?
         else {
             return Ok(Vec::new());
@@ -171,7 +170,6 @@ impl Store for FsStore {
         let Ok(dir) = self.machine_dir(machine) else {
             return Ok(None);
         };
-        instances::migrate(&dir)?;
         Ok(instances::find(&dir, id)?.map(|(_, i)| i))
     }
 
@@ -203,7 +201,6 @@ impl Store for FsStore {
         let Ok(dir) = self.machine_dir(machine) else {
             return Ok(None);
         };
-        instances::migrate(&dir)?;
         instances::by_ref(&dir, r#ref)
     }
 
@@ -220,7 +217,6 @@ impl Store for FsStore {
         entry: &HistoryEntry,
     ) -> Result<(), HostError> {
         let dir = self.machine_dir(machine)?;
-        instances::migrate(&dir)?;
         let path = instances::history_path(&dir, id);
         fs::create_dir_all(path.parent().unwrap_or(&dir)).map_err(other)?;
         let mut line = serde_json::to_string(entry).map_err(other)?;
@@ -343,25 +339,23 @@ mod tests {
     }
 
     // Live instances in `open/`, completed ones in `done/`, refs as marker
-    // files; an old layout moves there on first access (PLAN-005).
+    // files, histories in `history/` (PLAN-005); reads write nothing
+    // (PLAN-006 D6-1).
     // @zen-test: INST-3_AC-1
     // @zen-test: INST-4_AC-1
     #[test]
-    fn shelves_markers_and_migration() {
+    fn shelves_and_markers() {
         let d = crate::test_support::temp_dir("shelves");
         let dev = d.join("state/dev");
         let mut s = FsStore::new(
             d.join("user"),
             [("dev".to_string(), d.join("state"))].into(),
         );
-        let save = |i: &Instance| {
-            fs::create_dir_all(&dev).unwrap();
-            fs::write(
-                dev.join(format!("{}.json", i.id)),
-                serde_json::to_string(i).unwrap(),
-            )
-            .unwrap();
-        };
+        // A machine with no state yet reads as empty, and writes nothing.
+        assert!(s.instances_with("dev", Status::Parked).unwrap().is_empty());
+        assert!(s.instance_by_ref("dev", "R1").unwrap().is_none());
+        assert!(s.history("dev", "i-a").unwrap().is_empty());
+        assert!(!d.join("state").exists());
         let mut a = inst(1);
         a.id = "i-a".into();
         a.r#ref = Some("R1".into());
@@ -369,21 +363,18 @@ mod tests {
         b.id = "i-b".into();
         b.r#ref = Some("R2".into());
         b.status = Status::Completed;
-        save(&a);
-        save(&b);
-        fs::write(dev.join("i-c.json"), "{ nope").unwrap();
-        let entry = serde_json::to_string(&HistoryEntry::default()).unwrap();
-        fs::write(dev.join("i-a.history.jsonl"), entry + "\n").unwrap();
-
-        // The old layout moves to the shelves on first access.
-        assert!(s.instances_with("dev", Status::Parked).unwrap().is_empty());
+        s.put_instance(&a).unwrap();
+        s.put_instance(&b).unwrap();
+        s.append_history("dev", "i-a", &HistoryEntry::default())
+            .unwrap();
         assert!(dev.join("open/i-a.json").is_file() && dev.join("done/i-b.json").is_file());
-        assert!(dev.join("open/i-c.json").is_file(), "reported by validate");
-        assert!(dev.join("history/i-a.jsonl").is_file() && !dev.join("open.new").exists());
+        assert!(dev.join("history/i-a.jsonl").is_file());
         assert_eq!(s.history("dev", "i-a").unwrap().len(), 1);
         assert_eq!(s.instance_by_ref("dev", "R2").unwrap().unwrap().id, "i-b");
+        fs::write(dev.join("open/i-c.json"), "{ nope").unwrap();
         assert_eq!(s.instances("dev").unwrap().len(), 2);
         assert_eq!(s.scan("dev").1.len(), 1);
+        fs::remove_file(dev.join("open/i-c.json")).unwrap();
 
         // Completing moves the file; a parked list never reads `done/`.
         a.version = 2;

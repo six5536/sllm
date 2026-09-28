@@ -45,8 +45,7 @@ The project is now smllm: state machines for LLM agents (PLAN-001).
   5.4 ms on a slow mount). A command guard or action that passes no longer waits for its output.
 - Instance files moved (PLAN-005): `.smllm/state/<machine>/open/` holds live instances,
   `done/` completed ones, `history/` their histories, and `refs/` their refs, so status lines,
-  idle lists and ref lookups no longer read every instance ever completed. Existing state moves
-  on first use; restart running smllm processes (such as `smllm mcp`) after upgrading.
+  idle lists and ref lookups no longer read every instance ever completed.
 
 ### Fixed
 
