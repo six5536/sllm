@@ -242,7 +242,14 @@ fn lower_command(
         params.insert("timeoutSecs", Value::Int(t.min(i64::MAX as u64) as i64));
     }
     if let Some(d) = &cp.cwd {
-        params.insert("cwd", Value::Str(files.resolve(d)));
+        // Compiled output holds no path of the machine that compiled it: the
+        // same bytes anywhere, from any folder (PLAN-006 D6-2).
+        let cwd = if files.mode == Mode::Inline {
+            d.clone()
+        } else {
+            files.resolve(d)
+        };
+        params.insert("cwd", Value::Str(cwd));
     }
     params
 }

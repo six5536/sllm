@@ -470,3 +470,33 @@ fn state_dir_is_state_beside_the_config_unless_set() {
     std::fs::remove_dir_all(dir).ok();
     std::fs::remove_dir_all(elsewhere).ok();
 }
+
+// Compiled output is the same bytes on any machine, from any folder: a
+// command's `cwd` stays as written (PLAN-006 D6-2); a load for running
+// resolves it.
+// @zen-test: CLI-13_AC-1
+#[test]
+fn compile_output_holds_no_path_of_its_machine() {
+    let machine = "id: w\ninitial: A\nmeta: {smllm: 1}\nstates:\n  A:\n    entry: {type: command, params: {run: \"true\", cwd: scripts}}\n    on: {go: B}\n  B: {type: final}\n";
+    let (a, b) = (temp_dir("compile-a"), temp_dir("compile-b"));
+    let nested = b.join("deeper/still");
+    std::fs::create_dir_all(&nested).unwrap();
+    std::fs::write(a.join("w.smllm.yaml"), machine).unwrap();
+    std::fs::write(nested.join("w.smllm.yaml"), machine).unwrap();
+    let (one, f) = compile(&a.join("w.smllm.yaml"));
+    assert!(!f.has_errors(), "{:?}", f.0);
+    let (two, _) = compile(&nested.join("w.smllm.yaml"));
+    assert_eq!(one, two);
+    assert!(one.unwrap().contains(r#""cwd":"scripts""#));
+    let (m, _) = load_machine(&a.join("w.smllm.yaml"), Mode::Run);
+    let params = match &m.unwrap().state("A").unwrap().entry[0] {
+        ActionDef::Host { params, .. } => params.clone(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        params.get("cwd").and_then(|v| v.as_str()),
+        Some(a.join("scripts").display().to_string().as_str())
+    );
+    std::fs::remove_dir_all(a).ok();
+    std::fs::remove_dir_all(b).ok();
+}
