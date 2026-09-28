@@ -67,6 +67,7 @@ export interface HistoryEntry {
  * - `isMatch`: `new RegExp(pattern).test(value)` by default.
  * - `now`, `random`: `Date.now()` and `crypto.getRandomValues` by default.
  * - `history`: each history entry as it happens; dropped by default.
+ * - `put`: each session, binding and instance as it is saved (write-through storage); dropped by default.
  * A method that throws is a host failure the engine reports, never a broken engine.
  */
 export interface Host {
@@ -79,6 +80,21 @@ export interface Host {
   now?(): number;
   random?(): number;
   history?(machine: string, id: string, entry: HistoryEntry): void;
+  put?(kind: RecordKind, key: string, record: unknown): void;
+}
+
+/** What `put` hands on: a session (key: its key), a binding (`harness/hostSession`, record: the session key) or an instance (`machine/id`). */
+export type RecordKind = "session" | "binding" | "instance";
+
+/**
+ * Where an engine's state lives (HOST-14): `load` once, into `importState`;
+ * then each saved record through `put` and each history entry through
+ * `history`, as they happen, so persisting costs what changed.
+ */
+export interface Storage {
+  load(): State | undefined;
+  put(kind: RecordKind, key: string, record: unknown): void;
+  history(machine: string, id: string, entry: HistoryEntry): void;
 }
 
 /** The agent-facing `smllm` tool: the same definition the MCP server offers. */
@@ -96,5 +112,9 @@ export interface ToolArgs {
   params?: Record<string, string>;
 }
 
-/** Sessions, bindings and instances: persist it and hand it back to `importState`. */
-export type State = Record<string, unknown>;
+/** Sessions, bindings and instances by key, as `exportState` returns them and `importState` takes them. */
+export interface State {
+  sessions: Record<string, unknown>;
+  bindings: Record<string, string>;
+  instances: Record<string, unknown>;
+}

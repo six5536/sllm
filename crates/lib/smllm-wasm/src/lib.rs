@@ -62,6 +62,11 @@ extern "C" {
     /// keeps the log, the engine never reads it back (PLAN-006 D6-4).
     #[wasm_bindgen(method, catch)]
     fn history(this: &JsHost, machine: &str, id: &str, entry: &str) -> Result<(), JsValue>;
+    /// A record as it is saved (`session`, `binding` or `instance`), as
+    /// JSON: the host persists what changed, never a snapshot per call
+    /// (HOST-14, PLAN-008 D8-16).
+    #[wasm_bindgen(method, catch)]
+    fn put(this: &JsHost, kind: &str, key: &str, record: &str) -> Result<(), JsValue>;
 
     /// The global `String(value)`: an exception's text (`Error: …`).
     #[wasm_bindgen(js_name = String)]
@@ -180,8 +185,13 @@ impl Store for WasmStore<'_> {
     fn session(&mut self, key: &str) -> Result<Option<Session>, HostError> {
         self.mem.session(key)
     }
+    // Each write goes to memory, then to the host: a host that throws loses
+    // that record, never the transition (as history, PLAN-006 D6-4).
+    // @zen-impl: HOST-14_AC-1
     fn put_session(&mut self, session: &Session) -> Result<(), HostError> {
-        self.mem.put_session(session)
+        self.mem.put_session(session)?;
+        let _ = self.host.put("session", &session.key, &json(session));
+        Ok(())
     }
     fn binding(&mut self, harness: &str, host_session: &str) -> Result<Option<String>, HostError> {
         self.mem.binding(harness, host_session)
@@ -192,7 +202,10 @@ impl Store for WasmStore<'_> {
         host_session: &str,
         key: &str,
     ) -> Result<(), HostError> {
-        self.mem.put_binding(harness, host_session, key)
+        self.mem.put_binding(harness, host_session, key)?;
+        let binding = format!("{harness}/{host_session}");
+        let _ = self.host.put("binding", &binding, &json(key));
+        Ok(())
     }
     fn instance(&mut self, machine: &str, id: &str) -> Result<Option<Instance>, HostError> {
         self.mem.instance(machine, id)
@@ -228,7 +241,11 @@ impl Store for WasmStore<'_> {
         self.mem.recent(machine, status, limit)
     }
     fn put_instance(&mut self, instance: &Instance) -> Result<(), HostError> {
-        self.mem.put_instance(instance)
+        // A conflict (version, ref) saves nothing: nothing to hand on.
+        self.mem.put_instance(instance)?;
+        let key = format!("{}/{}", instance.machine, instance.id);
+        let _ = self.host.put("instance", &key, &json(instance));
+        Ok(())
     }
     /// A host that throws loses that entry, never the transition, which is
     /// already saved.

@@ -34,6 +34,10 @@
       "types": "./dist/bundler.d.ts",
       "default": "./dist/bundler.js"
     },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "default": "./dist/node/index.js"
+    },
     "./raw": {
       "types": "./wasm/web/smllm_wasm.d.ts",
       "default": "./wasm/web/smllm_wasm.js"

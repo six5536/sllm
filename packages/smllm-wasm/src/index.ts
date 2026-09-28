@@ -6,6 +6,7 @@ import { Engine as Base } from "./wrap.js";
 export default init;
 export { initSync };
 export type * from "./types.js";
+export { memoryStorage } from "./storage.js";
 /** smllm's engine over compiled machines (`smllm compile` output). */
 export class Engine extends Base {
   protected static override Raw = Raw;

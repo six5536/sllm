@@ -5,9 +5,11 @@
 import type {
   HistoryEntry,
   Host,
+  RecordKind,
   Reply,
   SessionStatus,
   State,
+  Storage,
   StopDecision,
   Tool,
   ToolArgs,
@@ -23,6 +25,7 @@ export interface RawHost {
   now(): number;
   random(): number;
   history(machine: string, id: string, entry: string): void;
+  put(kind: RecordKind, key: string, record: string): void;
 }
 
 /** A build's wasm-bindgen `Engine`: JSON text in and out. */
@@ -63,6 +66,9 @@ function adapt(host: Host): RawHost {
     history: (machine, id, entry) => {
       host.history?.(machine, id, parse<HistoryEntry>(entry));
     },
+    put: (kind, key, record) => {
+      host.put?.(kind, key, parse(record));
+    },
   };
 }
 
@@ -72,10 +78,31 @@ export class Engine {
   protected static Raw: RawClass;
   #raw: RawEngine;
 
-  constructor(compiled: string | object, host: Host = {}) {
+  /**
+   * `storage`, when given, is loaded now and then receives every saved
+   * record and history entry (its `put` and `history` go before `host`'s).
+   */
+  constructor(compiled: string | object, host: Host = {}, storage?: Storage) {
     const json = typeof compiled === "string" ? compiled : JSON.stringify(compiled);
     const Raw = (this.constructor as typeof Engine).Raw;
-    this.#raw = new Raw(json, adapt(host));
+    const all: Host = storage
+      ? {
+          ...host,
+          put: (kind, key, record) => {
+            storage.put(kind, key, record);
+            host.put?.(kind, key, record);
+          },
+          history: (machine, id, entry) => {
+            storage.history(machine, id, entry);
+            host.history?.(machine, id, entry);
+          },
+        }
+      : host;
+    this.#raw = new Raw(json, adapt(all));
+    const saved = storage?.load();
+    if (saved) {
+      this.importState(saved);
+    }
   }
 
   /** The agent-facing tool, to hand to an LLM's tool list (HOST-13). */
