@@ -17,7 +17,7 @@ The project is now smllm: state machines for LLM agents (PLAN-001).
 ### Added
 
 - `smllm-core`: the `no_std` engine. It handles instances, idle, the built-in events (`enter`,
-  `resume`, `pause`, `unmatched`, `yield`), guarded transitions, `always` states, actions, visit
+  `resume`, `pause`, `unmatched`, `yield`, `listPaused`), guarded transitions, `always` states, actions, visit
   counts, and the `<smllm>` agent text. The host supplies storage, commands, prompt files,
   patterns, time and randomness.
 - `smllm-format`: machine files written as an XState v5 subset in YAML. It validates them with
@@ -30,17 +30,24 @@ The project is now smllm: state machines for LLM agents (PLAN-001).
   with its one `smllm` tool.
 - Claude Code integration: `smllm harness install claude` for a project or user, plus a Claude
   Code plugin (`plugin/`, marketplace in `.claude-plugin/`).
-- `smllm-wasm` and the `smllm-wasm` npm package: a typed `Engine` (objects in and out,
-  TypeScript declarations, every host method optional), the JSON string API underneath as
-  `smllm-wasm/raw`. History goes to the host's `history` callback as it happens, so
-  `exportState()` holds current state only. CI builds the core `no_std` for wasm32 and enforces a
-  134 KiB size budget. The wasm is 116.0 KiB (PLAN-007: JSON through our own `smllm-json`, std
-  rebuilt for size on a pinned nightly), and holds no path of the machine that built it.
+- `smllm-wasm` and the `smllm-wasm` npm package: a typed `Engine` in TypeScript (objects in and
+  out, generated declarations, every host method optional), the JSON string API underneath as
+  `smllm-wasm/raw`. `tool()` and `callTool()` give a model the same `smllm` tool the MCP server
+  offers, answered the same way. Storage writes through: each saved record and history entry
+  goes to the host as it happens (`Storage`, `memoryStorage`), so persisting costs what changed.
+  `smllm-wasm/node` adds `nodeHost` (command guards and actions as the CLI runs them) and
+  `nodeFileStorage`. CI builds the core `no_std` for wasm32 and enforces a 134 KiB size budget.
+  The wasm is 130.0 KiB (PLAN-007: JSON through our own `smllm-json`, std rebuilt for size on a
+  pinned nightly), and holds no path of the machine that built it.
 - `smllm-json`: a small `no_std` JSON reader and writer with no dependencies, whose output matches
   serde_json's byte for byte; errors name the failing field or byte.
 - `[state] dir` in `config.toml`: where that file's machines keep their instances, relative to
   it or absolute (default `state/` beside it).
-- `examples/showcase` (the superdev showcase, converted) and `examples/dev`.
+- `listPaused`: the idle list shows the 10 most recently updated paused instances; this built-in
+  lists them all, offered when there are more.
+- `examples/showcase` (the superdev showcase, converted), `examples/dev`, and `examples/wasm`
+  (an agent loop over `smllm-wasm` in TypeScript, run in CI).
+- `npm run bench`: smllm's time per call through the wasm, the MCP server and the CLI.
 
 ### Changed
 
@@ -51,12 +58,19 @@ The project is now smllm: state machines for LLM agents (PLAN-001).
   config (11 ms → 0.7 ms here). Loading the config reads no prompt file and probes no
   `enter-<STATE>.md`; `validate` still does, for its warnings (86 file accesses → 17; 11.4 ms →
   5.4 ms on a slow mount). A command guard or action that passes no longer waits for its output.
-- Instance files moved (PLAN-005): `.smllm/state/<machine>/open/` holds live instances,
-  `done/` completed ones, `history/` their histories, and `refs/` their refs, so status lines,
-  idle lists and ref lookups no longer read every instance ever completed. `validate` warns about
+- Instance files moved (PLAN-005, PLAN-008): `.smllm/state/<machine>/` has a folder per status
+  (`active/`, `interrupted/`, `paused/`, `done/`), `history/` for histories and `refs/` for refs,
+  so status lines count with a listing, idle lists read only the newest paused instances, and
+  ref lookups read one file. `validate` warns about
   an unreadable ref marker, which smllm reads around and rebuilds.
+- Terms (PLAN-008): the built-in `park` is `pause` and a parked instance is paused; a suspended
+  instance (put aside by `unmatched`) is interrupted, in agent text, the status line and its JSON.
+- Faster everywhere (PLAN-008): one event through the wasm takes 0.006–0.03 ms, flat to 1,000
+  instances (was up to 4.3 ms); the MCP server keeps its loaded config and checks its files each
+  call (0.1–0.6 ms a call); the file store no longer reads every open instance per idle list.
 - `smllm compile` output is the same bytes on any machine, from any folder: a command's `cwd`
-  stays as written.
+  is written relative to the compiled config file, so a host resolves every command against one
+  folder.
 
 ### Fixed
 

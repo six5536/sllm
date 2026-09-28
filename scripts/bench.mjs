@@ -39,7 +39,7 @@ const record = (path, size, op, times) => rows.push({ path, size: `${size[0]} / 
 // --- wasm, in-process ------------------------------------------------------
 async function wasm() {
   const pkg = join(root, "packages/smllm-wasm");
-  const { initSync, Engine } = await import(join(pkg, "index.js"));
+  const { initSync, Engine } = await import(join(pkg, "dist/index.js"));
   initSync({ module: readFileSync(join(pkg, "wasm/web/smllm_wasm_bg.wasm")) });
   const compiled = execFileSync(smllm, ["compile", config], { env, encoding: "utf8" });
   const e = new Engine(compiled);
