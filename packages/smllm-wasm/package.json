@@ -23,19 +23,33 @@
     "wasm"
   ],
   "type": "module",
-  "main": "./wasm/web/smllm_wasm.js",
-  "types": "./wasm/web/smllm_wasm.d.ts",
+  "main": "./index.js",
+  "types": "./index.d.ts",
   "exports": {
     ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./bundler": {
+      "types": "./bundler.d.ts",
+      "default": "./bundler.js"
+    },
+    "./raw": {
       "types": "./wasm/web/smllm_wasm.d.ts",
       "default": "./wasm/web/smllm_wasm.js"
     },
-    "./bundler": {
+    "./raw/bundler": {
       "types": "./wasm/bundler/smllm_wasm.d.ts",
       "default": "./wasm/bundler/smllm_wasm.js"
     }
   },
   "files": [
+    "index.js",
+    "index.d.ts",
+    "bundler.js",
+    "bundler.d.ts",
+    "wrap.js",
+    "types.d.ts",
     "wasm/web/",
     "wasm/bundler/"
   ],

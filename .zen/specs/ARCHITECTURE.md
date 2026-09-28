@@ -171,7 +171,7 @@ The engine for JavaScript, with the host supplied by one JS object.
 
 RESPONSIBILITIES
 
-- `Engine` class over compiled JSON: `bind`, `view`, `events`, `fire`, `stop`, `promptSubmitted`, `status`, `exportState` / `importState`
+- `Engine` class over compiled JSON: `bind`, `view`, `events`, `fire`, `stop`, `promptSubmitted`, `status`, `exportState` / `importState`; the package exports a typed wrapper (objects in and out, `.d.ts`), the string API as `smllm-wasm/raw` (PLAN-006)
 - Build to web and bundler targets, optimise with `wasm-opt -Oz`, publish as npm `smllm-wasm`
 
 CONSTRAINTS
