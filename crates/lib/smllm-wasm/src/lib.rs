@@ -266,6 +266,44 @@ fn parse_params(json: &str) -> Result<Vec<(String, String)>, JsError> {
         .map(|m| m.iter().map(|(k, v)| (k.to_string(), v.clone())).collect())
 }
 
+/// A tool call's session, event and params.
+type ToolArgs = (Option<String>, Option<String>, Vec<(String, String)>);
+
+/// A tool call's `session`, `event` and `params`, with the MCP server's
+/// rules: an empty or null string is absent; params are strings.
+fn tool_args(args: &str) -> Result<ToolArgs, String> {
+    let mut f = smllm_json::parse(args)
+        .and_then(Fields::from_json)
+        .map_err(|_| "the arguments must be a JSON object".to_string())?;
+    let mut text = |k: &str| match f.take(k) {
+        Ok(None | Some(JsonValue::Null)) => Ok(None),
+        Ok(Some(JsonValue::String(s))) if s.is_empty() => Ok(None),
+        Ok(Some(JsonValue::String(s))) => Ok(Some(s)),
+        _ => Err(format!("{k} must be a string")),
+    };
+    let (session, event) = (text("session")?, text("event")?);
+    let mut params: smllm_core::SmallMap<String> = smllm_core::SmallMap::new();
+    match f.take("params") {
+        Ok(None | Some(JsonValue::Null)) => {}
+        Ok(Some(JsonValue::Object(fields))) => {
+            for (k, v) in fields {
+                match v {
+                    JsonValue::String(s) => {
+                        params.insert(k, s);
+                    }
+                    _ => return Err(format!("param {k} must be a string")),
+                }
+            }
+        }
+        _ => return Err("params must be an object of strings".to_string()),
+    }
+    let params = params
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.clone()))
+        .collect();
+    Ok((session, event, params))
+}
+
 /// Parse JSON; `what` says what failed, before the parser's own detail.
 fn from_json<T: FromJson>(json: &str, what: &str) -> Result<T, JsError> {
     smllm_json::from_str(json).map_err(|e| JsError::new(&format!("{what}: {e}")))
@@ -405,6 +443,53 @@ impl Engine {
     #[wasm_bindgen(js_name = promptSubmitted)]
     pub fn prompt_submitted(&mut self, key: &str) -> Result<(), JsError> {
         self.with(|e, h| e.prompt_submitted(h, key)).map_err(err)
+    }
+
+    /// The agent-facing tool, as JSON `{name, description, inputSchema}`:
+    /// the core's definition, as the MCP server offers it (HOST-13).
+    // @zen-impl: HOST-13_AC-1
+    pub fn tool(&self) -> String {
+        /// JSON written as is.
+        struct Raw(&'static str);
+        impl ToJson for Raw {
+            fn write_json(&self, out: &mut String) {
+                out.push_str(self.0);
+            }
+        }
+        let mut out = String::new();
+        let mut o = smllm_json::object(&mut out);
+        o.field("name", &smllm_core::TOOL_NAME)
+            .field("description", &smllm_core::tool_description())
+            .field("inputSchema", &Raw(smllm_core::TOOL_INPUT_SCHEMA));
+        o.end();
+        out
+    }
+
+    /// A tool call: the agent's arguments as JSON, answered as the MCP
+    /// server answers them (HOST-13). A malformed call or an engine error is
+    /// a reply with `ok: false` and `error: …`, never a throw: the agent
+    /// sees its mistake as the tool's answer.
+    // @zen-impl: HOST-13_AC-2
+    #[wasm_bindgen(js_name = callTool)]
+    pub fn call_tool(&mut self, args: &str) -> String {
+        let answer = match tool_args(args) {
+            Ok((key, event, params)) => {
+                let bind = Bind {
+                    harness: "wasm",
+                    ..Bind::default()
+                };
+                self.with(|e, h| e.call(h, key.as_deref(), event.as_deref(), &params, &bind))
+                    .map_err(|e| (key, e.to_string()))
+            }
+            Err(msg) => Err((None, msg)),
+        };
+        let reply = answer.unwrap_or_else(|(key, msg)| smllm_core::Reply {
+            ok: false,
+            session: key.unwrap_or_default(),
+            location: smllm_core::Location::default(),
+            text: format!("error: {msg}"),
+        });
+        json(&reply)
     }
 
     /// Sessions, bindings and instances as JSON (history went to the host).

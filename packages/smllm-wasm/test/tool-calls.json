@@ -1,0 +1,9 @@
+[
+  { "args": { "event": 5 }, "text": "error: event must be a string" },
+  { "args": { "session": 1 }, "text": "error: session must be a string" },
+  { "args": { "event": "enter", "params": [] }, "text": "error: params must be an object of strings" },
+  { "args": { "event": "enter", "params": { "x": 1 } }, "text": "error: param x must be a string" },
+  { "args": {}, "text": "error: no session given: pass the key shown in the latest <smllm> header, or fire enter with no session to start a new one" },
+  { "args": { "session": "" }, "text": "error: no session given: pass the key shown in the latest <smllm> header, or fire enter with no session to start a new one" },
+  { "args": { "session": "sm-nope" }, "text": "error: no smllm session sm-nope: pass the key shown in the latest <smllm> header, or call with no session and event enter to start a new one" }
+]

@@ -398,3 +398,33 @@ fn mcp_pipelined_calls_on_one_session() {
             .unwrap_or_else(|err| panic!("{}: {err}", e.path().display()));
     }
 }
+
+// The MCP server offers the core's tool and answers the call table the wasm
+// test answers too, word for word (HOST-13).
+// @zen-test: HOST-13_AC-1
+// @zen-test: HOST-13_AC-2
+#[test]
+fn mcp_serves_the_core_tool_and_the_shared_call_table() {
+    let w = World::showcase("mcp-table");
+    let mut mcp = w.mcp().at_2026_07_28();
+    let tools = mcp.call(1, "tools/list", json!({}));
+    let tool = &tools["result"]["tools"][0];
+    assert_eq!(tool["name"], smllm_core::TOOL_NAME);
+    assert_eq!(tool["description"], smllm_core::tool_description());
+    let schema: serde_json::Value = serde_json::from_str(smllm_core::TOOL_INPUT_SCHEMA).unwrap();
+    assert_eq!(tool["inputSchema"], schema);
+    let table: Vec<serde_json::Value> = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../packages/smllm-wasm/test/tool-calls.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    for (n, case) in table.iter().enumerate() {
+        let (err, text) = mcp.tool(2 + n as u64, case["args"].clone());
+        assert!(err, "{case}");
+        assert_eq!(text, case["text"].as_str().unwrap(), "{case}");
+    }
+    mcp.finish();
+}

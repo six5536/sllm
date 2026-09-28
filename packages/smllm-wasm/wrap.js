@@ -32,6 +32,16 @@ export function wrap(Raw) {
       this.#raw = new Raw(json, adapt(host));
     }
 
+    /** The agent-facing tool, to hand to an LLM's tool list (HOST-13). */
+    tool() {
+      return parse(this.#raw.tool());
+    }
+
+    /** A tool call with the agent's arguments; a malformed call is an answer, not a throw. */
+    callTool(args = {}) {
+      return parse(this.#raw.callTool(JSON.stringify(args)));
+    }
+
     unsupported() {
       return parse(this.#raw.unsupported());
     }

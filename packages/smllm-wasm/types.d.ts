@@ -80,12 +80,31 @@ export interface Host {
   history?(machine: string, id: string, entry: HistoryEntry): void;
 }
 
+/** The agent-facing `smllm` tool: the same definition the MCP server offers. */
+export interface Tool {
+  name: string;
+  description: string;
+  /** JSON Schema of `ToolArgs`. */
+  inputSchema: Record<string, unknown>;
+}
+
+/** The agent's tool arguments. */
+export interface ToolArgs {
+  session?: string;
+  event?: string;
+  params?: Record<string, string>;
+}
+
 /** Sessions, bindings and instances: persist it and hand it back to `importState`. */
 export type State = Record<string, unknown>;
 
 /** smllm's engine over compiled machines (`smllm compile` output). */
 export declare class Engine {
   constructor(compiled: string | object, host?: Host);
+  /** The agent-facing tool, to hand to an LLM's tool list. */
+  tool(): Tool;
+  /** Answer a tool call as the MCP server does; a malformed call is `ok: false`, never a throw. */
+  callTool(args: ToolArgs): Reply;
   /** Guard and action kinds the machines use that this host cannot run. */
   unsupported(): string[];
   /** Bind a harness session (reused when `hostSession` is already bound). */

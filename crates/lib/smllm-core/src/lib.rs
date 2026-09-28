@@ -37,6 +37,7 @@ pub mod model;
 mod prelude;
 pub mod record;
 mod render;
+mod tool;
 mod utils;
 
 pub use engine::{
@@ -44,4 +45,5 @@ pub use engine::{
     SessionStatus, Stop,
 };
 pub use render::{AGENT_RULES, format_utc};
+pub use tool::{TOOL_INPUT_SCHEMA, TOOL_NAME, tool_description};
 pub use utils::SmallMap;

@@ -12,7 +12,7 @@ use rmcp::model::{
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt as _};
-use serde_json::{Map, Value, json};
+use serde_json::{Map, Value};
 use smllm_core::AGENT_RULES;
 
 use crate::cache::ConfigCache;
@@ -21,36 +21,17 @@ use crate::output::EXIT_OK;
 use crate::paths;
 use crate::runtime::Runtime;
 
-/// The tool's name.
-pub const TOOL: &str = "smllm";
+/// The tool's name (the core's, HOST-13).
+pub const TOOL: &str = smllm_core::TOOL_NAME;
 
-/// The tool description: the full agent rules (HOST-12).
-// @zen-impl: HOST-12_AC-1
+/// The tool description: the core's, with the full agent rules (HOST-12).
 pub fn description() -> String {
-    format!(
-        "{AGENT_RULES}\n\nCall with {{ session }} alone to see where you are; with {{ session, event, \
-         params }} to fire an event. params is an object of strings."
-    )
+    smllm_core::tool_description()
 }
 
-/// The tool's input schema (CFG-16: params are strings).
+/// The tool's input schema: the core's (CFG-16, HOST-13).
 pub fn input_schema() -> Map<String, Value> {
-    let v = json!({
-        "type": "object",
-        "properties": {
-            "session": { "type": "string", "description": "The session key from the latest <smllm> header, e.g. sm-k7f3q2. Omit only to start a session with event enter." },
-            "event": { "type": "string", "description": "The event to fire; omit to see where you are." },
-            "params": {
-                "type": "object",
-                "description": "The event's params.",
-                "additionalProperties": { "type": "string" }
-            }
-        }
-    });
-    match v {
-        Value::Object(m) => m,
-        _ => Map::new(),
-    }
+    serde_json::from_str(smllm_core::TOOL_INPUT_SCHEMA).unwrap_or_default()
 }
 
 /// Serve one tool call: `(ok, text)`.
@@ -97,13 +78,7 @@ fn call_inner(
     // The loaded config outlives the call; it is checked each call (HOST-16).
     let files = Runtime::call_configs(session.as_deref(), explicit, cwd)?;
     let rt = cache.runtime(&files)?;
-    let reply = match &event {
-        None => {
-            let key = session.ok_or(smllm_core::Error::MissingSession)?;
-            rt.with(|e, h| e.view(h, &key))?
-        }
-        Some(ev) => rt.fire("mcp", session.as_deref(), ev, &params, cwd)?,
-    };
+    let reply = rt.call("mcp", session.as_deref(), event.as_deref(), &params, cwd)?;
     Ok((reply.ok, reply.text))
 }
 

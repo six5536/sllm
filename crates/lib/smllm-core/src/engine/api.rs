@@ -228,6 +228,23 @@ impl Engine {
         self.show(host, key, true)
     }
 
+    /// A tool call (HOST-13): no event is a view, which needs a key; an
+    /// event is fired. Every host maps the agent's tool arguments here.
+    // @zen-impl: HOST-13_AC-2
+    pub fn call(
+        &self,
+        host: &mut Host<'_>,
+        key: Option<&str>,
+        event: Option<&str>,
+        params: &[(String, String)],
+        bind: &Bind<'_>,
+    ) -> Result<Reply, Error> {
+        match event {
+            None => self.view(host, key.ok_or(Error::MissingSession)?),
+            Some(ev) => self.fire(host, key, ev, params, bind),
+        }
+    }
+
     /// The events list for the current state (the stop hook's text).
     pub fn menu(&self, host: &mut Host<'_>, key: &str) -> Result<Reply, Error> {
         self.show(host, key, false)

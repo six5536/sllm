@@ -15,6 +15,10 @@ const engine = new Engine(compiled, {
   // supports / check / run: host guard and action kinds (`command`); none by default
 });
 const { session, text } = engine.bind("web");
+// Give the model the same `smllm` tool the MCP server offers, and pass its
+// calls through: a malformed call comes back as an answer, never a throw.
+const tool = engine.tool(); // { name, description, inputSchema }
+const answer = engine.callTool({ session, event: "enter", params: { stateMachine: "dev" } });
 // Show `text` to the agent; when it picks an event:
 const reply = engine.fire(session, "enter", { stateMachine: "dev" });
 // When the agent tries to stop (`stopHookActive`: it is already continuing

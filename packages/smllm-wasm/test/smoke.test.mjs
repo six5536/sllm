@@ -119,3 +119,24 @@ test("malformed JSON is rejected with what failed", () => {
   assert.throws(() => engine.fire(key, "enter", "[1]"), /params must be a JSON object/);
   assert.equal(engine.fire(key, "enter", { stateMachine: "dev", issueId: "GH-4" }).ok, true);
 });
+
+// The same tool as the MCP server, answered the same way (HOST-13): the call
+// table is shared with the app's MCP test.
+test("the tool and its calls match the MCP server's", () => {
+  const engine = new Engine(compiled, host);
+  const tool = engine.tool();
+  assert.equal(tool.name, "smllm");
+  assert.match(tool.description, /Call with \{ session \} alone/);
+  assert.deepEqual(Object.keys(tool.inputSchema.properties), ["session", "event", "params"]);
+  const table = JSON.parse(readFileSync(join(here, "tool-calls.json"), "utf8"));
+  for (const { args, text } of table) {
+    const r = engine.callTool(args);
+    assert.equal(r.ok, false, JSON.stringify(args));
+    assert.equal(r.text, text, JSON.stringify(args));
+  }
+  // A keyless enter starts a session; a call with only the key views it.
+  const entered = engine.callTool({ event: "enter", params: { stateMachine: "dev", issueId: "GH-9" } });
+  assert.equal(entered.ok, true, entered.text);
+  const viewed = engine.callTool({ session: entered.session });
+  assert.equal(viewed.location.state, "TRIAGE");
+});

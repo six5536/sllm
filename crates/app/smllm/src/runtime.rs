@@ -125,6 +125,27 @@ impl Runtime {
         Ok(self.with(|e, h| e.fire(h, key, event, params, &bind))?)
     }
 
+    /// A tool call (HOST-13): view with no event, else fire; a keyless
+    /// `enter` binds a new session to `harness` at `cwd`.
+    pub fn call(
+        &mut self,
+        harness: &str,
+        key: Option<&str>,
+        event: Option<&str>,
+        params: &[(String, String)],
+        cwd: &Path,
+    ) -> Result<Reply> {
+        let cwd = cwd.display().to_string();
+        let configs = self.configs.clone();
+        let bind = Bind {
+            harness,
+            host_session: None,
+            cwd: &cwd,
+            configs: &configs,
+        };
+        Ok(self.with(|e, h| e.call(h, key, event, params, &bind))?)
+    }
+
     /// Every readable instance of the loaded machines, in config order.
     pub fn all_instances(&mut self) -> Result<Vec<Instance>> {
         let mut all = Vec::new();
