@@ -290,3 +290,4 @@ Pre-0.1 release. Engine, format, store, Claude Code harness, MCP server and wasm
 - 0.3.0 (2026-09-27): Code review fixes (PLAN-003): kit `fs` module; smllm-format reports through the kit; MCP calls serialised; `Session.blocked`; fence-safe engine lines
 - 0.4.0 (2026-09-27): Faster hooks (PLAN-004): smllm-format load modes; hooks that need no config load none; kit `parse_toml`
 - 0.5.0 (2026-09-27): Instance shelves (PLAN-005): `Store::instances_with` and `instance_by_ref`; the file store keeps completed instances apart and refs as marker files
+- 0.6.0 (2026-09-28): Idiom review (PLAN-006): no migration (reads never write); ref markers as a derived index; `[state] dir`; reproducible `compile`; WASM history to the host; typed `smllm-wasm` wrapper

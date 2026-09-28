@@ -2,7 +2,7 @@
 
 | Meta               | Value                                                        |
 | ------------------ | ------------------------------------------------------------ |
-| Status             | in-progress (ready to implement)                             |
+| Status             | completed (C1–C7, 2026-09-28)                                |
 | Workflow direction | bottom-up (review → decisions → code → specs)                |
 | Traces to          | STL-3, STO-1, STO-2, CLI-3, CLI-13, CFG (cwd), DEC-7, NFR-8, HOST-Wasm, INST-9 |
 
@@ -86,4 +86,12 @@ Each phase is one commit with `npm run -s test:gate` passing, and updates the sp
 
 ## 5. Outcome
 
-(filled in at the end)
+| Phase | Commit / result |
+| ----- | --------------- |
+| C1 | 01e87be: migration deleted; reads write nothing (a test reads a machine with no state and checks nothing was created); writes create their folders |
+| C2 | f2c7e92: an unreadable marker: lookups scan, a write rebuilds it (test: `R9` still resolves, setting `r9` rebuilds the bucket with both), `validate` warns (e2e) |
+| C3 | 2c2bb05: `[state] dir` (relative, absolute, default tested; e2e: `enter` writes to the moved dir and its `.gitignore`). D6-6's "shared dir" `validate` error dropped: within one load a machine id appears once (a project machine replaces the user's), so it cannot happen; two projects sharing a dir is the use case, not an error |
+| C4 | 0a976c4: `compile` keeps `cwd` as written; one machine compiled from two folders is byte-identical; a run load still resolves it |
+| C5 | 2f57355: `WasmStore` hands history to `host.history`; `exportState` has no history; a throwing `history` keeps the transition. Wasm 257.0 KiB |
+| C6 | c85212e: `wrap.js`, `index.js`, `bundler.js`, `types.d.ts`; the main export is typed, `./raw` and `./raw/bundler` the string API; host methods optional with defaults. Smoke tests through the wrapper (5). Types checked once with `npx typescript@5` (a good consumer compiles; a number param and `text` on `allow` are errors); wasm-bindgen's own `.d.ts` needs the `esnext.disposable` lib, as before |
+| C7 | CHANGELOG, ARCHITECTURE 0.6.0, this section |

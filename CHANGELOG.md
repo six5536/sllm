@@ -30,8 +30,13 @@ The project is now smllm: state machines for LLM agents (PLAN-001).
   with its one `smllm` tool.
 - Claude Code integration: `smllm harness install claude` for a project or user, plus a Claude
   Code plugin (`plugin/`, marketplace in `.claude-plugin/`).
-- `smllm-wasm` and the `smllm-wasm` npm package. CI builds the core `no_std` for wasm32 and
-  enforces a 300 KiB size budget.
+- `smllm-wasm` and the `smllm-wasm` npm package: a typed `Engine` (objects in and out,
+  TypeScript declarations, every host method optional), the JSON string API underneath as
+  `smllm-wasm/raw`. History goes to the host's `history` callback as it happens, so
+  `exportState()` holds current state only. CI builds the core `no_std` for wasm32 and enforces a
+  300 KiB size budget.
+- `[state] dir` in `config.toml`: where that file's machines keep their instances, relative to
+  it or absolute (default `state/` beside it).
 - `examples/showcase` (the superdev showcase, converted) and `examples/dev`.
 
 ### Changed
@@ -45,7 +50,10 @@ The project is now smllm: state machines for LLM agents (PLAN-001).
   5.4 ms on a slow mount). A command guard or action that passes no longer waits for its output.
 - Instance files moved (PLAN-005): `.smllm/state/<machine>/open/` holds live instances,
   `done/` completed ones, `history/` their histories, and `refs/` their refs, so status lines,
-  idle lists and ref lookups no longer read every instance ever completed.
+  idle lists and ref lookups no longer read every instance ever completed. `validate` warns about
+  an unreadable ref marker, which smllm reads around and rebuilds.
+- `smllm compile` output is the same bytes on any machine, from any folder: a command's `cwd`
+  stays as written.
 
 ### Fixed
 
