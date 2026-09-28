@@ -1,0 +1,16 @@
+{
+  // The package's TypeScript, compiled by `npm run build:wasm` into dist/
+  // (PLAN-008 D8-18). The wasm-bindgen output under wasm/ must exist first.
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["es2022", "dom", "esnext.disposable"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "declaration": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"]
+}

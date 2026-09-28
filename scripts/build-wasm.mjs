@@ -6,7 +6,7 @@
 //
 // Needs rustup (the script installs NIGHTLY with rust-src and the wasm32
 // target), wasm-bindgen-cli matching the wasm-bindgen crate version, and the
-// `binaryen` npm devDependency for wasm-opt.
+// `binaryen` and `typescript` npm devDependencies (wasm-opt, tsc).
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync, rmSync } from "node:fs";
@@ -70,4 +70,7 @@ for (const target of ["web", "bundler"]) {
     }
   }
 }
+// The typed layer, TypeScript over the raw build (PLAN-008 D8-18); type
+// errors fail the build.
+run(join(root, "node_modules/.bin/tsc"), ["-p", pkg]);
 run("cargo", ["run", "--quiet", "--locked", "-p", "smllm", "--", "compile", "examples/dev/config.toml", "-o", "packages/smllm-wasm/test/dev.json"]);

@@ -1,5 +1,6 @@
-// Types of the typed smllm-wasm API (PLAN-006 D6-3), shared by the web and
-// bundler entry points. They mirror what smllm-core serializes.
+// Types of the typed smllm-wasm API, shared by the web and bundler entry
+// points (PLAN-006 D6-3; TypeScript since PLAN-008 D8-18). They mirror what
+// smllm-core serializes.
 
 /** Where a session is after a call; all `null` in idle. */
 export interface Location {
@@ -97,29 +98,3 @@ export interface ToolArgs {
 
 /** Sessions, bindings and instances: persist it and hand it back to `importState`. */
 export type State = Record<string, unknown>;
-
-/** smllm's engine over compiled machines (`smllm compile` output). */
-export declare class Engine {
-  constructor(compiled: string | object, host?: Host);
-  /** The agent-facing tool, to hand to an LLM's tool list. */
-  tool(): Tool;
-  /** Answer a tool call as the MCP server does; a malformed call is `ok: false`, never a throw. */
-  callTool(args: ToolArgs): Reply;
-  /** Guard and action kinds the machines use that this host cannot run. */
-  unsupported(): string[];
-  /** Bind a harness session (reused when `hostSession` is already bound). */
-  bind(harness: string, hostSession?: string, cwd?: string): Reply;
-  /** Where the session is; changes nothing. */
-  view(key: string): Reply;
-  /** The events list of the session's state. */
-  events(key: string): Reply;
-  status(key: string): SessionStatus;
-  /** Fire an event; with no key, only `enter` (it starts a session). */
-  fire(key: string | undefined, event: string, params?: Record<string, string>): Reply;
-  stop(key: string, stopHookActive?: boolean): StopDecision;
-  promptSubmitted(key: string): void;
-  exportState(): State;
-  importState(state: State | string): void;
-  /** Free the wasm memory now, rather than when collected. */
-  free(): void;
-}

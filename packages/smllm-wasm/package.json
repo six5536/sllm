@@ -23,16 +23,16 @@
     "wasm"
   ],
   "type": "module",
-  "main": "./index.js",
-  "types": "./index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./index.d.ts",
-      "default": "./index.js"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./bundler": {
-      "types": "./bundler.d.ts",
-      "default": "./bundler.js"
+      "types": "./dist/bundler.d.ts",
+      "default": "./dist/bundler.js"
     },
     "./raw": {
       "types": "./wasm/web/smllm_wasm.d.ts",
@@ -44,17 +44,13 @@
     }
   },
   "files": [
-    "index.js",
-    "index.d.ts",
-    "bundler.js",
-    "bundler.d.ts",
-    "wrap.js",
-    "types.d.ts",
+    "dist/",
     "wasm/web/",
     "wasm/bundler/"
   ],
   "sideEffects": [
-    "./wasm/bundler/smllm_wasm.js"
+    "./wasm/bundler/smllm_wasm.js",
+    "./dist/bundler.js"
   ],
   "license": "MIT",
   "scripts": {

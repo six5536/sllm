@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
-    "binaryen": "^132.0.0"
+    "binaryen": "^132.0.0",
+    "typescript": "^7.0.2"
   }
 }

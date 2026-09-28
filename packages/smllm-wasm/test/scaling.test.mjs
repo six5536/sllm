@@ -12,7 +12,7 @@ import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pkg = join(here, "..");
-const { initSync, Engine } = await import(join(pkg, "index.js"));
+const { initSync, Engine } = await import(join(pkg, "dist/index.js"));
 initSync({ module: readFileSync(join(pkg, "wasm/web/smllm_wasm_bg.wasm")) });
 const compiled = JSON.parse(readFileSync(join(here, "dev.json"), "utf8"));
 

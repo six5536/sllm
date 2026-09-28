@@ -9,7 +9,7 @@ import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const pkg = join(here, "..");
 // The package's main entry: the typed wrapper (PLAN-006 D6-3).
-const { initSync, Engine } = await import(join(pkg, "index.js"));
+const { initSync, Engine } = await import(join(pkg, "dist/index.js"));
 const raw = await import(join(pkg, "wasm/web/smllm_wasm.js"));
 initSync({ module: readFileSync(join(pkg, "wasm/web/smllm_wasm_bg.wasm")) });
 
