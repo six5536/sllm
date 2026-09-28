@@ -14,8 +14,8 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-// NFR-8: set after P3 at ~15% over the first measured size (258 KiB).
-const BUDGET = 300 * 1024;
+// NFR-8: ~15% over the size measured after PLAN-007 (133.5 KiB).
+const BUDGET = 154 * 1024;
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = join(root, "packages/smllm-wasm");
 // std rebuilt for size, panics as a bare trap (PLAN-007 D7-3). Nightly-only

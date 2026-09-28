@@ -93,7 +93,7 @@ crates/lib/smllm-core/tests/
 
 ### ENG-Model
 
-The validated, lowered model. Plain data with optional `serde` (for `smllm compile` JSON). Guards and actions are XState `{type, params}`; `visits` and `prompt`/`setRef` are core-evaluated, anything else is a `Host` kind resolved through the host traits (NFR-9). `Prompt::DefaultFile` is the implied `enter-<STATE>.md`, silently skipped when absent.
+The validated, lowered model. Plain data with optional `serde` (for `smllm compile` JSON) and `miniserde` (the same JSON byte for byte, for `smllm-wasm`; `src/mini.rs`, PLAN-007 D7-1). Guards and actions are XState `{type, params}`; `visits` and `prompt`/`setRef` are core-evaluated, anything else is a `Host` kind resolved through the host traits (NFR-9). `Prompt::DefaultFile` is the implied `enter-<STATE>.md`, silently skipped when absent.
 
 IMPLEMENTS: DEC-3_AC-1
 
@@ -359,9 +359,11 @@ SOURCE: .zen/specs/REQ-ENG-engine.md
 ### External Libraries
 
 - serde (1, optional, no default features): model/record (de)serialisation
+- miniserde (0.1, optional, no default features): the same JSON for smllm-wasm
 - proptest (1.11, dev): property tests
 - insta (1.47, dev): snapshot tests
 
 ## Change Log
 
 - 1.0.0 (2026-09-25): Initial design, documenting the P3 implementation
+- 1.1.0 (2026-09-28): `miniserde` feature (PLAN-007)

@@ -2,7 +2,7 @@
 
 | Meta               | Value                                                         |
 | ------------------ | ------------------------------------------------------------- |
-| Status             | in-progress (decided D7-1..D7-4; implementation next) |
+| Status             | completed (S1–S4, 2026-09-28) |
 | Workflow direction | bottom-up (measure → decisions → code → specs)                |
 | Traces to          | NFR-8, HOST-Wasm (DESIGN-HOST), DESIGN-ENG (serde feature), D6-2 (reproducible output) |
 
@@ -104,4 +104,16 @@ Each phase one commit, `npm run -s build:wasm`, `npm run -s test:wasm` and `npm 
   (PLAN-003 F22), so none is expected.
 - D7-4 (W-7): `build:wasm` remaps `$HOME` and the checkout out of the binary's paths, so the
   package holds no path of the machine that built it (as D6-2 for `compile`).
+- D7-5 (W-12): `wasm-opt` adds `--strip-producers --strip-target-features` (free; they name the
+  toolchain). Not the memory-layout flags (0.4%, an assumption a toolchain change could break) nor
+  `--flatten --rereloop` (build time, speed).
 - Rejected: W-9 (`opt-level = "s"`, +16.7 KB), W-10 (wasm-opt flags, noise).
+
+## 6. Outcome
+
+| Phase | Commit / result |
+| ----- | --------------- |
+| S1 | 83111b4: core `miniserde` feature (`src/mini.rs`, derives with `serde(rename)`), smllm-wasm on miniserde only; serde's `Value` decoder stays derived (W-4 was only for the serde wasm). Tests with both features (run by the gate through feature unification): `dev.json` and every record, guard, action, prompt, position and status encode byte-identically and read back equal; 13 malformed inputs both reject. Smoke test: malformed constructor, `importState` and params give "invalid compiled machines", "invalid state", "params must be a JSON object". 157,081 bytes |
+| S2 | a40275c: `build-wasm.mjs` remaps `CARGO_HOME`, the checkout and the toolchain's `rust-src` (to `/rustc/<commit>`, where std's own paths point) and fails if the home, `CARGO_HOME`, checkout or `rust-src` path remains; strips the producers and target-features sections. Only `/rustc/<commit>/…` and `/cargo/registry/…` remain. 156,772 bytes |
+| S3 | 6dfb3df: `NIGHTLY = "nightly-2026-09-26"` in `build-wasm.mjs`, which installs it (`rustup toolchain install`, a no-op when present) with `rust-src` and wasm32, so CI, release and local builds share one pin: no workflow change; `.mise.toml` says so (D7-3 said the jobs and mise would install it). 136,735 bytes (133.5 KiB; −48% from 263,192) |
+| S4 | budget 154 KiB (NFR-8_AC-2); DESIGN-NFR, DESIGN-ENG, DESIGN-HOST, ARCHITECTURE 0.7.0, rust-rules (keep the two impls in step), CHANGELOG, this section |

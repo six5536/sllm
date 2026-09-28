@@ -17,7 +17,7 @@ flowchart LR
     Checks --> Wasm[wasm: core no_std build, build-wasm.mjs, test:wasm]
     Checks --> Cov[coverage: llvm-cov, 90 percent lines per crate group]
     Checks --> Deny[cargo-deny: licenses, bans, sources]
-    Wasm --> Budget{wasm size over 300 KiB?}
+    Wasm --> Budget{wasm size over 154 KiB?}
     Budget -->|yes| Fail[job fails]
     Budget -->|no| Summary[size in job summary]
     Tag[Version tag] --> Release[release.yml]
@@ -46,8 +46,9 @@ packages/smllm-wasm/test/        # smoke.test.mjs + dev.json (TEST-3)
 
 ### Architectural Decisions
 
-- WASM SIZE BUDGET 300 KIB: set after P3 at ~15% over the first measured 258 KiB (web build, after `wasm-opt -Oz`); enforced in `scripts/build-wasm.mjs`, reported via `$GITHUB_STEP_SUMMARY`. Alternatives: report only
-- SERDE_JSON IN SMLLM-WASM: compiled machines and store state cross as JSON with `serde_json`; fits the budget, so no smaller JSON crate was added (PLAN-001 §12). Alternatives: miniserde, hand-rolled parser
+- WASM SIZE BUDGET 154 KIB: ~15% over the 133.5 KiB measured after PLAN-007 (web build, after `wasm-opt -Oz`; first budget 300 KiB over 258 KiB); enforced in `scripts/build-wasm.mjs`, reported via `$GITHUB_STEP_SUMMARY`. Alternatives: report only
+- MINISERDE IN SMLLM-WASM: compiled machines and store state cross as JSON with miniserde, through smllm-core's `miniserde` feature, whose JSON matches the `serde` feature's byte for byte (core tests with both features, run by the gate); serde_json's per-type decoders were ~38% of the wasm (PLAN-007 D7-1). Alternatives: serde_json (PLAN-001 §12; 81 KB larger), nanoserde (traps or hangs on some malformed JSON), hand-rolled parser
+- WASM BUILT ON A PINNED NIGHTLY: `build-wasm.mjs` installs and uses one dated nightly (`NIGHTLY`) for `-Zbuild-std` with `optimize_for_size` and `-Cpanic=immediate-abort` (−20 KB; a panic is a bare trap), remaps build paths out of the binary and fails if one remains, and strips the producers and target-features sections (PLAN-007 D7-3, D7-4). The CLI and the core's no_std check stay on stable. Alternatives: stable std (larger), talc allocator (−7 KB; kept std's dlmalloc for safety, D7-2)
 - CORE BUILT FOR WASM SEPARATELY: `cargo test` links std and masks `no_std` breakage, so CI builds `smllm-core --no-default-features --target wasm32-unknown-unknown`
 - LIVE TEST OPT-IN BY ENV: `live-e2e.mjs` exits 2 without `SMLLM_LIVE=1` and is referenced by no workflow or hook
 - COVERAGE GATE: nightly `cargo llvm-cov` with ≥ 90% lines separately for library crates and for the app, excluding `smllm-wasm`
@@ -84,7 +85,7 @@ pub struct Host<'a> {
 
 ### Core Types
 
-- WASM BUDGET: `BUDGET = 300 * 1024` bytes in `scripts/build-wasm.mjs`, compared with the size of the `web` target's `smllm_wasm_bg.wasm` after `wasm-opt -Oz`; the script prints `smllm_wasm_bg.wasm: <bytes> bytes (<KiB> KiB, budget 300 KiB)`, which CI appends to the job summary
+- WASM BUDGET: `BUDGET = 154 * 1024` bytes in `scripts/build-wasm.mjs`, compared with the size of the `web` target's `smllm_wasm_bg.wasm` after `wasm-opt -Oz`; the script prints `smllm_wasm_bg.wasm: <bytes> bytes (<KiB> KiB, budget 154 KiB)`, which CI appends to the job summary
 
 ## Correctness Properties
 
@@ -97,7 +98,7 @@ pub struct Host<'a> {
 
 ### Budget and gate failures
 
-- WASM OVER BUDGET: `build-wasm.mjs` prints `error: … over its 300 KiB budget (NFR-8)` and exits 1
+- WASM OVER BUDGET: `build-wasm.mjs` prints `error: … over its 154 KiB budget (NFR-8)`; a remaining build path prints `error: … holds the build path <path> (PLAN-007 D7-4)` and exits 1
 - LIVE TEST NOT ENABLED: `live-e2e.mjs` refuses with exit 2 without `SMLLM_LIVE=1`
 
 ### Strategy
@@ -148,7 +149,7 @@ SOURCE: .zen/specs/REQ-NFR-quality.md, .zen/specs/REQ-TEST-testing.md
 - NFR-6_AC-2 → n/a [n/a] release policy
 - NFR-7_AC-1 → n/a [n/a] repository rule; all files within 800 lines
 - NFR-8_AC-1 → HOST-Wasm — CI `wasm` job
-- NFR-8_AC-2 → HOST-Wasm — `scripts/build-wasm.mjs` budget 300 KiB
+- NFR-8_AC-2 → HOST-Wasm — `scripts/build-wasm.mjs` budget 154 KiB
 - NFR-9_AC-1 → ENG-Engine
 - TEST-1_AC-1 → ENG-Engine [partial] tool description and instructions block not snapshotted
 - TEST-2_AC-1 → HOST-Claude [partial] `dev` example and reopen not driven end to end
@@ -163,8 +164,10 @@ SOURCE: .zen/specs/REQ-NFR-quality.md, .zen/specs/REQ-TEST-testing.md
 - insta (1): snapshot tests
 - assert_cmd (2): end-to-end binary tests
 - binaryen (npm): `wasm-opt`
+- miniserde (0.1): smllm-wasm's JSON, via smllm-core's `miniserde` feature
 - wasm-bindgen-cli (0.2): JS glue generation
 
 ## Change Log
 
 - 0.1.0 (2026-09-25): Initial design
+- 0.2.0 (2026-09-28): Smaller wasm (PLAN-007): miniserde, pinned-nightly build-std, no build paths; budget 154 KiB

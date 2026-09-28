@@ -23,6 +23,7 @@
 - Do NOT use `BTreeSet`/`BTreeMap` in `smllm-core`: each element type instantiates the whole B-tree machinery. Use `crate::utils::SmallMap` (a sorted `Vec`, key order, binary search, shifted insert; serialises as a JSON object).
 - Use ASCII case ops (`to_ascii_lowercase`/`to_ascii_uppercase`) for ASCII data (names, env var names); `to_lowercase`/`to_uppercase` drag the Unicode case-folding tables into the binary.
 - Avoid `{:?}`/`Debug` formatting in non-test code paths of `smllm-core` — it pulls each type's `Debug` impl (and more `core::fmt` machinery) into the release wasm.
+- Every type the core serialises has a `miniserde` impl beside its `serde` derive (`src/mini.rs`, or a `miniserde` derive with a `serde(rename)` per camelCase name), writing the same JSON byte for byte; add each new or changed type to `mini::tests`. `smllm-wasm` uses miniserde only: never add serde or serde_json to it (PLAN-007 D7-1).
 - IO, time, randomness, regex and process spawning come from the host traits in `smllm_core::host` (NFR-1); never add a dependency to `smllm-core` that needs `std`.
 
 ## Unsafe Rust Code
