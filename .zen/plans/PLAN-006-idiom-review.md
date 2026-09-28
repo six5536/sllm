@@ -61,6 +61,13 @@ with the gate passing; specs updated with the code.
   Prettier `--config`, `STARSHIP_CONFIG`); layering is the idiom for key/value overrides
   (`git -c`, `cargo --config`), which smllm does not have. One level is replaced through
   `XDG_CONFIG_HOME` (user) and the working directory (project).
+- D6-6 (I-6): now. `[state] dir = "…"` in `config.toml` (the file's style, like
+  `[machines] files`), relative to that file or absolute, default `state`; each machine of the
+  file keeps its instances in `<dir>/<machine>/`, and `state/.gitignore` is written in `<dir>`
+  as today. No environment variable: it would be global, and a user and a project machine of
+  one id would share state (mypy / Ruff / pytest / Terraform checked: a config setting is the
+  common form). `validate` errors when two loaded configs give one machine id the same dir.
+  STO-1 gains the setting.
 
 ## 5. Outcome
 
