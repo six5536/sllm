@@ -39,6 +39,9 @@ files = []
 
 # [idle]
 # on-enter = { file = "idle.md" }   # optional extra text for the idle list
+
+# [state]
+# dir = "state"   # where these machines keep their instances
 "#
 }
 

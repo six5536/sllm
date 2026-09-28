@@ -25,7 +25,7 @@ AS AN agent user, I WANT sessions kept per user and instances kept with the proj
 
 ACCEPTANCE CRITERIA
 
-- [ ] STO-1_AC-1 [ubiquitous]: The system SHALL store sessions and bindings under the user state dir, and each state machine's instances and history in a `state/` directory beside the config that lists that machine.
+- [ ] STO-1_AC-1 [ubiquitous]: The system SHALL store sessions and bindings under the user state dir, and each state machine's instances and history in the state directory of the config that lists that machine: its `[state] dir` (relative to the config, or absolute), else `state/` beside it.
 - [ ] STO-1_AC-2 [event]: WHEN the system first writes an instance under a `state/` directory THEN it SHALL create a `.gitignore` there that ignores the directory's contents.
 
 ### STO-2: A session is bound to its configs at creation [MUST]

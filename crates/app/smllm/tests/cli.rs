@@ -457,3 +457,25 @@ fn smllm_config_selects_the_config_for_new_and_harness() {
     );
     assert!(!w.project.join("CLAUDE.md").exists());
 }
+
+// `[state] dir` moves where a config's instances are kept (STO-1,
+// PLAN-006 D6-6).
+// @zen-test: STO-1_AC-1
+#[test]
+fn state_dir_moves_the_instances() {
+    let w = World::showcase("state-dir");
+    let config = w.read(".smllm/config.toml") + "\n[state]\ndir = \"../kept\"\n";
+    w.write(".smllm/config.toml", &config);
+    let o = w.run(&[
+        "fire",
+        "enter",
+        "--param",
+        "stateMachine=showcase",
+        "--json",
+    ]);
+    assert_eq!(o.code, 0, "{}{}", o.stdout, o.stderr);
+    let open = w.project.join("kept/showcase/open");
+    assert_eq!(std::fs::read_dir(&open).unwrap().count(), 1, "{open:?}");
+    assert!(w.project.join("kept/.gitignore").is_file());
+    assert!(!w.project.join(".smllm/state").exists());
+}

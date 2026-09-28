@@ -430,3 +430,43 @@ fn a_run_load_checks_prompt_files_without_reading_them() {
     }
     std::fs::remove_dir_all(dir).ok();
 }
+
+// `[state] dir` moves a config's instances: relative to the config, or
+// absolute; `state/` beside it by default (STO-1, PLAN-006 D6-6).
+// @zen-test: STO-1_AC-1
+#[test]
+fn state_dir_is_state_beside_the_config_unless_set() {
+    let dir = temp_dir("statedir");
+    std::fs::write(
+        dir.join("dev.smllm.yaml"),
+        "id: dev\ninitial: A\nmeta: {smllm: 1}\nstates:\n  A: {on: {go: B}}\n  B: {type: final}\n",
+    )
+    .unwrap();
+    let elsewhere = temp_dir("statedir-abs");
+    for (table, want) in [
+        ("", dir.join("state")),
+        ("[state]\ndir = \"../kept\"\n", dir.join("../kept")),
+        (
+            &format!("[state]\ndir = {:?}\n", elsewhere.display().to_string()),
+            elsewhere.clone(),
+        ),
+    ] {
+        let config = dir.join("config.toml");
+        std::fs::write(
+            &config,
+            format!("[machines]\nfiles = [\"dev.smllm.yaml\"]\n{table}"),
+        )
+        .unwrap();
+        let loaded = load_configs(
+            &[ConfigFile {
+                path: config,
+                origin: Origin::Project,
+            }],
+            Mode::Check,
+        );
+        assert!(!loaded.findings.has_errors(), "{:?}", loaded.findings.0);
+        assert_eq!(loaded.machines[0].state_dir, want, "{table}");
+    }
+    std::fs::remove_dir_all(dir).ok();
+    std::fs::remove_dir_all(elsewhere).ok();
+}

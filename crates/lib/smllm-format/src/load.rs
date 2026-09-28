@@ -54,7 +54,8 @@ pub struct MachineSource {
     pub file: PathBuf,
     /// The config that lists it.
     pub config: PathBuf,
-    /// Its instances: `state/` beside that config (STO-1).
+    /// Its instances: that config's `[state] dir`, default `state/` beside
+    /// it (STO-1).
     pub state_dir: PathBuf,
 }
 
@@ -83,6 +84,8 @@ struct ConfigToml {
     machines: MachinesToml,
     #[serde(default)]
     idle: Option<IdleToml>,
+    #[serde(default)]
+    state: StateToml,
     /// `[harness.<name>] without = [...]`: parts the user declined (read by
     /// `smllm harness`).
     #[serde(default)]
@@ -95,6 +98,15 @@ struct ConfigToml {
 struct MachinesToml {
     #[serde(default)]
     files: Vec<String>,
+}
+
+/// `[state] dir`: where this file's machines keep their instances,
+/// relative to the file (or absolute); default `state` (STO-1).
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+struct StateToml {
+    #[serde(default)]
+    dir: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -288,7 +300,7 @@ pub fn load_configs(files: &[ConfigFile], mode: Mode) -> Loaded {
                 ));
                 continue;
             }
-            // Instances live in `state/<id>/` beside this config: on a
+            // Instances live in `<state dir>/<id>/`: on a
             // case-insensitive file system (macOS, Windows) `Dev` and `dev`
             // would share it.
             if let Some(other) = seen_here
@@ -312,7 +324,7 @@ pub fn load_configs(files: &[ConfigFile], mode: Mode) -> Loaded {
                 id: machine.id.clone(),
                 file: file.clone(),
                 config: cf.path.clone(),
-                state_dir: dir.join("state"),
+                state_dir: dir.join(parsed.state.dir.as_deref().unwrap_or("state")),
             };
             if let Some(i) = out.config.machines.iter().position(|m| m.id == machine.id) {
                 out.findings.push(finding(
