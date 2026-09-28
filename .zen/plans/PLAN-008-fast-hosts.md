@@ -2,7 +2,7 @@
 
 | Meta               | Value                                                              |
 | ------------------ | ------------------------------------------------------------------ |
-| Status             | in-progress (decided D8-1..D8-20; implementation next)             |
+| Status             | in-progress (decided D8-1..D8-22; implementation next)             |
 | Workflow direction | top-down (requirements → design → code → example → docs)           |
 | Traces to          | NFR (new latency requirement), IDLE (parked list), ENG-Host (MemoryStore), HOST-5, HOST-12, HOST-Mcp, HOST-Wasm, DEC-4..DEC-7, TEST-3, NFR-8, PLAN-006 D6-3 |
 
@@ -40,6 +40,8 @@ Causes of the growth (in `smllm-core`, so the CLI has them too):
    defaults, which clone every instance of the machine, then search or filter.
 
 ## 3. Issues to decide
+
+The options as drafted; §5 records what was decided and governs where they differ.
 
 ### A. Engine scaling (all hosts)
 
@@ -95,19 +97,19 @@ wasm or package is touched) passing, and updates the specs it touches. The wasm 
 | F1 | Requirements and designs in the new terms (D8-20) | — |
 | F2 | The renames in code, agent text, status line, docs (D8-4) | gate; snapshots; wasm tests; no `park` / `parked` / `suspended` left outside plans and the changelog's past entries |
 | F3 | `npm run bench` (D8-1, D8-9): wasm, MCP and CLI per-call times at 0 / 100 / 1,000 instances | the baseline table in §6 |
-| F4 | Engine scaling: merge sort, idle cap and `listPaused`, `MemoryStore` indexes (D8-2, D8-3, D8-5, D8-6), then D8-7's findings | the scaling check in CI; the proptest; idle snapshots; bench |
+| F4 | Engine scaling: merge sort, idle cap and `listPaused`, `MemoryStore` indexes, `Store::count` / `recent`, the file store's shelf per status (D8-2, D8-3, D8-5, D8-6, D8-21), then D8-7's findings | the scaling check in CI; the proptest; store contract tests; idle snapshots; bench |
 | F5 | MCP config cache (D8-8; D8-10 if it shows) | an edited machine file is picked up on the next call, including within one timestamp tick; bench |
 | F6 | The tool definition in core; `Engine::call`; `tool()` / `callTool()` (D8-12, D8-13) | the MCP server serves core's tool; one call table answered alike by MCP and wasm |
 | F7 | TypeScript toolchain (D8-18) | smoke tests unchanged; `tsc --noEmit` clean |
 | F8 | Write-through storage: the wasm store forwards `put`; `Storage`, `memoryStorage`, `nodeFileStorage` (D8-16) | a stored engine restored from its folder equals the original; per-call cost flat from 100 to 1,000 instances |
-| F9 | `smllm-wasm/node`: `nodeHost` and its supervisor (D8-14, D8-15) | Node tests mirroring the CLI runner's (shell, exec, env, cwd, exit + tail, timeout incl. a grandchild, spawn failure, missing run) |
+| F9 | `compile` paths relative to the config (D8-22); `smllm-wasm/node`: `nodeHost` and its supervisor (D8-14, D8-15) | Node tests mirroring the CLI runner's (shell, exec, env, cwd, exit + tail, timeout incl. a grandchild, spawn failure, missing run) |
 | F10 | `examples/wasm/` (D8-19), run and type-checked in CI | CI runs it; it prints the per-turn overhead |
 | F11 | README "WASM or CLI?" with the final bench table (D8-17), ARCHITECTURE, CHANGELOG, §6 | — |
 
 ## 5. Decisions
 
 - D8-1 (E-1): targets as (a): in-process (wasm) ≤ 1 ms per event with 1,000 instances, MCP call
-  ≤ 2 ms, idle text bounded; `npm run bench` prints them; CI enforces only the scaling check
+  ≤ 2 ms (with 100 paused and 1,000 completed instances, on local disk), idle text bounded; `npm run bench` prints them; CI enforces only the scaling check
   (time at 1,000 instances ≤ 5× time at 100).
 - D8-2 (A-2): the idle list shows at most 10 paused instances, most recently updated first, then
   "…and K more paused: fire listPaused to list them all". A realistic maximum is ~100.
@@ -149,8 +151,9 @@ wasm or package is touched) passing, and updates the specs it touches. The wasm 
   (one shared table of calls and answers tests both). The wrapper's
   `callTool({ session?, event?, params? })` returns the full reply; bad arguments return
   `{ ok: false, text: "error: …" }`, never throw.
-- D8-14 (C-3): ship `smllm-wasm/node` now: `nodeHost({ machineDir, timeoutSecs? })`, a command
-  host with DEC-4..DEC-7 semantics (`cwd` relative to `machineDir`).
+- D8-14 (C-3): ship `smllm-wasm/node` now: `nodeHost({ configDir, timeoutSecs? })` (after
+  D8-22; was `machineDir`), a command host with DEC-4..DEC-7 semantics (`cwd` relative to
+  `configDir`, else the session's `cwd`).
 - D8-15 (C-4): unix: `spawnSync("sh")` runs a small POSIX supervisor (`set -m`: the command in
   its own process group, a background timer that kills the group on expiry, the timer stopped
   as soon as the command is reaped, the command's status passed through); Windows:
@@ -164,6 +167,16 @@ wasm or package is touched) passing, and updates the specs it touches. The wasm 
   per record, atomic; history JSONL in the CLI's line format; one process per folder); browsers
   implement it (the example shows IndexedDB's shape). `exportState` stays for backups and moves.
   Not the CLI's file layout. Extends PLAN-006 D6-4.
+- D8-21 (DC-5): a shelf per status in the file store: `active/`, `interrupted/`, `paused/`,
+  `done/` (was `open/` + `done/`; nothing released, no migration). `Store` gains
+  `count(machine, status)` and `recent(machine, status, limit)`, whose defaults filter a scan.
+  The file store counts by listing a shelf (no reads; the status line too) and serves `recent`
+  from a listing with file times, reading only the newest `limit` files, then ordering them by
+  `updated`; `MemoryStore` serves both from D8-6's indexes. The idle list takes each machine's
+  10 most recent, merges, keeps 10; only `listPaused` reads all.
+- D8-22 (DC-6): `compile` rewrites a relative command `cwd` to be relative to the compiled
+  config file (`cwd: build` in `machines/dev.yaml` → `machines/build`; absolute stays); still
+  the same bytes from any folder (D6-2's goal). Hosts need one base folder: the config's.
 - D8-17 (C-6): a "WASM or CLI?" section in the package README with the bench's table: wasm for
   browsers, workers, serverless, millisecond models, JS guards / actions / storage; the CLI (npm
   `smllm`, `smllm mcp`) for shared files with locking, the status line, `instance list`, hooks.
@@ -181,6 +194,31 @@ wasm or package is touched) passing, and updates the specs it touches. The wasm 
   terms), REQ-INST / REQ-TURN / REQ-STL / REQ-CFG (the renames; reserved names include `pause` and
   `listPaused`), REQ-HOST (a JS-host requirement: D8-12..D8-16), REQ-TEST (TEST-3: the example and
   the type check); designs ENG, IDLE, HOST, NFR, STO follow. Written first, in the new terms.
+
+### 5.1 Double-check (2026-09-28)
+
+Resolved in the plan:
+
+- DC-1: `listPaused` is a view for the stop logic: it writes nothing to the session either, so
+  it does not count as an event fired since a stop block (the runaway rule, PLAN-003); the
+  agent that only lists and stops again is let go, as after a view.
+- DC-2: the scaling check covers `fire`, `enter`, `pause`, `stop` and `view` at 100 vs 1,000
+  instances; not `listPaused`, whose output is linear in the paused count by design.
+- DC-3: D8-8's racy check allows for the file system's clock differing from the process's
+  (a network or VM share): "not clearly older" means older than the cache's build time minus a
+  2-second margin.
+- DC-4: `nodeFileStorage` names each record's file from its key the way the file store names
+  ref markers (lowercase-safe, a hash suffix when needed): binding keys hold arbitrary host
+  session ids, and case-insensitive file systems must not merge two keys.
+
+Found, then decided:
+
+- DC-5 → D8-21: the file store's paused list read every `open/` instance file on each idle view
+  (and the status line's count did too): O(open instances) file reads per idle view through the
+  CLI and MCP, against D8-1's 2 ms. D8-6 fixed `MemoryStore` only.
+- DC-6 → D8-22: a compiled command's `cwd` was relative to its own machine file (D6-2), but
+  compiled output does not record each machine's folder, so D8-14's single `machineDir` was
+  wrong for a config whose machine files sit in different folders.
 
 ## 6. Outcome
 
