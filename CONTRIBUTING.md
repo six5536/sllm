@@ -12,7 +12,8 @@ Toolchains are pinned and managed with [mise](https://mise.jdx.dev/):
 - `rust-toolchain.toml` pins the project toolchain (`1.98.1`, with `rustfmt` and
   `clippy`).
 - `.mise.toml` pins everything else: Node, a `nightly` Rust used only by the
-  coverage job, `zig` (the cross C compiler behind `cargo-zigbuild`, whose
+  coverage job (`npm run build:wasm` installs its own dated nightly, with
+  `rust-src`, for the size-optimised wasm), `zig` (the cross C compiler behind `cargo-zigbuild`, whose
   version the release workflow reads straight out of this file), and the cargo
   tools (`cargo-nextest`, `cargo-llvm-cov`, `cargo-zigbuild`).
 
@@ -74,6 +75,8 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 npm run test:launcher
 npm run verify-version
 npm run coverage:check     # slow; needs the nightly toolchain
+npm run build:wasm         # the wasm: size budget, no build paths (installs its nightly)
+npm run test:wasm          # drives the wasm from Node
 ```
 
 `cargo-deny check licenses bans sources` also gates CI, but only fails when you
