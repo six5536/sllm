@@ -13,7 +13,7 @@ The smllm state machine file format (CFG): a strict subset of an XState v5 machi
 - INSTANCE: One piece of work moving through a state machine
 - REF: An instance's external id (e.g. an issue id), set once through the ref param
 - FINDING: One reported problem in a file: file, line, YAML path, level (error, warning, info), message, fix hint and rule id
-- BUILT-IN EVENT: An event smllm provides in every machine (e.g. `park`, `unmatched`, `yield`); see REQ-IDLE
+- BUILT-IN EVENT: An event smllm provides in every machine (e.g. `pause`, `unmatched`, `yield`); see REQ-IDLE
 
 ## Stakeholders
 
@@ -192,3 +192,4 @@ ACCEPTANCE CRITERIA
 ## Change Log
 
 - 0.1.0 (2026-09-25): Initial requirements from PLAN-001 §3
+- 0.2.0 (2026-09-28): Terms pause and interrupted (were park and suspend; PLAN-008 D8-4)

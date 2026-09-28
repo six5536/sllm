@@ -70,7 +70,8 @@ crates/lib/smllm-core/src/
 ├── json.rs, json/      ENG-Json: smllm-json impls (`json` feature) + serde equivalence tests
 ├── record/             INST-Records, STO-Records (DESIGN-INST)
 ├── render/             TURN-Render (DESIGN-TURN)
-└── utils/              SmallMap, insertion_sort_by_key
+├── tool.rs           ENG-Engine: the `smllm` tool definition (name, description, input schema)
+└── utils/              SmallMap, merge_sort_by
 crates/lib/smllm-core/tests/
 ├── support/mod.rs      fake host + hand-lowered `dev` and `help` machines
 ├── engine.rs           protocol tests + insta snapshots
@@ -81,12 +82,14 @@ crates/lib/smllm-core/tests/
 ### Architectural Decisions
 
 - NO_STD CORE WITH HOST TRAITS: `smllm-core` is `no_std` + `alloc`; IO, time and randomness come through `Store`, `Guard`, `Action`, `InstructionSource`, `Matcher`, `Clock` and `Ids`, bundled per call in a `Host` struct of `&mut dyn`/`&dyn` trait objects. Trait objects keep one monomorphised engine in the wasm and let the CLI, wasm and test hosts differ freely. Alternatives: generic `Engine<H: Host>` (code bloat per host), async traits
-- SMALLMAP AND INSERTION SORT: string-keyed maps are a sorted `Vec` with binary search (`SmallMap`) and the only sort is a stable insertion sort; `BTreeMap` and std's sort pull large generic code into the wasm, and the engine's collections hold a handful of items. Alternatives: `BTreeMap`, `alloc` slice sort
+- SMALLMAP AND MERGE SORT: string-keyed maps are a sorted `Vec` with binary search (`SmallMap`) and the only sort is a small stable merge sort (`merge_sort_by`, O(n log n), a scratch buffer); `BTreeMap` and std's sort pull large generic code into the wasm (std's sort ~23 KB). Insertion sort went with PLAN-008 D8-5: the paused list can hold hundreds, and it was quadratic. Alternatives: `BTreeMap`, `alloc` slice sort, insertion sort
+- ONE TOOL DEFINITION: the agent-facing `smllm` tool (name, description carrying `AGENT_RULES`, input schema as a JSON string constant) lives in the core, so the MCP server and the wasm offer the same tool (HOST-13, PLAN-008 D8-12); `Engine::call` does the view-or-fire choice for both (D8-13)
+- COUNT AND RECENT ON STORE: the idle list needs a count and the newest few of a status, not every instance: `Store::count` / `Store::recent`, whose defaults filter a scan so any store is correct, and which the file store answers from shelf listings and `MemoryStore` from its indexes (PLAN-008 D8-21)
 - ONE FENCE PER REPLY: every reply, including a final state followed by the idle list, is exactly one `<smllm>` block (DESIGN-TURN). Alternatives: one block per logical part
 - SETREF CHECKED BEFORE THE TRANSITION: when a picked transition carries `setRef`, the ref is validated (INST-3) before `take`, so a bad ref rejects the call with nothing run or saved. Alternatives: fail inside the action list (would leave a half-run transition)
 - FAILED COMMANDS SKIP ONLY THEIR LIST'S COMMANDS: a failed command action skips the remaining commands of the same action list; prompts in that list are still gathered and later lists still run. This is the reading of ACT-3 ("skips the rest of its list") that keeps instructions visible to the agent. Alternatives: skip the whole list including prompts; abort all later lists
 - OPTIMISTIC INSTANCE VERSIONS: each write carries `version = stored + 1`; the store rejects anything else with `HostError::Conflict`, and the loser drops to idle (INST-8). Commands have already run by then; only the persisted state is protected. Alternatives: lock for the whole call (holds the lock across long commands)
-- ONE SUSPENDED SLOT PER SESSION: `Session.suspended` holds one instance; a second `unmatched` to idle parks the older suspended instance with a header note. Alternatives: a stack of suspended instances
+- ONE INTERRUPTED SLOT PER SESSION: `Session.interrupted` holds one instance; a second `unmatched` to idle pauses the older interrupted instance with a header note. Alternatives: a stack of interrupted instances
 - READ-ONLY VIEW RE-RENDERS PROMPTS ONLY: `view` shows the state's entry prompt actions (shared before, own, shared after) without running commands or counting a visit (ENG-5)
 - PER-CALL CONFIG IN THE APP: the CLI host builds a fresh `Engine` from the config files on every hook/tool call, so ENG-4's "YAML edits need a reload" is satisfied trivially
 
@@ -122,7 +125,7 @@ pub enum Value { Str(String), Int(i64), Bool(bool), List(Vec<String>) }
 
 ### ENG-Host
 
-What a host supplies, borrowed for one call. `MemoryStore` is the in-memory `Store` used by tests and by `smllm-wasm` (which persists a JSON snapshot). `put_instance` enforces the version rule; the app's file store (STO-FileStore) does the same under a lock (DESIGN-INST).
+What a host supplies, borrowed for one call. `MemoryStore` is the in-memory `Store` used by tests and by `smllm-wasm` (which hands each saved record to the JS host, HOST-14). Its fields are private; one constructor from saved state builds its indexes, derived and never serialised: by ref (machine + ref → id) and by status (machine + status → ids); `put_instance` is the one write path and updates both. `put_instance` enforces the version rule, and a ref another instance of the machine holds is `Conflict`, as in the app's file store (STO-FileStore), which does the same under a lock (DESIGN-INST). `count` and `recent` default to filtering `instances_with`; `recent` orders by `updated`, most recent first (PLAN-008 D8-6, D8-21).
 
 ```rust
 pub trait Store {
@@ -135,6 +138,10 @@ pub trait Store {
     /// Defaults filter `instances`; a store may answer from its layout (PLAN-005).
     fn instances_with(&mut self, machine: &str, status: Status) -> Result<Vec<Instance>, HostError>;
     fn instance_by_ref(&mut self, machine: &str, r#ref: &str) -> Result<Option<Instance>, HostError>;
+    /// How many instances of `machine` have `status` (the idle list's "…and K more", the status line).
+    fn count(&mut self, machine: &str, status: Status) -> Result<usize, HostError>;
+    /// The `limit` most recently updated instances of `machine` with `status`, newest first.
+    fn recent(&mut self, machine: &str, status: Status, limit: usize) -> Result<Vec<Instance>, HostError>;
     /// version must be stored+1 (or 1 when new), else HostError::Conflict.
     fn put_instance(&mut self, i: &Instance) -> Result<(), HostError>;
     fn append_history(&mut self, machine: &str, id: &str, e: &HistoryEntry) -> Result<(), HostError>;
@@ -159,7 +166,7 @@ pub struct Host<'a> {
 
 The public protocol (HOST-1). `bind` reuses a harness binding or creates a session in idle (key `sm-` + 6 Crockford base32 chars from `Ids`); `view` and `menu` are read-only; `fire` dispatches to idle or machine handling and, with no key, only `enter` creates a session; `stop` returns `Allow` for unknown, idle or yielded sessions, `Runaway` when `stop_hook_active` and `session.blocked` (blocked before, no event fired since), else `Block` with the menu, setting and saving `blocked`; `fire` clears `blocked` (saved with the session by every path that records the event); `prompt_submitted` clears `yielded` and `blocked` (PLAN-003 F6). `unsupported` walks every guard/action (shared, entry, exit, transitions, always) and lists host kinds the given `Guard`/`Action` do not support.
 
-IMPLEMENTS: ENG-5_AC-1, ACT-6_AC-1, NFR-9_AC-1, HOST-3_AC-1, HOST-4_AC-1, TURN-4_AC-1, TURN-5_AC-1, TURN-6_AC-1, TURN-8_AC-1
+IMPLEMENTS: ENG-5_AC-1, ACT-6_AC-1, NFR-9_AC-1, HOST-3_AC-1, HOST-4_AC-1, HOST-13_AC-1, HOST-13_AC-2, TURN-4_AC-1, TURN-5_AC-1, TURN-6_AC-1, TURN-8_AC-1
 
 ```rust
 impl Engine {
@@ -173,7 +180,13 @@ impl Engine {
                 params: &[(String, String)], bind: &Bind<'_>) -> Result<Reply, Error>;
     pub fn stop(&self, host: &mut Host<'_>, key: &str, stop_hook_active: bool) -> Result<Stop, Error>;
     pub fn prompt_submitted(&self, host: &mut Host<'_>, key: &str) -> Result<(), Error>;
+    /// The tool call (HOST-13): no event → `view` (needs a key), else `fire`.
+    pub fn call(&self, host: &mut Host<'_>, key: Option<&str>, event: Option<&str>,
+                params: &[(String, String)], bind: &Bind<'_>) -> Result<Reply, Error>;
 }
+pub const TOOL_NAME: &str = "smllm";
+pub fn tool_description() -> String;          // AGENT_RULES + how to call (HOST-12)
+pub const TOOL_INPUT_SCHEMA: &str = "{…}";    // JSON: session?, event?, params? (strings)
 pub struct Bind<'s> { pub harness: &'s str, pub host_session: Option<&'s str>,
                       pub cwd: &'s str, pub configs: &'s [String] }
 pub struct Reply { pub ok: bool, pub session: String, pub location: Location, pub text: String }
@@ -207,24 +220,25 @@ impl Turn<'_, '_> {
 
 ### ENG-Offers
 
-Builds the offered events and checks calls against them. In a machine state: each `on` event (guidance = first transition `description`, else `meta.events` description; param prompt = `meta.paramDescriptions`, else the param's description), then `resume` (fallback state with an interrupted state), `yield` (with an optional `note` param), `park`, `unmatched`; none in a final state; only `park` and `unmatched` when the saved state is missing (IDLE-3). Built-in guidance takes the machine's override when present (IDLE-1). `idle_offers` is in DESIGN-IDLE. `check_params` rejects unknown params, missing required ones, values outside `enum`, and values failing `pattern` (via `Matcher`), returning params in declaration order.
+Builds the offered events and checks calls against them. In a machine state: each `on` event (guidance = first transition `description`, else `meta.events` description; param prompt = `meta.paramDescriptions`, else the param's description), then `resume` (fallback state with an interrupted state), `yield` (with an optional `note` param), `pause`, `unmatched`; none in a final state; only `pause` and `unmatched` when the saved state is missing (IDLE-3). Built-in guidance takes the machine's override when present (IDLE-1). `idle_offers` is in DESIGN-IDLE. `check_params` rejects unknown params, missing required ones, values outside `enum`, and values failing `pattern` (via `Matcher`), returning params in declaration order.
 
 IMPLEMENTS: ENG-1_AC-1, IDLE-1_AC-1, TURN-3_AC-1
 
 ```rust
-pub const BUILTINS: [&str; 5] = ["enter", "resume", "park", "unmatched", "yield"];
+pub const BUILTINS: [&str; 6] = ["enter", "resume", "pause", "unmatched", "yield", "listPaused"];
+// `listPaused`: idle only, offered when the idle list was cut short (IDLE-7)
 pub struct Offer { pub name: String, pub description: Option<String>, pub params: Vec<ParamView> }
 pub struct ParamView { pub name: String, pub required: bool, pub enum_values: Vec<String>,
                        pub pattern: Option<String>, pub description: Option<String> }
 pub(crate) fn machine_offers(m: &Machine, state: Option<&State>, inst: &Instance) -> Vec<Offer>;
-pub(crate) fn idle_offers(config: &Config, suspended: Option<(&Machine, &Instance)>) -> Vec<Offer>;
+pub(crate) fn idle_offers(config: &Config, interrupted: Option<(&Machine, &Instance)>) -> Vec<Offer>;
 pub(crate) fn check_params(offer: &Offer, given: &[(String, String)], m: &dyn Matcher)
     -> Result<Vec<(String, String)>, String>;
 ```
 
 ### ENG-Machine
 
-Events fired while holding an instance. `held(turn, persist)` loads the instance and confirms this session holds it and it is active. Otherwise it returns `Gone`: `Unconfigured` when the machine is missing from the (current) config — reported, never saved, so a briefly invalid file cannot lose the session's place; `Moved` when another session holds it or it is not active/present — the session drops to idle in the store only when `persist` (event calls and the stop hook). `fire` hands a `Gone` to `when_gone`: after `Moved`, `enter` goes on from idle (the session already is); with the machine `Unconfigured`, `park` and `enter` let go of the instance (session only; the instance is untouched, a note says so), every other event gets the error reply (PLAN-003 F7, F12). `moved` drops prompts gathered by the call. Views never write (ENG-5). `Engine::stop` uses `held(persist)`: a moved instance is reported once as the block reason and the session goes idle (INST-7); an unconfigured machine lets the agent stop. `fire` checks offer + params (reject → error block, nothing written), then: `yield` sets `session.yielded`, bumps the version and appends history, replying with a `Yielded:` block; `park` runs exit, parks, goes idle; `unmatched` goes to the fallback state or suspends (IDLE-2); `resume` (in a fallback state) exits it and re-enters the interrupted state; any other event picks a transition (none → reject), then checks `setRef` when the chosen transition sets the ref (INST-3: a ref equal to the instance's own is a no-op; before any action runs, so a rejected call changes nothing but the guards it ran), clears `interrupted` when a transition leaves a fallback state for another state (a transition back into it keeps `resume`), then `take` + `settle` + `commit`. `commit` completes the instance on a final state (IDLE-5), clears `yielded`, bumps the version and calls `save`, which writes instance → history (notes, `Passed through:`, guard trace, failures) → session; a store `Conflict` turns into `moved`.
+Events fired while holding an instance. `held(turn, persist)` loads the instance and confirms this session holds it and it is active. Otherwise it returns `Gone`: `Unconfigured` when the machine is missing from the (current) config — reported, never saved, so a briefly invalid file cannot lose the session's place; `Moved` when another session holds it or it is not active/present — the session drops to idle in the store only when `persist` (event calls and the stop hook). `fire` hands a `Gone` to `when_gone`: after `Moved`, `enter` goes on from idle (the session already is); with the machine `Unconfigured`, `pause` and `enter` let go of the instance (session only; the instance is untouched, a note says so), every other event gets the error reply (PLAN-003 F7, F12). `moved` drops prompts gathered by the call. Views never write (ENG-5). `Engine::stop` uses `held(persist)`: a moved instance is reported once as the block reason and the session goes idle (INST-7); an unconfigured machine lets the agent stop. `fire` checks offer + params (reject → error block, nothing written), then: `yield` sets `session.yielded`, bumps the version and appends history, replying with a `Yielded:` block; `pause` runs exit, pauses, goes idle; `unmatched` goes to the fallback state or interrupts (IDLE-2); `resume` (in a fallback state) exits it and re-enters the interrupted state; any other event picks a transition (none → reject), then checks `setRef` when the chosen transition sets the ref (INST-3: a ref equal to the instance's own is a no-op; before any action runs, so a rejected call changes nothing but the guards it ran), clears `interrupted` when a transition leaves a fallback state for another state (a transition back into it keeps `resume`), then `take` + `settle` + `commit`. `commit` completes the instance on a final state (IDLE-5), clears `yielded`, bumps the version and calls `save`, which writes instance → history (notes, `Passed through:`, guard trace, failures) → session; a store `Conflict` turns into `moved`.
 
 IMPLEMENTS: ENG-2_AC-1, INST-3_AC-1, INST-6_AC-1, INST-7_AC-1, INST-8_AC-1, IDLE-2_AC-1, IDLE-5_AC-1
 
@@ -290,6 +304,9 @@ Records (`Session`, `Instance`, `HistoryEntry`) are in DESIGN-INST-instances.md.
 - ENG_P-4 [Never Rest In Always]: After every call, the state the session is located in has no `always` transitions
   VALIDATES: DEC-2_AC-1
 
+- ENG_P-5 [Indexes Match Scans]: After every step of any sequence of instance writes (create, pause, interrupt, resume, complete, set a ref) over several machines, `MemoryStore`'s `instance_by_ref`, `instances_with`, `count` and `recent` return what a plain scan of its instances returns
+  VALIDATES: INST-4_AC-1, IDLE-7_AC-1
+
 ## Error Handling
 
 ### Error
@@ -347,7 +364,7 @@ fn invariants_hold(steps in proptest::collection::vec(step(), 0..25)) {
 
 In-module tests for pure helpers; protocol tests in `tests/engine.rs` through a fake host (`Fake`: `MemoryStore`, scripted guard results by `run` string, failing actions, recorded action calls with env, in-memory prompt files, fixed clock, counting ids) and hand-lowered `dev` (the plan §3 example) and `help` (fallback state) machines.
 
-- AREAS: env naming (`issueId` → `ISSUE_ID`), guard description in traces, SmallMap, insertion sort, header/quote/UTC formatting, bind/rebind, enter/setRef/guards/always/final, park/enter/jump, takeover and moved, detour via idle and fallback, read-only view, failed actions, reopen, missing-state repair, idle rejections, unknown sessions, unsupported kinds
+- AREAS: env naming (`issueId` → `ISSUE_ID`), guard description in traces, SmallMap, merge sort, header/quote/UTC formatting, bind/rebind, enter/setRef/guards/always/final, pause/enter/jump, takeover and moved, detour via idle and fallback, read-only view, failed actions, reopen, missing-state repair, idle rejections, unknown sessions, unsupported kinds
 
 ### Integration Testing
 
@@ -362,7 +379,7 @@ SOURCE: .zen/specs/REQ-ENG-engine.md
 - ENG-1_AC-1 → ENG-Offers
 - ENG-2_AC-1 → ENG-Machine (ENG_P-1)
 - ENG-3_AC-1 → ENG-Turn (ENG_P-3)
-- ENG-4_AC-1 → ENG-Host InstructionSource read on every render; app reloads config per call; no @zen-impl marker
+- ENG-4_AC-1 → ENG-Host InstructionSource read on every render; the app loads config per call, the MCP server from a cache checked each call (HOST-16); no @zen-impl marker
 - ENG-5_AC-1 → ENG-Engine
 
 ## Library Usage
@@ -383,3 +400,4 @@ SOURCE: .zen/specs/REQ-ENG-engine.md
 
 - 1.0.0 (2026-09-25): Initial design, documenting the P3 implementation
 - 1.1.0 (2026-09-28): `json` feature over `smllm-json`, ENG-Json (PLAN-007)
+- 1.2.0 (2026-09-28): Terms pause / interrupted; `listPaused`; `Store::count` / `recent`; `MemoryStore` indexes and ENG_P-5; merge sort; the tool definition and `Engine::call` in the core (PLAN-008)

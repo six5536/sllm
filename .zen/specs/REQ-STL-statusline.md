@@ -58,8 +58,8 @@ AS A status line author, I WANT a stable JSON object, SO THAT I can build my own
 
 ACCEPTANCE CRITERIA
 
-- [x] STL-5_AC-1 [ubiquitous]: The system SHALL print one object with camelCase keys `session`, `idle`, `machine`, `state`, `visit`, `yielded`, `instance`, `suspended`, `parked`, every key present (`null` when not applicable) — D2-6
-- [x] STL-5_AC-2 [ubiquitous]: `instance` (the held instance) and `suspended` (the detoured-from instance) SHALL each be `null` or `{machine, kind, id, ref, label, status}`, where `label` is the ref once set, else the id — D2-8
+- [x] STL-5_AC-1 [ubiquitous]: The system SHALL print one object with camelCase keys `session`, `idle`, `machine`, `state`, `visit`, `yielded`, `instance`, `interrupted`, `paused`, every key present (`null` when not applicable) — D2-6
+- [x] STL-5_AC-2 [ubiquitous]: `instance` (the held instance) and `interrupted` (the detoured-from instance) SHALL each be `null` or `{machine, kind, id, ref, label, status}`, where `label` is the ref once set, else the id — D2-8
 
 ### STL-6: default row [MUST]
 
@@ -68,7 +68,7 @@ AS AN agent user, I WANT a readable coloured row with no setup, SO THAT one line
 ACCEPTANCE CRITERIA
 
 - [x] STL-6_AC-1 [state]: WHILE the session is in a state machine the system SHALL print `smllm <machine> › <STATE>[ (visit n)] · <kind> <label>[ · yielded]`, `(visit n)` from the second visit — D2-7
-- [x] STL-6_AC-2 [state]: WHILE the session is in idle the system SHALL print `smllm idle[ · n suspended][ · n parked]`, each part only when non-zero
+- [x] STL-6_AC-2 [state]: WHILE the session is in idle the system SHALL print `smllm idle[ · n interrupted][ · n paused]`, each part only when non-zero
 - [x] STL-6_AC-3 [ubiquitous]: The row SHALL colour `smllm` dim, the machine cyan, the state bold, the instance magenta, notes dim and `yielded` yellow, using plain text separators only — D2-4
 
 ### STL-7: colour choice [MUST]
@@ -129,3 +129,4 @@ DEPENDS ON: HOST-6
 ## Change Log
 
 - 0.1.0 (2026-09-25): Initial requirements from PLAN-002
+- 0.2.0 (2026-09-28): `interrupted` / `paused` keys and wording (were suspended / parked; PLAN-008 D8-4)

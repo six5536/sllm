@@ -17,7 +17,7 @@ flowchart TB
     Engine[smllm-core Engine] -->|Store trait| FsStore
     FsStore --> Sessions["USER STATE DIR/sessions/KEY.json"]
     FsStore --> Bindings["USER STATE DIR/bindings/HARNESS/HOST_SESSION"]
-    FsStore --> Open["CONFIG DIR/state/MACHINE/open/ID.json (active, suspended, parked)"]
+    FsStore --> Open["CONFIG DIR/state/MACHINE/{active,interrupted,paused}/ID.json"]
     FsStore --> Done["CONFIG DIR/state/MACHINE/done/ID.json (completed)"]
     FsStore --> Refs["CONFIG DIR/state/MACHINE/refs/ref.json (ref → id)"]
     FsStore --> Hist["CONFIG DIR/state/MACHINE/history/ID.jsonl"]
@@ -53,7 +53,7 @@ crates/app/smllm/src/
 
 ### STO-Records
 
-Serde-derivable session record in the core (`serde` feature, camelCase). `configs` is opaque to the core: the app stores config paths there at bind (STO-2) and `HOST-Runtime::for_session` reads them back. `holding` / `suspended` point at instances by `InstanceKey { machine, id }`.
+Serde-derivable session record in the core (`serde` feature, camelCase). `configs` is opaque to the core: the app stores config paths there at bind (STO-2) and `HOST-Runtime::for_session` reads them back. `holding` / `interrupted` point at instances by `InstanceKey { machine, id }`.
 
 ```rust
 pub struct Session {
@@ -63,7 +63,7 @@ pub struct Session {
     pub cwd: String,                 // DEC-7 working dir
     pub configs: Vec<String>,        // STO-2
     pub holding: Option<InstanceKey>,
-    pub suspended: Option<InstanceKey>,
+    pub interrupted: Option<InstanceKey>,
     pub yielded: bool,               // TURN-4, TURN-8
     pub blocked: bool,               // TURN-6: blocked, no event since (serde default)
     pub created: u64,
@@ -73,7 +73,7 @@ pub struct Session {
 
 ### STO-FileStore
 
-`FsStore` implements `Store`. Paths: sessions at `<user>/sessions/<safe(key)>.json`; bindings at `<user>/bindings/<safe(harness)>/<safe(host_session)>` (plain text key); instances at `<state_dir>/<safe(machine)>/open/<safe(id)>.json` while live (active, suspended, parked) and `…/done/<safe(id)>.json` once completed, each ref as an entry `{ref: id}` in a marker file `…/refs/<name>.json`, the name being `safe(ref)` in lower case (refs that differ only in case share a marker file as a bucket, instead of silently sharing one file on macOS and Windows) and, over 120 bytes, cut and suffixed with the ref's FNV-1a hash, history at `<state_dir>/<safe(machine)>/history/<safe(id)>.jsonl` (PLAN-005). The layout is the index: `instances_with(status)` reads one shelf, so status lines and idle lists never read the completed instances INST-9 keeps forever, and `instance_by_ref` reads one marker and checks the instance it names has the ref (a marker left by a failed write names one that does not). Markers are an index derived from the instances, which hold their refs, so an unreadable one is a slow path, never an error: a lookup scans the machine's instances for the ref, the next write of a ref in that marker rebuilds it from the scan, and `validate` warns about it (PLAN-006 D6-7). A missing marker means no such ref, since markers are written before their instance, under the lock. There is no separate index file to drift after a crash. A read by id takes only the exact id (on a case-insensitive file system `I-X.json` opens `i-x.json`), treats a name too long for a file as absent, and looks in `open/` again after `done/`, since a reopen moves the file back without the reader's lock; a full scan drops an instance seen on both shelves mid-move. Reads never write (STL-3); a write creates the folders it needs (PLAN-006 D6-1). `safe()` keeps `[A-Za-z0-9-]` and %-escapes every other byte (`%5F` for `_`), so distinct ids never share a file. Every write goes through the kit's `fs::write_atomic` (also used by `init`, `new --write`, `compile -o` and `harness install`): it follows symlinks and replaces the file they name, creates parent dirs, creates `.<name>.<pid>.<n>.tmp` beside that file (`n` a per-process counter, so concurrent writers never share a temp) with the old file's permissions before writing the text, renames it over the target, and removes the temp on any failure (PLAN-003 F1, F2). Reads that treat a missing file as `None` use the kit's `fs::read_text`. `put_instance` creates the machine dir, drops `<state dir>/.gitignore` (`*`) if absent, opens `.lock`, takes `File::lock`, re-reads the stored copy from either shelf, writes only when `instance.version == stored + 1` and, for a ref new to the instance, no other instance has it as its ref (its marker) or its id (INST-3; so two sessions entering the same new ref cannot both create one, PLAN-003 F4), else returns `HostError::Conflict`. It writes the ref's marker, then the instance where it is, then renames it to its status's shelf, so the file is never missing and never on both; then unlocks. Unknown machines read as empty (no instances) and fail on write. `instances()` (both shelves) skips an unreadable or corrupt instance file, so one bad file cannot break every idle list and status line; `scan(machine)` lists them too and `validate` reports each as a warning (PLAN-003 F5). `sessions()` lists newest first for `session list`; `history()` parses the JSONL for `instance show`.
+`FsStore` implements `Store`. Paths: sessions at `<user>/sessions/<safe(key)>.json`; bindings at `<user>/bindings/<safe(harness)>/<safe(host_session)>` (plain text key); instances at `<state_dir>/<safe(machine)>/<status>/<safe(id)>.json`, one shelf per status: `active/`, `interrupted/`, `paused/`, `done/` (completed; PLAN-008 D8-21, was `open/` + `done/`), each ref as an entry `{ref: id}` in a marker file `…/refs/<name>.json`, the name being `safe(ref)` in lower case (refs that differ only in case share a marker file as a bucket, instead of silently sharing one file on macOS and Windows) and, over 120 bytes, cut and suffixed with the ref's FNV-1a hash, history at `<state_dir>/<safe(machine)>/history/<safe(id)>.jsonl` (PLAN-005). The layout is the index: `instances_with(status)` reads one shelf; `count(status)` lists one shelf's names and reads no file; `recent(status, n)` lists one shelf with modification times, reads the newest `n` files and orders them by `updated` (a file is written whenever its instance is, so its time tracks `updated`); so status lines and idle lists never read the completed instances INST-9 keeps forever, nor more than 10 paused ones, and `instance_by_ref` reads one marker and checks the instance it names has the ref (a marker left by a failed write names one that does not). Markers are an index derived from the instances, which hold their refs, so an unreadable one is a slow path, never an error: a lookup scans the machine's instances for the ref, the next write of a ref in that marker rebuilds it from the scan, and `validate` warns about it (PLAN-006 D6-7). A missing marker means no such ref, since markers are written before their instance, under the lock. There is no separate index file to drift after a crash. A read by id takes only the exact id (on a case-insensitive file system `I-X.json` opens `i-x.json`), treats a name too long for a file as absent, and looks in the live shelves (`active/`, `interrupted/`, `paused/`), then `done/`, then the live shelves again, since a status change moves the file without the reader's lock; a full scan drops an instance seen on two shelves mid-move. Reads never write (STL-3); a write creates the folders it needs (PLAN-006 D6-1). `safe()` keeps `[A-Za-z0-9-]` and %-escapes every other byte (`%5F` for `_`), so distinct ids never share a file. Every write goes through the kit's `fs::write_atomic` (also used by `init`, `new --write`, `compile -o` and `harness install`): it follows symlinks and replaces the file they name, creates parent dirs, creates `.<name>.<pid>.<n>.tmp` beside that file (`n` a per-process counter, so concurrent writers never share a temp) with the old file's permissions before writing the text, renames it over the target, and removes the temp on any failure (PLAN-003 F1, F2). Reads that treat a missing file as `None` use the kit's `fs::read_text`. `put_instance` creates the machine dir, drops `<state dir>/.gitignore` (`*`) if absent, opens `.lock`, takes `File::lock`, re-reads the stored copy from either shelf, writes only when `instance.version == stored + 1` and, for a ref new to the instance, no other instance has it as its ref (its marker) or its id (INST-3; so two sessions entering the same new ref cannot both create one, PLAN-003 F4), else returns `HostError::Conflict`. It writes the ref's marker, then the instance where it is, then renames it to its status's shelf, so the file is never missing and never on both; then unlocks. Unknown machines read as empty (no instances) and fail on write. `instances()` (both shelves) skips an unreadable or corrupt instance file, so one bad file cannot break every idle list and status line; `scan(machine)` lists them too and `validate` reports each as a warning (PLAN-003 F5). `sessions()` lists newest first for `session list`; `history()` parses the JSONL for `instance show`.
 
 IMPLEMENTS: STO-3_AC-1, INST-8_AC-2
 
@@ -97,6 +97,8 @@ impl Store for FsStore {
     fn put_binding(&mut self, harness: &str, host_session: &str, key: &str) -> Result<(), HostError>;
     fn instance(&mut self, machine: &str, id: &str) -> Result<Option<Instance>, HostError>;
     fn instances(&mut self, machine: &str) -> Result<Vec<Instance>, HostError>;
+    fn count(&mut self, machine: &str, status: Status) -> Result<usize, HostError>;      // a listing
+    fn recent(&mut self, machine: &str, status: Status, limit: usize) -> Result<Vec<Instance>, HostError>;
     fn put_instance(&mut self, instance: &Instance) -> Result<(), HostError>;
     fn append_history(&mut self, machine: &str, id: &str, entry: &HistoryEntry) -> Result<(), HostError>;
 }
@@ -121,7 +123,7 @@ pub enum HostError { Conflict, Other(String) }
 - HOLDING (InstanceKey, optional): held instance; absent = idle
 
 ### Instance file
-`<config dir>/state/<machine>/open/<id>.json` (live) or `…/done/<id>.json` (completed), pretty JSON of `Instance` (see INST design)
+`<config dir>/state/<machine>/<status>/<id>.json`, `<status>` one of `active`, `interrupted`, `paused`, `done` (completed), pretty JSON of `Instance` (see INST design)
 - VERSION (u64, required): incremented on every write (STO-3_AC-2)
 
 ### History file
@@ -198,3 +200,4 @@ SOURCE: .zen/specs/REQ-STO-storage.md
 
 - 0.1.0 (2026-09-25): Initial design
 - 0.2.0 (2026-09-27): Instance shelves (`open/`, `done/`, `history/`), ref markers (PLAN-005); no migration (PLAN-006 D6-1)
+- 0.3.0 (2026-09-28): A shelf per status (`active/`, `interrupted/`, `paused/`, `done/`); `count` and `recent` from listings; terms paused / interrupted (PLAN-008)

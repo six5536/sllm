@@ -26,7 +26,7 @@ AS AN agent, I WANT a fixed set of events per state, SO THAT I know what I may f
 
 ACCEPTANCE CRITERIA
 
-- [ ] ENG-1_AC-1 [ubiquitous]: The system SHALL offer in a machine state its `on` events followed by the built-ins `yield`, `park` and `unmatched` (plus `resume` in a fallback state, IDLE-2), and SHALL offer no events in a final state
+- [ ] ENG-1_AC-1 [ubiquitous]: The system SHALL offer in a machine state its `on` events followed by the built-ins `yield`, `pause` and `unmatched` (plus `resume` in a fallback state, IDLE-2), and SHALL offer no events in a final state
 
 ### ENG-2: Fire [MUST]
 
@@ -79,3 +79,4 @@ ACCEPTANCE CRITERIA
 ## Change Log
 
 - 1.0.0 (2026-09-25): Initial requirements from PLAN-001 §6
+- 1.1.0 (2026-09-28): Terms pause and interrupted (were park and suspend; PLAN-008 D8-4)

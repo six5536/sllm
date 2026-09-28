@@ -2,7 +2,7 @@
 
 ## Overview
 
-Implements REQ-STL. The engine gains one read-only call, `Engine::status`, which returns a serde `SessionStatus` built from the session record, its held and suspended instances and a count of parked instances. It uses the same checks as the idle list and `held` (a held instance that moved, or whose machine is not configured, reads as idle), but it never writes. The app's `smllm statusline` finds the session (from `--session`, or from the Claude Code status JSON's `session_id` through the binding store), then prints the status as JSON or as the default row. Every failure turns into an empty answer with exit 0. The status line itself stays the user's: a skill (installed as harness part `statusline` and shipped in the plugin) edits it with consent. `harness install|status` only adds a hint.
+Implements REQ-STL. The engine gains one read-only call, `Engine::status`, which returns a serde `SessionStatus` built from the session record, its held and interrupted instances and a count of paused instances. It uses the same checks as the idle list and `held` (a held instance that moved, or whose machine is not configured, reads as idle), but it never writes. The app's `smllm statusline` finds the session (from `--session`, or from the Claude Code status JSON's `session_id` through the binding store), then prints the status as JSON or as the default row. Every failure turns into an empty answer with exit 0. The status line itself stays the user's: a skill (installed as harness part `statusline` and shipped in the plugin) edits it with consent. `harness install|status` only adds a hint.
 
 ## Architecture
 
@@ -36,7 +36,7 @@ docs/statusline.md                           # STL-Doc
 ### Architectural Decisions
 
 - DATA NOT TEMPLATES (D2-1): the row is fixed; any other shape is built by the user's script from `--json`. Alternatives: a format string or style table in `config.toml`
-- ONE INSTANCE SHAPE: `instance` and `suspended` share `{machine, kind, id, ref, label, status}`, so scripts read both the same way and every key is always present (D2-6, D2-8)
+- ONE INSTANCE SHAPE: `instance` and `interrupted` share `{machine, kind, id, ref, label, status}`, so scripts read both the same way and every key is always present (D2-6, D2-8)
 - EMPTY, NOT ERROR: the command maps every error (including an unknown session) to an empty row or `{}`, with exit 0 and the reason on stderr, because a non-zero exit blanks Claude Code's whole status line. Alternatives: the CLI's usual exit 1/2
 - COLOUR ALWAYS UNLESS `NO_COLOR`: status line commands never see a TTY, so `auto` cannot use TTY detection
 - SKILL AS A FILE PART: the skill is one `Part::files` of the Claude profile, so `--without statusline` and the record work as for other parts. The plugin copy is the same file, and a test checks the two are equal
@@ -46,7 +46,7 @@ docs/statusline.md                           # STL-Doc
 
 ### STL-Status
 
-Reads the session (unknown → `Error::UnknownSession`). If it holds an instance, that instance must exist, be `active`, be held by this session and belong to a configured machine. If so, the status carries machine, state, visit count of the current state and `instance`. Otherwise it reads as idle (views and the stop hook report the move; the status does not). `suspended` is filled only when that instance is still `suspended` and held by this session, and its machine is configured (as the idle list). `parked` counts parked instances of the configured machines. `yielded` is the session flag. No writes, no guard or action calls.
+Reads the session (unknown → `Error::UnknownSession`). If it holds an instance, that instance must exist, be `active`, be held by this session and belong to a configured machine. If so, the status carries machine, state, visit count of the current state and `instance`. Otherwise it reads as idle (views and the stop hook report the move; the status does not). `interrupted` is filled only when that instance is still `interrupted` and held by this session, and its machine is configured (as the idle list). `paused` counts paused instances of the configured machines with `Store::count` (for the file store a listing of the `paused/` shelf, no file read; PLAN-008 D8-21). `yielded` is the session flag. No writes, no guard or action calls.
 
 IMPLEMENTS: STL-3_AC-1, STL-5_AC-1, STL-5_AC-2, STL-8_AC-1
 
@@ -115,8 +115,8 @@ pub struct SessionStatus {
     pub visit: Option<u32>,
     pub yielded: bool,
     pub instance: Option<InstanceStatus>,
-    pub suspended: Option<InstanceStatus>,
-    pub parked: u32,
+    pub interrupted: Option<InstanceStatus>,
+    pub paused: u32,
 }
 
 #[serde(rename_all = "camelCase")]
@@ -127,7 +127,7 @@ pub struct InstanceStatus {
     #[serde(rename = "ref")]
     pub r#ref: Option<String>,
     pub label: String,
-    pub status: String, // active | suspended | …
+    pub status: String, // active | interrupted | …
 }
 ```
 
@@ -163,7 +163,7 @@ PRINCIPLES:
 
 ### Unit Testing
 
-- AREAS: status in a machine, in idle with suspended and parked, moved or unconfigured holding reads idle; row rendering with and without colour (snapshots); colour choice; hint detection; skill part and plugin copy equal
+- AREAS: status in a machine, in idle with interrupted and paused, moved or unconfigured holding reads idle; row rendering with and without colour (snapshots); colour choice; hint detection; skill part and plugin copy equal
 
 ### Integration Testing
 
@@ -195,3 +195,4 @@ SOURCE: .zen/specs/REQ-STL-statusline.md
 ## Change Log
 
 - 0.1.0 (2026-09-25): Initial design from PLAN-002
+- 0.2.0 (2026-09-28): `interrupted` / `paused` (were suspended / parked); the paused count from `Store::count` (PLAN-008)

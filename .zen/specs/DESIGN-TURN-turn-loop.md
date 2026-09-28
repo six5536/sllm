@@ -122,7 +122,7 @@ Fire one event: smllm({ session: "sm-n0zmmz", event, params })
     severity (optional, one of: minor, major): How much rework.
 - yield — Stop for now and stay in REVIEW.
     note (optional): What you are waiting for.
-- park — Put issue GH-1 aside and return to idle.
+- pause — Put issue GH-1 aside and return to idle.
 - unmatched — The request fits none of these; handle it from idle, then resume.
 </events>
 </smllm>
@@ -146,7 +146,7 @@ Fire one event: smllm({ session: "sm-n0zmmz", event, params })
 */
 ```
 
-- IDLE LIST: idle header, notes/errors, `[idle] on-enter` text as `<instructions>`, `State machines:` (or `No state machines are configured.`), per machine `- <id>[ — <description>]`, `    <kind> id param: <param>[ — <description>][ (pattern: P)]`, `    starts at: <initial>[; entry points: A, B]`; then `Suspended: <kind> <label> (<machine>) at <STATE>`; `Parked:` + `- <kind> <label> (<machine>) at <STATE>` sorted by machine then label; then the events list (`enter`, plus `resume` when suspended)
+- IDLE LIST: idle header, notes/errors, `[idle] on-enter` text as `<instructions>`, `State machines:` (or `No state machines are configured.`), per machine `- <id>[ — <description>]`, `    <kind> id param: <param>[ — <description>][ (pattern: P)]`, `    starts at: <initial>[; entry points: A, B]`; then `Interrupted: <kind> <label> (<machine>) at <STATE>`; `Paused:` + `- <kind> <label> (<machine>) at <STATE>`, at most 10, most recently updated first (ties by machine then label), then `…and <K> more paused: fire listPaused to list them all.` when cut short (IDLE-7); then the events list (`enter`, plus `resume` when interrupted, plus `listPaused` when cut short). `listPaused`'s reply: the idle header, `Paused:` with every paused instance in the same order, and the events list
 
 ```rust
 /*
@@ -177,7 +177,7 @@ Fire one event: smllm({ session: "sm-n0zmmz", event, params })
 
 - YIELD REPLY: header + `Yielded: staying in <STATE>. You may end your turn.`; no menu
 
-- DIFFERENCES FROM THE PLAN §7 SKETCH: `yield`'s `note` is an indented param line, not inline text; the idle list layout above is new (the plan only lists its contents); a final state's block and the idle list share one fence; `Guard:` trace lines and `via <STATE>` in `Arrived by` show branching; failed actions read `Action failed: <STATE> entry[i] <kind>: <detail>` (or `<STATE> exit[i]`, `<SOURCE> transition actions[i]`, `sharedActions[n] entry[i]`; plan: `Action failed: entry[i] …`); a `Fire one event:` line precedes `<events>` in error blocks too; events without guidance show only their name; header notes (takeover, reopen, park, suspend) sit between `Params:` and the trace
+- DIFFERENCES FROM THE PLAN §7 SKETCH: `yield`'s `note` is an indented param line, not inline text; the idle list layout above is new (the plan only lists its contents); a final state's block and the idle list share one fence; `Guard:` trace lines and `via <STATE>` in `Arrived by` show branching; failed actions read `Action failed: <STATE> entry[i] <kind>: <detail>` (or `<STATE> exit[i]`, `<SOURCE> transition actions[i]`, `sharedActions[n] entry[i]`; plan: `Action failed: entry[i] …`); a `Fire one event:` line precedes `<events>` in error blocks too; events without guidance show only their name; header notes (takeover, reopen, pause, interrupt) sit between `Params:` and the trace
 
 ## Correctness Properties
 
@@ -248,3 +248,4 @@ SOURCE: .zen/specs/REQ-TURN-turn-loop.md
 ## Change Log
 
 - 1.0.0 (2026-09-25): Initial design, documenting the P3/P5 implementation
+- 1.1.0 (2026-09-28): Terms pause / interrupted; bounded paused list, `listPaused` (PLAN-008)

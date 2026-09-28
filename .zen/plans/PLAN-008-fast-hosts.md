@@ -222,4 +222,6 @@ Found, then decided:
 
 ## 6. Outcome
 
-—
+| Phase | Commit / result |
+| ----- | --------------- |
+| F1 | Requirements: IDLE-7 (bounded idle list, `listPaused`), NFR-10 (per-event latency), HOST-13..HOST-16, TEST-3_AC-2, DEC-7 (compile `cwd`); the terms pause / interrupted across 15 specs. Designs: ENG (BUILTINS, `Store::count` / `recent`, `MemoryStore` indexes, ENG_P-5, merge sort, tool definition, `Engine::call`), IDLE, TURN (layout), STO (a shelf per status), HOST (MCP cache, write-through wasm, HOST-JsPackage), NFR (bench, scaling check), CFG / DEC (compile `cwd`), STL |

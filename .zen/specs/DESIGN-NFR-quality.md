@@ -33,15 +33,17 @@ flowchart LR
 .github/workflows/checks.yml     # CI gate (called by ci.yml and release.yml)
 .github/workflows/release.yml    # build, smoke, publish, GitHub release
 scripts/build-wasm.mjs           # wasm build + size budget (NFR-8)
+scripts/bench.mjs                # per-call times: wasm, MCP, CLI at 0 / 100 / 1,000 instances (NFR-10)
 scripts/release-smoke.mjs        # smoke of a release binary
 scripts/launcher-smoke.mjs       # smoke of the packed npm launcher
 scripts/live-e2e.mjs             # TEST-4, human request only
 scripts/set-version.mjs, verify-version.mjs
-crates/lib/smllm-core/tests/     # engine.rs (snapshots), properties.rs (ENG_P-1..4)
+crates/lib/smllm-core/tests/     # engine.rs (snapshots), properties.rs (ENG_P-1..5)
 crates/lib/smllm-format/tests/   # validate.rs + fixtures + snapshots
 crates/lib/agent-harness-kit/tests/  # harness.rs, properties_harness.rs
 crates/app/smllm/tests/          # cli.rs, session.rs (TEST-2), common/ (World)
-packages/smllm-wasm/test/        # smoke.test.mjs + dev.json (TEST-3)
+packages/smllm-wasm/test/        # smoke.test.mjs + dev.json (TEST-3), scaling.test.mjs (NFR-10_AC-4)
+examples/wasm/                   # the TypeScript example, run and type-checked in CI (TEST-3_AC-2)
 ```
 
 ### Architectural Decisions
@@ -53,6 +55,7 @@ packages/smllm-wasm/test/        # smoke.test.mjs + dev.json (TEST-3)
 - LIVE TEST OPT-IN BY ENV: `live-e2e.mjs` exits 2 without `SMLLM_LIVE=1` and is referenced by no workflow or hook
 - COVERAGE GATE: nightly `cargo llvm-cov` with ≥ 90% lines separately for library crates and for the app, excluding `smllm-wasm`
 
+- LATENCY MEASURED, SCALING GATED: `npm run bench` prints per-call times (wasm in-process, MCP over stdio, CLI) on a copy of `examples/dev` on local disk, never the repo's share; CI fails only on the scaling check, an event's time at 1,000 instances over 5× its time at 100 (`listPaused` excluded), since absolute times on shared runners are noise and a quadratic path is what regresses (NFR-10, PLAN-008 D8-1, DC-2). Alternatives: hard time limits in CI, bench only
 ## Components and Interfaces
 
 No NFR or TEST components. Carriers:
@@ -65,6 +68,7 @@ No NFR or TEST components. Carriers:
 - NFR-6: kit `install` plans all writes and refuses before any write; app commands validate before writing; the kit's `fs::write_atomic` for every write
 - NFR-7: file-size rule and `.zen/rules/rust-rules.md`; the largest Rust source file is under 600 lines
 - NFR-8: HOST-Wasm + `scripts/build-wasm.mjs` + `checks.yml` job `wasm`
+- NFR-10: ENG-Engine and ENG-Host (bounded idle list, `count` / `recent`, `MemoryStore` indexes, merge sort), STO-FileStore (a shelf per status), HOST-Mcp (config cache), HOST-Wasm (write-through storage); measured by `scripts/bench.mjs`
 - NFR-9: ENG-Engine `unsupported(guards, actions)`, surfaced by HOST-Wasm `unsupported()`; the app does not call it, since its command host supports every v1 kind
 
 The host boundary that makes NFR-1 hold:
@@ -150,7 +154,12 @@ SOURCE: .zen/specs/REQ-NFR-quality.md, .zen/specs/REQ-TEST-testing.md
 - NFR-7_AC-1 → n/a [n/a] repository rule; all files within 800 lines
 - NFR-8_AC-1 → HOST-Wasm — CI `wasm` job
 - NFR-8_AC-2 → HOST-Wasm, ENG-Json — `scripts/build-wasm.mjs` budget 134 KiB
+- 0.3.0 (2026-09-28): NFR-10: bench, scaling check (PLAN-008)
 - NFR-9_AC-1 → ENG-Engine
+- NFR-10_AC-1 → ENG-Engine, ENG-Host, HOST-Wasm — `scripts/bench.mjs`
+- NFR-10_AC-2 → HOST-Mcp, STO-FileStore — `scripts/bench.mjs`
+- NFR-10_AC-3 → `scripts/bench.mjs`
+- NFR-10_AC-4 → `packages/smllm-wasm/test/scaling.test.mjs` in the CI `wasm` job
 - TEST-1_AC-1 → ENG-Engine [partial] tool description and instructions block not snapshotted
 - TEST-2_AC-1 → HOST-Claude [partial] `dev` example and reopen not driven end to end
 - TEST-3_AC-1 → HOST-Wasm — CI `wasm` job runs `npm run test:wasm`
@@ -171,3 +180,4 @@ SOURCE: .zen/specs/REQ-NFR-quality.md, .zen/specs/REQ-TEST-testing.md
 
 - 0.1.0 (2026-09-25): Initial design
 - 0.2.0 (2026-09-28): Smaller wasm (PLAN-007): own JSON crate (smllm-json), pinned-nightly build-std, no build paths; budget 134 KiB
+- 0.3.0 (2026-09-28): NFR-10: bench, scaling check (PLAN-008)

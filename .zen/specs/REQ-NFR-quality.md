@@ -97,7 +97,21 @@ ACCEPTANCE CRITERIA
 
 - No new dependency without user approval (`.zen/rules/rust-rules.md`)
 
+### NFR-10: Per-event latency [MUST]
+
+AS A host author driving a model that answers in milliseconds, I WANT smllm's time per event to stay small and flat as instances pile up, SO THAT smllm never dominates a turn.
+
+> A turn makes two or three smllm calls; with a millisecond model, milliseconds per call are visible (PLAN-008).
+
+ACCEPTANCE CRITERIA
+
+- [ ] NFR-10_AC-1 [ubiquitous]: An event (`fire`, `stop`, `view`) through the wasm engine in-process SHALL take at most 1 ms with 1,000 instances
+- [ ] NFR-10_AC-2 [ubiquitous]: A tool call to the MCP server SHALL take at most 2 ms with 100 paused and 1,000 completed instances, on local disk
+- [ ] NFR-10_AC-3 [event]: WHEN `npm run bench` runs THEN it SHALL print the time per call through the wasm engine, the MCP server and the CLI with 0, 100 and 1,000 instances
+- [ ] NFR-10_AC-4 [event]: WHEN CI runs THEN it SHALL fail if an event's time with 1,000 instances exceeds 5 times its time with 100 — `listPaused` excluded, its output grows with the list by design
+
 ## Change Log
 
 - 0.1.0 (2026-09-25): Initial requirements from PLAN-001 §10
 - 0.2.0 (2026-09-28): NFR-8_AC-2 budget 300 → 134 KiB (PLAN-007)
+- 0.3.0 (2026-09-28): NFR-10 per-event latency (PLAN-008)

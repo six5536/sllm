@@ -75,7 +75,7 @@ AS A machine author, I WANT commands to run in the agent's project, SO THAT rela
 
 ACCEPTANCE CRITERIA
 
-- [ ] DEC-7_AC-1 [ubiquitous]: The system SHALL run commands in the session's working directory recorded at bind, unless `params.cwd` is given, which SHALL be resolved relative to the YAML file
+- [ ] DEC-7_AC-1 [ubiquitous]: The system SHALL run commands in the session's working directory recorded at bind, unless `params.cwd` is given, which SHALL be resolved relative to the YAML file; `smllm compile` SHALL write a relative `params.cwd` relative to the compiled config file, so a host resolves every command against that one folder
 
 ### DEC-8: Trace [SHOULD]
 
@@ -108,3 +108,4 @@ ACCEPTANCE CRITERIA
 ## Change Log
 
 - 1.0.0 (2026-09-25): Initial requirements from PLAN-001 §6
+- 1.1.0 (2026-09-28): DEC-7: `compile` writes a relative `cwd` relative to the compiled config (PLAN-008 D8-22)

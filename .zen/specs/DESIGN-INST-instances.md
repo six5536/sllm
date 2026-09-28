@@ -10,16 +10,16 @@ AFFECTED LAYERS: smllm-core (records, engine), app store
 
 ### High-Level Architecture
 
-A session points at the instance it holds (`holding`) and at most one suspended instance (`suspended`) by `InstanceKey`. The instance names its `holder`. Both sides are checked on every call: the session's view is trusted only if the instance agrees (`held`, INST-7).
+A session points at the instance it holds (`holding`) and at most one interrupted instance (`interrupted`) by `InstanceKey`. The instance names its `holder`. Both sides are checked on every call: the session's view is trusted only if the instance agrees (`held`, INST-7).
 
 ```mermaid
 stateDiagram-v2
     [*] --> active: enter (new)
-    active --> parked: park
-    active --> suspended: unmatched (no fallback)
-    suspended --> active: resume / enter
-    parked --> active: enter
-    suspended --> parked: second unmatched in same session
+    active --> paused: pause
+    active --> interrupted: unmatched (no fallback)
+    interrupted --> active: resume / enter
+    paused --> active: enter
+    interrupted --> paused: second unmatched in same session
     active --> completed: final state entered
     completed --> active: enter with entry-point state (reopen)
     active --> active: enter from another session (takeover)
@@ -50,7 +50,7 @@ crates/app/smllm/src/store.rs   STO-FileStore: lock + version compare (INST-8_AC
 - GENERATED ID IS THE KEY: records and history are keyed by `i-` + 6 Crockford base32 chars from the host's `Ids`, regenerated on collision; the ref is only an alias looked up by scan. Alternatives: ref as key (breaks set-once-later refs)
 - LABEL = REF ELSE ID: `Instance::label()` is the one id the agent sees (INST-4); lookup tries the id first, then the ref
 - OPTIMISTIC INSTANCE VERSIONS: every write bumps `version`; `Store::put_instance` accepts only `stored + 1` (0 → 1 for new). The file store does that compare-and-write under an OS lock on `<state>/<machine>/.lock`. Side effects of commands that ran before a lost race are not rolled back. Alternatives: pessimistic lock for the call's duration
-- ONE SUSPENDED SLOT PER SESSION: a second `unmatched` parks the older suspended instance (see DESIGN-ENG decisions)
+- ONE INTERRUPTED SLOT PER SESSION: a second `unmatched` pauses the older interrupted instance (see DESIGN-ENG decisions)
 - PARAMS ONLY IN HISTORY: `HistoryEntry.params` carries the event's params; `Instance` has no params field (TURN-10)
 
 ## Components and Interfaces
@@ -61,7 +61,7 @@ The instance and history record types, serialised camelCase with the `serde` fea
 
 ```rust
 pub struct InstanceKey { pub machine: String, pub id: String }
-pub enum Status { Active, Suspended, Parked, Completed }
+pub enum Status { Active, Interrupted, Paused, Completed }
 impl Status { pub fn as_str(self) -> &'static str; }
 pub struct Instance {
     pub id: String, pub machine: String, pub r#ref: Option<String>, pub state: String,
@@ -81,7 +81,7 @@ pub struct HistoryEntry {
 }
 ```
 
-STO-Records (`Session`: key, harness, host session, cwd, configs, `holding`, `suspended`, `yielded`, times) is specified in DESIGN-STO. STO-FileStore (app `store.rs`) implements INST-8_AC-2.
+STO-Records (`Session`: key, harness, host session, cwd, configs, `holding`, `interrupted`, `yielded`, times) is specified in DESIGN-STO. STO-FileStore (app `store.rs`) implements INST-8_AC-2.
 
 ## Data Models
 
@@ -153,3 +153,4 @@ SOURCE: .zen/specs/REQ-INST-instances.md
 ## Change Log
 
 - 1.0.0 (2026-09-25): Initial design, documenting the P3/P4 implementation
+- 1.1.0 (2026-09-28): Statuses paused and interrupted (were parked and suspended; PLAN-008 D8-4)

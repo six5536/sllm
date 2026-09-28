@@ -57,7 +57,7 @@ AS A machine author, I WANT built-ins to run the lists a state change implies, S
 
 ACCEPTANCE CRITERIA
 
-- [ ] ACT-5_AC-1 [ubiquitous]: The system SHALL run the current state's `exit` on `park` and `unmatched`, the target's `entry` on `enter` and `resume`, and no actions on `yield`
+- [ ] ACT-5_AC-1 [ubiquitous]: The system SHALL run the current state's `exit` on `pause` and `unmatched`, the target's `entry` on `enter` and `resume`, and no actions on `yield`
 
 ### ACT-6: Host action kinds [MUST]
 
@@ -82,3 +82,4 @@ ACCEPTANCE CRITERIA
 ## Change Log
 
 - 1.0.0 (2026-09-25): Initial requirements from PLAN-001 §6
+- 1.1.0 (2026-09-28): Terms pause and interrupted (were park and suspend; PLAN-008 D8-4)

@@ -2,16 +2,18 @@
 
 ## Introduction
 
-Idle and the built-in events (IDLE). Idle is smllm's own state outside every state machine; its entry block is the idle list. The built-ins `enter`, `resume`, `park`, `unmatched` and `yield` move instances in and out of state machines. Source: PLAN-001 §1, §5, decisions D8–D12, D22.
+Idle and the built-in events (IDLE). Idle is smllm's own state outside every state machine; its entry block is the idle list. The built-ins `enter`, `resume`, `pause`, `unmatched` and `yield` move instances in and out of state machines; `listPaused` lists paused instances. Source: PLAN-001 §1, §5, decisions D8–D12, D22.
 
 ## Glossary
 
 - IDLE: The session's resting place when it holds no instance
-- IDLE LIST: Idle's entry block: idle text, state machines (id, description, id param, initial state, entry points), the suspended instance, parked instances, and the idle events
-- BUILT-IN EVENT: `enter` (idle), `resume` (idle when suspended; a fallback state), `park`, `unmatched`, `yield` (every state)
+- IDLE LIST: Idle's entry block: idle text, state machines (id, description, id param, initial state, entry points), the interrupted instance, the most recently updated paused instances (IDLE-7), and the idle events
+- BUILT-IN EVENT: `enter` (idle), `resume` (idle when interrupted; a fallback state), `listPaused` (idle, when the list of paused instances was cut short), `pause`, `unmatched`, `yield` (every state)
+- INTERRUPTED: An instance put aside by `unmatched` for a detour; `resume` returns to it
+- PAUSED: An instance put aside by `pause` to continue later; `enter` with its ref continues it
 - ENTRY POINT: A state with `meta.entryPoint: true`; may be entered directly from idle
 - FALLBACK STATE: The one state with `meta.fallback: true`; `unmatched` goes there instead of idle
-- DETOUR: `unmatched` suspending an instance so the agent can handle something else, then `resume`
+- DETOUR: `unmatched` interrupting an instance so the agent can handle something else, then `resume`
 - JUMP: `enter` of an existing instance with an explicit entry point `state`
 
 ## Stakeholders
@@ -35,7 +37,7 @@ AS A machine author, I WANT `unmatched` to go to a state of my machine, SO THAT 
 
 ACCEPTANCE CRITERIA
 
-- [x] IDLE-2_AC-1 [complex]: WHERE a machine marks one state `meta.fallback: true`, WHEN `unmatched` fires in another state THEN the system SHALL enter the fallback state with the instance still active, remember the interrupted state, and offer `resume` there to return to it; otherwise `unmatched` SHALL suspend the instance and put the session in idle
+- [x] IDLE-2_AC-1 [complex]: WHERE a machine marks one state `meta.fallback: true`, WHEN `unmatched` fires in another state THEN the system SHALL enter the fallback state with the instance still active, remember the interrupted state, and offer `resume` there to return to it; otherwise `unmatched` SHALL interrupt the instance and put the session in idle
 
 ### IDLE-3: Missing saved state [MUST]
 
@@ -71,9 +73,20 @@ ACCEPTANCE CRITERIA
 
 DEPENDS ON: INST-4
 
+### IDLE-7: Bounded idle list [MUST]
+
+AS AN agent, I WANT the idle list to stay short however many instances are paused, SO THAT idle costs little context and time, and I can still see every paused instance when I need to.
+
+> A realistic maximum is ~100 paused instances; listing them all on every return to idle wastes context (PLAN-008).
+
+ACCEPTANCE CRITERIA
+
+- [ ] IDLE-7_AC-1 [ubiquitous]: The idle list SHALL show at most 10 paused instances, most recently updated first (ties by machine id, then label), followed by the number of paused instances not shown
+- [ ] IDLE-7_AC-2 [event]: WHEN the idle list was cut short THEN the system SHALL offer the built-in `listPaused`; WHEN `listPaused` fires THEN the system SHALL reply with every paused instance, in the same order, and the idle events, changing no session, instance or history
+
 ## Assumptions
 
-- Only one instance per session may be suspended at a time
+- Only one instance per session may be interrupted at a time
 
 ## Constraints
 
@@ -87,3 +100,4 @@ DEPENDS ON: INST-4
 ## Change Log
 
 - 1.0.0 (2026-09-25): Initial requirements from PLAN-001 §5
+- 1.1.0 (2026-09-28): Terms pause and interrupted (were park and suspend); IDLE-7 bounded idle list and `listPaused` (PLAN-008)

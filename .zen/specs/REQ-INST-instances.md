@@ -11,7 +11,7 @@ Instances (INST): every piece of work a session does inside a state machine is a
 - REF: An optional external id (e.g. `GH-123`), unique per state machine, set once
 - ID PARAM: The one param name the agent uses for an instance (the machine's `meta.instance.ref.param`)
 - HOLDER: The session currently working on an instance
-- STATUS: active, suspended, parked or completed
+- STATUS: active, interrupted, paused or completed
 - VERSION: A counter bumped on every instance write, used to detect concurrent writers
 
 ## Stakeholders
@@ -60,7 +60,7 @@ AS A user, I WANT each instance to have a status, SO THAT I can see what is in p
 
 ACCEPTANCE CRITERIA
 
-- [ ] INST-5_AC-1 [ubiquitous]: The system SHALL keep each instance in exactly one status: active (held by a session), suspended (detour), parked, or completed (final state reached, kept)
+- [ ] INST-5_AC-1 [ubiquitous]: The system SHALL keep each instance in exactly one status: active (held by a session), interrupted (detour), paused, or completed (final state reached, kept)
 
 ### INST-6: Single holder with takeover [MUST]
 
@@ -131,3 +131,4 @@ ACCEPTANCE CRITERIA
 ## Change Log
 
 - 1.0.0 (2026-09-25): Initial requirements from PLAN-001 §4
+- 1.1.0 (2026-09-28): Statuses paused and interrupted (were parked and suspended; PLAN-008 D8-4)

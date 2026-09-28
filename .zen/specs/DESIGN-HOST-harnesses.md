@@ -37,6 +37,10 @@ crates/app/smllm/src/
     ├── harness.rs          # HOST-Claude: Tool impl, hook answers, install/status
     └── mcp.rs              # HOST-Mcp: rmcp ServerHandler, one tool
 crates/lib/smllm-wasm/src/lib.rs   # HOST-Wasm
+packages/smllm-wasm/src/           # HOST-JsPackage (TypeScript, compiled by tsc in build:wasm)
+├── wrap.ts                 # the typed Engine: objects in and out, tool(), callTool()
+├── storage.ts              # Storage, memoryStorage()
+└── node/                   # smllm-wasm/node: nodeHost (command runner + supervisor), nodeFileStorage
 crates/lib/agent-harness-kit/src/
 ├── fs.rs                   # read_text, write_atomic (keeps symlinks and modes)
 ├── harness/                # install/status, parts, region, merge, target, record, declined
@@ -48,7 +52,8 @@ plugin/                     # Claude Code plugin (hooks.json, .mcp.json, plugin.
 ### Architectural Decisions
 
 - RMCP OVER HAND-ROLLED MCP: user decision in P1; `rmcp` tracks protocol versions and capabilities. Cost: a current-thread `tokio` runtime used only by `smllm mcp`. Alternatives: hand-rolled JSON-RPC over stdio (no async runtime)
-- ONE HAND-BUILT TOOL SCHEMA: the input schema is a literal JSON object (`params` = object of strings, CFG-16) rather than derived via rmcp macros, so it stays a stable contract. Alternatives: `#[tool]` macro with a schemars-derived struct
+- ONE HAND-BUILT TOOL SCHEMA: the input schema is a literal JSON object (`params` = object of strings, CFG-16) rather than derived via rmcp macros, so it stays a stable contract; since PLAN-008 it is the core's `TOOL_INPUT_SCHEMA`, shared with the wasm (HOST-13). Alternatives: `#[tool]` macro with a schemars-derived struct
+- CACHED CONFIG, CHECKED EACH CALL: the MCP server outlives its calls, so it keeps the loaded config and checks the files it came from each call (racy-clean rule); hooks stay one process per call, fine for Claude Code's slow model (PLAN-008 D8-8, D8-11). Alternatives: reload per call (~2–4 ms), a file watcher (a dependency)
 - ENGINE CALLS OFF THE ASYNC RUNTIME: `spawn_blocking`, since guards and actions may run commands for minutes. Alternatives: async command runner
 - ONE CALL AT A TIME: each `tools/call` holds the server's `calls` mutex, so pipelined calls on one session cannot interleave their store reads and writes (PLAN-003 F3). Alternatives: a lock per session key (more code; one agent rarely pipelines)
 - SESSION-BOUND CONFIGS: `Runtime::for_session` loads the configs recorded on the session (STO-2), not the caller's lookup, so MCP calls from any cwd act on the right machines
@@ -122,14 +127,12 @@ pub fn hook(args: &HookArgs) -> Result<u8>;
 
 ### HOST-Mcp
 
-`serve` builds a current-thread tokio runtime and serves `Server` over `rmcp::transport::stdio()`. `get_info` enables tools and sets `AGENT_RULES` as server instructions. `list_tools` returns one `Tool` named `smllm` with `description()` (AGENT_RULES plus call shapes) and `input_schema()` (`session` optional string — omitted only for a keyless `enter`, HOST-3; `event` optional string; `params` object with string values). `call_tool` rejects other names with `invalid_params`, then runs `call` in `spawn_blocking` while holding the `calls` mutex. `call` validates argument types (non-string param → "param X must be a string"), picks `Runtime::for_session(key)` (or lookup from the server's cwd when keyless), then `view` when there is no event, else `fire` with a `Bind { harness: "mcp" }` for keyless `enter`. A rejected event or error returns `isError: true` with the text.
+`serve` builds a current-thread tokio runtime and serves `Server` over `rmcp::transport::stdio()`. `get_info` enables tools and sets `AGENT_RULES` as server instructions. `list_tools` returns one `Tool` from the core's definition (ENG-Engine: `TOOL_NAME`, `tool_description()`, `TOOL_INPUT_SCHEMA` parsed once at start; `session` optional string — omitted only for a keyless `enter`, HOST-3; `event` optional string; `params` object with string values; HOST-13). `call_tool` rejects other names with `invalid_params`, then runs `call` in `spawn_blocking` while holding the `calls` mutex. `call` validates argument types (non-string param → "param X must be a string"), picks `Runtime::for_session(key)` (or lookup from the server's cwd when keyless), then `Engine::call` (view when there is no event, else fire, with a `Bind { harness: "mcp" }` for keyless `enter`). The loaded config comes from the server's `ConfigCache` (HOST-16): keyed by the config files the call discovers; each call `stat`s every file the cached config was built from and re-reads and compares a file whose modification time or size changed, or whose modification time is not older than the cache's build time minus a 2-second margin (git's racy-clean rule; the margin covers a file system clock that differs from the process's); any difference rebuilds, the rest are trusted, so after a tick a call reads no config file (PLAN-008 D8-8, DC-3). A rejected event or error returns `isError: true` with the text.
 
-IMPLEMENTS: HOST-12_AC-1, CFG-16_AC-1, CLI-9_AC-1
+IMPLEMENTS: HOST-12_AC-1, HOST-13_AC-1, HOST-16_AC-1, CFG-16_AC-1, CLI-9_AC-1
 
 ```rust
-pub const TOOL: &str = "smllm";
-pub fn description() -> String;
-pub fn input_schema() -> serde_json::Map<String, serde_json::Value>;
+struct ConfigCache { files: Vec<(PathBuf, SystemTime, u64, Vec<u8>)>, built: SystemTime, runtime: Runtime }
 pub fn call(args: &Map<String, Value>, cwd: &Path, explicit: Option<&Path>) -> (bool, String);
 pub fn serve(explicit: Option<&Path>) -> Result<u8>;
 
@@ -144,7 +147,7 @@ impl rmcp::ServerHandler for Server {
 
 ### HOST-Wasm
 
-`wasm_bindgen` `Engine` class over `smllm compile` JSON with a `MemoryStore`. One JS host object supplies every host trait: `supports`, `check`, `run` (`""` = success), `read`, `isMatch`, `now`, `random`, and `history(machine, id, entryJson)`, which receives each history entry: the WASM store (`WasmStore`, over the `MemoryStore`) keeps state only and hands the log to the host, since the engine never reads history back; a throwing `history` loses that entry, never the transition (PLAN-006 D6-4); params and env cross as JSON strings, read and written with `smllm-json` (ENG-Json, PLAN-007 D7-6); a malformed constructor argument, `importState` or `fire` params is reported as `invalid compiled machines…`, `invalid state…` or `params must be a JSON object`, followed by where it failed (`: machines[0].id: expected a string, found an integer`, `: unexpected character at byte 4`), and a non-string param as `param <k> must be a string`. Every method returns the core `Reply` as JSON; `stop` returns `{"decision": "allow" | "block" | "runaway", "text"?}` as JSON (`text`, the events list, for block and runaway; PLAN-003 D3-4). Every host method is imported with `catch`: a throw becomes a failed guard or action, an `Err` from `read`/`isMatch` (so a pattern JS rejects is the core's graceful bad-pattern rejection), `false` from `supports`, `0` from `now`, and a counter from `random`; the text is `host <method> threw: <String(e)>` (PLAN-003 F22); `exportState` / `importState` move sessions, bindings and instances as JSON so a JS host can persist them; the host owns persistence and retention. `unsupported()` lists guard/action kinds the host cannot run (NFR-9). That string API is `smllm-wasm/raw`; the package's main export is a typed wrapper over it (PLAN-006 D6-3): `packages/smllm-wasm/wrap.js`, hand-written with `types.d.ts` (no TypeScript build), for the `web` (`index.js`, re-exporting `init` / `initSync`) and `bundler` (`bundler.js`) builds. Its `Engine` takes compiled machines as text or an object, returns objects (`Reply`, `StopDecision`, `SessionStatus`, state), and adapts an object-based host whose methods are all optional (`isMatch`, `now`, `random` default to `RegExp`, `Date.now`, `crypto.getRandomValues`; `history` to dropping).
+`wasm_bindgen` `Engine` class over `smllm compile` JSON with a `MemoryStore`. The WASM store writes through: each saved session, binding and instance goes to the host's `put(kind, key, recordJson)` as it is saved, as history does (HOST-14, PLAN-008 D8-16), so a host persists what changed, never a snapshot per call (`exportState` measured 0.91 ms and 210 KB at 1,000 instances); a throwing `put` is reported like a throwing `history`. `tool()` returns the core's tool definition as JSON; `callTool(argsJson)` parses the agent's arguments with the MCP server's rules and error texts and runs `Engine::call`, returning the reply, a malformed call as `ok: false` with `error: …` (HOST-13). One JS host object supplies every host trait: `supports`, `check`, `run` (`""` = success), `read`, `isMatch`, `now`, `random`, and `history(machine, id, entryJson)`, which receives each history entry: the WASM store (`WasmStore`, over the `MemoryStore`) keeps state only and hands the log to the host, since the engine never reads history back; a throwing `history` loses that entry, never the transition (PLAN-006 D6-4); params and env cross as JSON strings, read and written with `smllm-json` (ENG-Json, PLAN-007 D7-6); a malformed constructor argument, `importState` or `fire` params is reported as `invalid compiled machines…`, `invalid state…` or `params must be a JSON object`, followed by where it failed (`: machines[0].id: expected a string, found an integer`, `: unexpected character at byte 4`), and a non-string param as `param <k> must be a string`. Every method returns the core `Reply` as JSON; `stop` returns `{"decision": "allow" | "block" | "runaway", "text"?}` as JSON (`text`, the events list, for block and runaway; PLAN-003 D3-4). Every host method is imported with `catch`: a throw becomes a failed guard or action, an `Err` from `read`/`isMatch` (so a pattern JS rejects is the core's graceful bad-pattern rejection), `false` from `supports`, `0` from `now`, and a counter from `random`; the text is `host <method> threw: <String(e)>` (PLAN-003 F22); `exportState` / `importState` move sessions, bindings and instances as JSON so a JS host can persist them; the host owns persistence and retention. `unsupported()` lists guard/action kinds the host cannot run (NFR-9). That string API is `smllm-wasm/raw`; the package's main export is a typed wrapper over it (PLAN-006 D6-3): `packages/smllm-wasm/wrap.js`, hand-written with `types.d.ts` (no TypeScript build), for the `web` (`index.js`, re-exporting `init` / `initSync`) and `bundler` (`bundler.js`) builds. Its `Engine` takes compiled machines as text or an object, returns objects (`Reply`, `StopDecision`, `SessionStatus`, state), and adapts an object-based host whose methods are all optional (`isMatch`, `now`, `random` default to `RegExp`, `Date.now`, `crypto.getRandomValues`; `history` to dropping).
 
 ```rust
 #[wasm_bindgen]
@@ -163,7 +166,26 @@ impl Engine {
     pub fn export_state(&self) -> String;
     #[wasm_bindgen(js_name = importState)]
     pub fn import_state(&mut self, state: &str) -> Result<(), JsError>;
+    pub fn tool(&self) -> String;
+    #[wasm_bindgen(js_name = callTool)]
+    pub fn call_tool(&mut self, args: &str) -> String;
 }
+```
+
+### HOST-JsPackage
+
+`packages/smllm-wasm`, in TypeScript (`src/*.ts`, compiled by `tsc` in `build:wasm` to `.js` and generated `.d.ts`; PLAN-008 D8-18, replacing PLAN-006 D6-3's hand-kept declarations). The typed `Engine` adds `tool()` → `{ name, description, inputSchema }` and `callTool({ session?, event?, params? })` → `Reply`. `Storage` is `{ load(): State | undefined; put(kind, key, record): void; history(machine, id, entry): void }`; `load` runs once, into `importState`. Shipped: `memoryStorage()`, and in `smllm-wasm/node` `nodeFileStorage(dir)` (a file per record, written atomically via temp + rename; file names from keys as the file store names ref markers: lowercase-safe, a hash suffix when needed; history JSONL per instance in the CLI's line format; one process per folder, DC-4) and `nodeHost({ configDir, timeoutSecs? })`, a command host per DEC-4..DEC-7: string `run` through `sh -c` (`cmd /C` on Windows), a list without a shell, `params.cwd` against `configDir` (compiled paths are relative to the config, D8-22) else the session's `cwd`, `SMLLM_*` env, stdin closed, the last 400 characters of output on failure, and the CLI's failure texts. Host methods are synchronous, so it uses `spawnSync`; on unix a small POSIX `sh` supervisor (`set -m`) starts the command in its own process group, a background timer kills the group on expiry, and the timer is stopped as soon as the command is reaped (before its group id could be reused); on Windows `spawnSync`'s timeout kills the command's process, as the CLI (D8-15).
+
+IMPLEMENTS: HOST-13_AC-2, HOST-14_AC-1, HOST-14_AC-2, HOST-15_AC-1
+
+```ts
+export class Engine { tool(): Tool; callTool(args: ToolArgs): Reply; /* … as before */ }
+export interface Storage { load(): State | undefined; put(kind: "session" | "binding" | "instance", key: string, record: object): void;
+                           history(machine: string, id: string, entry: HistoryEntry): void }
+export function memoryStorage(): Storage;
+// smllm-wasm/node
+export function nodeFileStorage(dir: string): Storage;
+export function nodeHost(options: { configDir: string; timeoutSecs?: number }): Host;
 ```
 
 ## Data Models
@@ -267,6 +289,12 @@ SOURCE: .zen/specs/REQ-HOST-harnesses.md
 - HOST-10_AC-1 → HOST-Claude — logic in agent-harness-kit `harness::target`; kit tests and cli.rs cover it without marker
 - HOST-11_AC-1 → HOST-Claude (HOST_P-3) — logic in agent-harness-kit `harness::region`; kit tests without marker
 - HOST-12_AC-1 → HOST-Mcp [partial] content asserted over stdio; no snapshot of the description yet
+- HOST-13_AC-1 → ENG-Engine (tool definition), HOST-Mcp, HOST-Wasm (`tool()`)
+- HOST-13_AC-2 → ENG-Engine (`call`), HOST-Wasm (`callTool`), HOST-JsPackage — one call table answered alike by MCP and wasm
+- HOST-14_AC-1 → HOST-Wasm (write-through `put`, `history`)
+- HOST-14_AC-2 → HOST-JsPackage (`memoryStorage`, `nodeFileStorage`) — a restored engine equals the original
+- HOST-15_AC-1 → HOST-JsPackage (`nodeHost`) — Node tests mirroring the CLI runner's, a grandchild killed on timeout
+- HOST-16_AC-1 → HOST-Mcp (`ConfigCache`) — an edit within one timestamp tick picked up
 
 ## Library Usage
 
@@ -288,3 +316,4 @@ SOURCE: .zen/specs/REQ-HOST-harnesses.md
 
 - 0.1.0 (2026-09-25): Initial design
 - 0.2.0 (2026-09-28): smllm-wasm JSON via smllm-json (PLAN-007)
+- 0.3.0 (2026-09-28): The core's tool definition and `Engine::call` in MCP and wasm; the MCP config cache; write-through wasm storage; HOST-JsPackage (TypeScript, Storage, nodeHost) (PLAN-008)

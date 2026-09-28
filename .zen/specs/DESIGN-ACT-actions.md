@@ -38,7 +38,7 @@ flowchart TD
 
 ```
 crates/lib/smllm-core/src/engine/turn.rs     run, prompt, enter, exit, take, lists (ENG-Turn)
-crates/lib/smllm-core/src/engine/machine.rs  park / unmatched / resume / yield (ENG-Machine)
+crates/lib/smllm-core/src/engine/machine.rs  pause / unmatched / resume / yield (ENG-Machine)
 crates/lib/smllm-core/src/engine/idle.rs     start: enter/resume entry (IDLE-Idle)
 crates/lib/smllm-core/src/engine/api.rs      unsupported() (ENG-Engine)
 crates/app/smllm/src/host.rs                 Commands as Action (DEC-CommandRunner)
@@ -75,8 +75,8 @@ impl Turn<'_, '_> {
 
 ENG-Machine and IDLE-Idle (DESIGN-ENG, DESIGN-IDLE):
 
-- `park`: `exit(from, to: None)` → parked → idle
-- `unmatched`: to fallback: `exit(from)` → `enter(fallback)` → settle; to idle: `exit(from, to: None)` → suspended
+- `pause`: `exit(from, to: None)` → paused → idle
+- `unmatched`: to fallback: `exit(from)` → `enter(fallback)` → settle; to idle: `exit(from, to: None)` → interrupted
 - `resume` (fallback): `exit(fallback)` → `enter(interrupted)` → settle
 - `enter` / `resume` (idle): `start` → `enter(target)` → settle; no exit (the instance was not in a state)
 - `yield`: no actions
@@ -134,9 +134,10 @@ SOURCE: .zen/specs/REQ-ACT-actions.md
 - ACT-2_AC-1 → ENG-Turn (`run`, `prompt`); TURN-Render renders the block
 - ACT-3_AC-1 → ENG-Turn (`run`) — interpreted as skipping the rest of the list's commands only; prompts still shown
 - ACT-4_AC-1 → ENG-Turn (`env` with from/to), DEC-CommandRunner (same `run_command` as guards); no @zen-impl marker
-- ACT-5_AC-1 → IDLE-Idle (`start`), ENG-Machine (park, unmatched, resume, yield)
+- ACT-5_AC-1 → IDLE-Idle (`start`), ENG-Machine (pause, unmatched, resume, yield)
 - ACT-6_AC-1 → ENG-Engine (`unsupported`) [partial] exposed by the core and `smllm-wasm`; the CLI app does not call it (its host supports only `command`, which the validator already accepts)
 
 ## Change Log
 
 - 1.0.0 (2026-09-25): Initial design, documenting the P6 implementation
+- 1.1.0 (2026-09-28): Terms pause and interrupted (were park and suspend; PLAN-008 D8-4)

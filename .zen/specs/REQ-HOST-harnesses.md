@@ -118,6 +118,44 @@ ACCEPTANCE CRITERIA
 
 - [x] HOST-12_AC-1 [ubiquitous]: The MCP tool description SHALL carry the full agent rules (TURN-9), the same for every MCP harness, as a stable contract covered by a snapshot test — the current test asserts content, not a snapshot
 
+### HOST-13: One tool for every host [MUST]
+
+AS A host author, I WANT the agent-facing `smllm` tool and its call handling from smllm itself, SO THAT every host offers the agent the same tool and answers it the same way.
+
+ACCEPTANCE CRITERIA
+
+- [ ] HOST-13_AC-1 [ubiquitous]: The MCP server and the wasm engine SHALL offer the same tool name, description (HOST-12) and input schema, from one definition in `smllm-core`
+- [ ] HOST-13_AC-2 [event]: WHEN a wasm host passes the agent's tool arguments to `callTool` THEN the system SHALL answer as the MCP server does for the same arguments, returning a malformed call's error as the answer's text, not throwing
+
+DEPENDS ON: HOST-5, HOST-12
+
+### HOST-14: Write-through storage for JS hosts [MUST]
+
+AS A JS host author, I WANT each saved record handed to my storage as it is saved, SO THAT persisting costs what changed, not the whole state.
+
+ACCEPTANCE CRITERIA
+
+- [ ] HOST-14_AC-1 [event]: WHEN the wasm engine saves a session, binding, instance or history entry THEN it SHALL hand that record to the host's storage
+- [ ] HOST-14_AC-2 [ubiquitous]: The package SHALL provide an in-memory storage and a Node file storage (a file per record, written atomically; history as JSONL), and an engine restored from a storage SHALL equal the engine that filled it
+
+### HOST-15: Node command host [MUST]
+
+AS A Node host author, I WANT `command` guards and actions run as the CLI runs them, SO THAT machines behave the same in-process as through the CLI.
+
+ACCEPTANCE CRITERIA
+
+- [ ] HOST-15_AC-1 [ubiquitous]: The package's Node host SHALL run `command` guards and actions per DEC-4..DEC-7, resolving `params.cwd` against the compiled config's folder, and SHALL kill the command's whole process group when it times out, except on Windows, where it kills the command's process as the CLI does
+
+DEPENDS ON: DEC-4, DEC-5, DEC-6, DEC-7
+
+### HOST-16: Config edits on the next MCP call [MUST]
+
+AS A machine author, I WANT an edit to a config or machine file to take effect on the next tool call, SO THAT a long-running MCP server never serves a stale machine.
+
+ACCEPTANCE CRITERIA
+
+- [ ] HOST-16_AC-1 [event]: WHEN a config or machine file the MCP server loaded changes, in content, size or modification time, THEN the next tool call SHALL use the changed file, including an edit made within the file system's timestamp resolution
+
 ## Assumptions
 
 - Claude Code's hook JSON (`session_id`, `cwd`, `stop_hook_active`, `hookSpecificOutput.additionalContext`, `decision: block`) behaves as documented; HOST-9 confirms it
@@ -135,3 +173,4 @@ ACCEPTANCE CRITERIA
 ## Change Log
 
 - 0.1.0 (2026-09-25): Initial requirements from PLAN-001 §8
+- 0.2.0 (2026-09-28): HOST-13..HOST-16: one tool for every host, write-through storage, the Node command host, config edits on the next MCP call (PLAN-008)

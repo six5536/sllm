@@ -76,7 +76,7 @@ AS AN agent, I WANT the idle list only when I arrive in idle, SO THAT prompts ar
 
 ACCEPTANCE CRITERIA
 
-- [x] TURN-7_AC-1 [event]: WHEN the session enters idle (session start/resume/compact, `park`, `unmatched`, final state, moved) THEN the system SHALL return the idle list, and SHALL NOT inject it on user prompts
+- [x] TURN-7_AC-1 [event]: WHEN the session enters idle (session start/resume/compact, `pause`, `unmatched`, final state, moved) THEN the system SHALL return the idle list, and SHALL NOT inject it on user prompts
 
 ### TURN-8: User prompt [MUST]
 
@@ -134,3 +134,4 @@ ACCEPTANCE CRITERIA
 ## Change Log
 
 - 1.0.0 (2026-09-25): Initial requirements from PLAN-001 §7
+- 1.1.0 (2026-09-28): Terms pause and interrupted (were park and suspend; PLAN-008 D8-4)

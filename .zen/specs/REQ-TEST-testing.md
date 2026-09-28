@@ -30,7 +30,7 @@ AS A maintainer, I WANT a fake agent to drive the real binary, SO THAT hooks, `f
 
 ACCEPTANCE CRITERIA
 
-- [ ] TEST-2_AC-1 [ubiquitous]: The suite SHALL drive `harness hook claude …` JSON, `fire` and MCP over stdio through the showcase and a `dev` example, covering enter, setRef, guarded transitions (true and false), park, detour/resume, takeover, final and reopen — showcase covered; `dev` is driven only through wasm (TEST-3); reopen is covered only in core tests
+- [ ] TEST-2_AC-1 [ubiquitous]: The suite SHALL drive `harness hook claude …` JSON, `fire` and MCP over stdio through the showcase and a `dev` example, covering enter, setRef, guarded transitions (true and false), pause, detour/resume, takeover, final and reopen — showcase covered; `dev` is driven only through wasm (TEST-3); reopen is covered only in core tests
 
 ### TEST-3: WebAssembly tests [MUST]
 
@@ -39,6 +39,7 @@ AS A browser host author, I WANT the wasm package exercised from JavaScript, SO 
 ACCEPTANCE CRITERIA
 
 - [x] TEST-3_AC-1 [ubiquitous]: CI SHALL load the built `smllm-wasm` in Node and run one scripted session through the JS API
+- [ ] TEST-3_AC-2 [event]: WHEN CI runs THEN it SHALL run the TypeScript example in `examples/wasm/` under Node and type-check the package and the example with `tsc --noEmit`
 
 ### TEST-4: Live-model test [SHOULD]
 
@@ -55,3 +56,4 @@ ACCEPTANCE CRITERIA
 ## Change Log
 
 - 0.1.0 (2026-09-25): Initial requirements from PLAN-001 §10
+- 0.2.0 (2026-09-28): TEST-3_AC-2: the TypeScript example and type check in CI (PLAN-008)

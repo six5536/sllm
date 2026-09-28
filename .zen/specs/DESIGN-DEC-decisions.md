@@ -46,7 +46,7 @@ flowchart LR
 crates/lib/smllm-core/src/engine/turn.rs      pick, guard, env, settle (ENG-Turn)
 crates/lib/smllm-core/src/model/action.rs     GuardDef, Value (ENG-Model)
 crates/lib/smllm-format/src/lower/graph.rs    always-loop check (CFG-Lower)
-crates/lib/smllm-format/src/lower/actions.rs  params.cwd resolved against the YAML dir (as written for compile)
+crates/lib/smllm-format/src/lower/actions.rs  params.cwd resolved against the YAML dir (relative to the config for compile)
 crates/app/smllm/src/host.rs                  DEC-CommandRunner (Commands, run_command)
 ```
 
@@ -55,7 +55,7 @@ crates/app/smllm/src/host.rs                  DEC-CommandRunner (Commands, run_c
 - VISITS IN THE CORE, COMMANDS IN THE HOST: `visits` needs only instance data, so every host (including browsers) gets it; `command` needs processes, so it is a host kind reported by `Engine::unsupported` where missing (NFR-9)
 - ENV ONLY, NEVER INTERPOLATION: machine text is never templated (CFG-17); the event's params reach commands as `SMLLM_PARAM_<SCREAMING_SNAKE>` (`issueId` → `SMLLM_PARAM_ISSUE_ID`), so LLM input cannot become shell syntax in array form and is only as dangerous as the author's own quoting in string form (NFR-5)
 - ONE RUNNER FOR GUARDS AND ACTIONS: `Commands` implements both `Guard` and `Action` by calling `run_command` (ACT-4)
-- CWD RESOLVED AT LOAD: `smllm-format` rewrites `params.cwd` to an absolute path from the YAML's directory; the runner uses it as is, else the session's `cwd` recorded at bind (`Call.cwd`). `compile` keeps it as written (relative to the machine file), so compiled output holds no path of the machine that compiled it (PLAN-006 D6-2)
+- CWD RESOLVED AT LOAD: `smllm-format` rewrites `params.cwd` to an absolute path from the YAML's directory; the runner uses it as is, else the session's `cwd` recorded at bind (`Call.cwd`). `compile` writes a relative one relative to the compiled config file (`cwd: build` in `machines/dev.yaml` → `machines/build`; an absolute one as written), so compiled output holds no path of the machine that compiled it (PLAN-006 D6-2) and a host resolves every command against one folder (PLAN-008 D8-22)
 - DRAINED PIPES: stdout and stderr are drained on threads so a chatty command cannot block before the timeout; only the last `KEPT_BYTES` are buffered (the trace shows a 400-character tail), and once the command is done the readers stop at their next read, so a background process left holding the pipes cannot grow smllm's memory (PLAN-003 F25); `wait-timeout` enforces `timeoutSecs` and the child is killed on expiry
 - GROUP KILL (unix): each command runs in its own process group; on expiry, while the child is still unreaped (so its pid, the group id, cannot have been reused) and its pid is > 1, `kill -s KILL -- -<pid>` kills the group, then `child.kill()`. The `--` is required: procps `kill` reads `-<pid>` as an option and signals `-<first digit>`, i.e. every process for `-1…` (PLAN-003 D3-1). No `kill` on `PATH` → `child.kill()` only. Windows: `child.kill()` only (the `cmd` process)
 - TAIL ONLY ON FAILURE: the combined output is trimmed to its last 400 chars on one line and attached only to failures (`exited N: <tail>`); a passing guard's trace line has no detail, so a pass returns as soon as the command exits. A failure waits up to 200 ms for the readers to reach end-of-file: each holds a channel sender, and the channel disconnects when both have ended (PLAN-004 P-7)
@@ -85,7 +85,7 @@ The core side (guard evaluation, env, `always`) is ENG-Turn in DESIGN-ENG-engine
 
 ### Core Types
 
-- COMMAND PARAMS: `run` (`Value::Str` shell, `Value::List` exec), `timeoutSecs` (`Value::Int`), `cwd` (`Value::Str`, absolute after lowering for running; as written, relative to the machine file, in `compile` output)
+- COMMAND PARAMS: `run` (`Value::Str` shell, `Value::List` exec), `timeoutSecs` (`Value::Int`), `cwd` (`Value::Str`, absolute after lowering for running; relative to the compiled config file, in `compile` output)
 - ENVIRONMENT: `SMLLM_SESSION`, `SMLLM_MACHINE`, `SMLLM_STATE` (source state for guards and transition actions; the list's own state for entry/exit), `SMLLM_EVENT`, `SMLLM_INSTANCE`, `SMLLM_REF` (empty until set), `SMLLM_FROM`/`SMLLM_TO` (actions only), `SMLLM_PARAM_<NAME>`
 
 ```rust
@@ -164,3 +164,4 @@ SOURCE: .zen/specs/REQ-DEC-decisions.md
 
 - 1.0.0 (2026-09-25): Initial design, documenting the P6 implementation
 - 1.1.0 (2026-09-27): A pass waits for no output; readers signal their end on a channel (PLAN-004)
+- 1.2.0 (2026-09-28): `compile` writes a relative `cwd` relative to the compiled config (PLAN-008 D8-22)
