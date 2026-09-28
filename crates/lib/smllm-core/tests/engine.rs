@@ -145,7 +145,7 @@ fn set_ref_then_guarded_transitions_and_always() {
     let inst = f.with(|h| h.store.instances("dev").unwrap()).pop().unwrap();
     assert_eq!(inst.visits("WORK"), 4);
     assert_eq!(inst.visits("TRIAGE"), 2);
-    assert!(f.store.history.iter().next().unwrap().1.len() > 8);
+    assert!(f.store.history().iter().next().unwrap().1.len() > 8);
     let r = f.fire(&e, &k, "issueCreated", &[("issueId", "GH-8")]);
     assert!(!r.ok);
     assert!(r.text.contains("already has its ref GH-7"), "{}", r.text);
@@ -591,7 +591,7 @@ fn unsupported_kinds_are_listed() {
 
 // @zen-test: IDLE-2_AC-1
 #[test]
-fn the_fallback_state_keeps_its_way_back_across_a_interrupt() {
+fn the_fallback_state_keeps_its_way_back_across_an_interrupt() {
     let (e, mut f) = (engine(), fake());
     let k = key_of(&f.bind(&e, None));
     f.fire(&e, &k, "enter", &[("stateMachine", "help")]);
@@ -723,5 +723,79 @@ fn a_rejected_keyless_enter_leaves_no_session() {
         .unwrap()
     });
     assert!(!r.ok);
-    assert!(f.store.sessions.is_empty());
+    assert!(f.store.sessions().is_empty());
+}
+
+// The idle list shows the 10 most recently updated paused instances, then how
+// many more; `listPaused`, offered only then, lists them all and writes
+// nothing (IDLE-7, PLAN-008 D8-2, D8-3).
+// @zen-test: IDLE-7_AC-1
+// @zen-test: IDLE-7_AC-2
+#[test]
+fn the_idle_list_shows_ten_paused_and_list_paused_shows_all() {
+    let (e, mut f) = (engine(), fake());
+    let k = key_of(&f.bind(&e, None));
+    let pause = |f: &mut Fake, n: u64| {
+        f.now = 1_000 + n;
+        let id = format!("GH-{n}");
+        f.fire(
+            &e,
+            &k,
+            "enter",
+            &[("stateMachine", "dev"), ("issueId", &id)],
+        );
+        f.fire(&e, &k, "pause", &[])
+    };
+    for n in 1..=10 {
+        pause(&mut f, n);
+    }
+    // Ten fit: nothing more to list, so `listPaused` is not offered.
+    let r = f.view(&e, &k);
+    assert!(!r.text.contains("listPaused"), "{}", r.text);
+    let r = f.fire(&e, &k, "listPaused", &[]);
+    assert!(!r.ok);
+    assert!(
+        r.text
+            .contains("listPaused is not offered in idle (offered: enter)"),
+        "{}",
+        r.text
+    );
+
+    pause(&mut f, 11);
+    let r = pause(&mut f, 12);
+    insta::assert_snapshot!("idle_list_cut_short", r.text);
+    assert!(
+        r.text
+            .contains("- issue GH-12 (dev) at TRIAGE\n- issue GH-11"),
+        "{}",
+        r.text
+    );
+    assert!(!r.text.contains("GH-2 (dev)"), "{}", r.text);
+    assert!(
+        r.text
+            .contains("…and 2 more paused: fire listPaused to list them all.")
+    );
+    assert!(
+        r.text.contains("listPaused — List all 12 paused instances"),
+        "{}",
+        r.text
+    );
+
+    let before = f.store.clone();
+    let r = f.fire(&e, &k, "listPaused", &[]);
+    assert!(r.ok, "{}", r.text);
+    let order: Vec<_> = r
+        .text
+        .lines()
+        .filter(|l| l.starts_with("- issue"))
+        .collect();
+    assert_eq!(order.len(), 12);
+    assert!(
+        order[0].contains("GH-12") && order[11].contains("GH-1 "),
+        "{order:?}"
+    );
+    // A view: not even the session changed.
+    assert_eq!(f.store, before);
+    let r = f.fire(&e, &k, "listPaused", &[("x", "1")]);
+    assert!(!r.ok && r.text.contains("listPaused takes no params, but got x"));
 }

@@ -7,4 +7,5 @@ mod traits;
 pub use memory::MemoryStore;
 pub use traits::{
     Action, Call, Clock, Guard, Host, HostError, Ids, InstructionSource, Matcher, Outcome, Store,
+    newest_first,
 };

@@ -12,7 +12,7 @@ use smllm_core::host::{
     Outcome, Store,
 };
 use smllm_core::model::Config;
-use smllm_core::record::{HistoryEntry, Instance, Session};
+use smllm_core::record::{HistoryEntry, Instance, Session, Status};
 use smllm_core::{Bind, Stop};
 
 use smllm_json::{Fields, FromJson, JsonValue, ToJson};
@@ -199,6 +199,33 @@ impl Store for WasmStore<'_> {
     }
     fn instances(&mut self, machine: &str) -> Result<Vec<Instance>, HostError> {
         self.mem.instances(machine)
+    }
+    // Every method delegates, defaults included: a default would answer by
+    // cloning every instance, not from the store's indexes (PLAN-008 F4).
+    fn instances_with(
+        &mut self,
+        machine: &str,
+        status: Status,
+    ) -> Result<Vec<Instance>, HostError> {
+        self.mem.instances_with(machine, status)
+    }
+    fn instance_by_ref(
+        &mut self,
+        machine: &str,
+        r#ref: &str,
+    ) -> Result<Option<Instance>, HostError> {
+        self.mem.instance_by_ref(machine, r#ref)
+    }
+    fn count(&mut self, machine: &str, status: Status) -> Result<usize, HostError> {
+        self.mem.count(machine, status)
+    }
+    fn recent(
+        &mut self,
+        machine: &str,
+        status: Status,
+        limit: usize,
+    ) -> Result<Vec<Instance>, HostError> {
+        self.mem.recent(machine, status, limit)
     }
     fn put_instance(&mut self, instance: &Instance) -> Result<(), HostError> {
         self.mem.put_instance(instance)
@@ -391,12 +418,12 @@ impl Engine {
     pub fn import_state(&mut self, state: &str) -> Result<(), JsError> {
         let read = |state| -> Result<MemoryStore, smllm_json::Error> {
             let mut f = Fields::from_json(smllm_json::parse(state)?)?;
-            Ok(MemoryStore {
-                sessions: f.req("sessions")?,
-                bindings: f.req("bindings")?,
-                instances: f.req("instances")?,
-                history: Default::default(),
-            })
+            Ok(MemoryStore::from_parts(
+                f.req("sessions")?,
+                f.req("bindings")?,
+                f.req("instances")?,
+                Default::default(),
+            ))
         };
         self.store = read(state).map_err(|e| {
             JsError::new(&format!("invalid state: expected `exportState` JSON: {e}"))

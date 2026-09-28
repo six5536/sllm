@@ -4,7 +4,7 @@
 use crate::model::Value;
 use crate::prelude::*;
 use crate::record::{HistoryEntry, Instance, Session, Status};
-use crate::utils::SmallMap;
+use crate::utils::{SmallMap, merge_sort_by};
 
 /// A store failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,6 +67,26 @@ pub trait Store {
             .into_iter()
             .find(|i| i.r#ref.as_deref() == Some(r#ref)))
     }
+    /// How many instances of `machine` have `status` (the idle list's
+    /// "…and K more", the status line). The default counts
+    /// [`Store::instances_with`]; a store may count without reading them.
+    fn count(&mut self, machine: &str, status: Status) -> Result<usize, HostError> {
+        Ok(self.instances_with(machine, status)?.len())
+    }
+    /// The `limit` most recently updated instances of `machine` with
+    /// `status`, newest first, ties by label (IDLE-7). The default sorts
+    /// [`Store::instances_with`]; a store may read only the newest.
+    fn recent(
+        &mut self,
+        machine: &str,
+        status: Status,
+        limit: usize,
+    ) -> Result<Vec<Instance>, HostError> {
+        let mut all = self.instances_with(machine, status)?;
+        newest_first(&mut all);
+        all.truncate(limit);
+        Ok(all)
+    }
     /// Save an instance whose `version` was bumped by one from the stored copy
     /// (or is 1 for a new one); anything else is [`HostError::Conflict`].
     fn put_instance(&mut self, instance: &Instance) -> Result<(), HostError>;
@@ -77,6 +97,18 @@ pub trait Store {
         id: &str,
         entry: &HistoryEntry,
     ) -> Result<(), HostError>;
+}
+
+/// Order instances most recently updated first, ties by machine, then
+/// label: the idle list's order across machines (IDLE-7), and within one
+/// machine the order of [`Store::recent`].
+pub fn newest_first(instances: &mut Vec<Instance>) {
+    merge_sort_by(instances, |a, b| {
+        b.updated
+            .cmp(&a.updated)
+            .then_with(|| a.machine.cmp(&b.machine))
+            .then_with(|| a.label().cmp(b.label()))
+    });
 }
 
 /// A guard or action invocation handed to the host.

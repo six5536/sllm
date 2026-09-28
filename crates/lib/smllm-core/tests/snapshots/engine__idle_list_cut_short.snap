@@ -1,0 +1,39 @@
+---
+source: crates/lib/smllm-core/tests/engine.rs
+assertion_line: 756
+expression: r.text
+---
+<smllm>
+session sm-n0zmmz · idle
+Paused issue GH-12 at TRIAGE.
+<instructions>
+Pick work from the list.
+</instructions>
+State machines:
+- dev — Fix an issue end to end.
+    issue id param: issueId — The GitHub issue id, e.g. GH-123. (pattern: ^GH-\d+$)
+    starts at: TRIAGE; entry points: TRIAGE, REVIEW
+- help
+    instance id param: ref
+    starts at: ASK; entry points: ASK
+Paused:
+- issue GH-12 (dev) at TRIAGE
+- issue GH-11 (dev) at TRIAGE
+- issue GH-10 (dev) at TRIAGE
+- issue GH-9 (dev) at TRIAGE
+- issue GH-8 (dev) at TRIAGE
+- issue GH-7 (dev) at TRIAGE
+- issue GH-6 (dev) at TRIAGE
+- issue GH-5 (dev) at TRIAGE
+- issue GH-4 (dev) at TRIAGE
+- issue GH-3 (dev) at TRIAGE
+…and 2 more paused: fire listPaused to list them all.
+Fire one event: smllm({ session: "sm-n0zmmz", event, params })
+<events>
+- enter — Start a new instance of a state machine, or continue one.
+    stateMachine (required, one of: dev, help): The state machine to enter.
+    issueId | ref (optional): The id param its state machine names above: an existing id or ref continues that instance, a new ref starts one with it; omit to start a new one.
+    state (optional): Enter here instead: an entry point. Omit for the initial state (new) or the saved state (existing).
+- listPaused — List all 12 paused instances, most recently updated first.
+</events>
+</smllm>

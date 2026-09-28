@@ -200,6 +200,27 @@ impl Store for FsStore {
         })
     }
 
+    /// A listing of one shelf, no file read.
+    fn count(&mut self, machine: &str, status: Status) -> Result<usize, HostError> {
+        Ok(match self.machine_dir(machine) {
+            Ok(dir) => instances::count(&dir, status),
+            Err(_) => 0,
+        })
+    }
+
+    /// The newest files of one shelf only.
+    fn recent(
+        &mut self,
+        machine: &str,
+        status: Status,
+        limit: usize,
+    ) -> Result<Vec<Instance>, HostError> {
+        Ok(match self.machine_dir(machine) {
+            Ok(dir) => instances::recent(&dir, status, limit),
+            Err(_) => Vec::new(),
+        })
+    }
+
     /// One marker file.
     fn instance_by_ref(
         &mut self,
@@ -294,15 +315,15 @@ mod tests {
         let mut clash = b.clone();
         clash.id = "i-3".into();
         fs::write(
-            d.join("proj/state/dev/open/i-3.json"),
+            d.join("proj/state/dev/active/i-3.json"),
             serde_json::to_string(&clash).unwrap(),
         )
         .unwrap();
         b.version += 1;
         s.put_instance(&b).unwrap();
-        fs::remove_file(d.join("proj/state/dev/open/i-3.json")).unwrap();
+        fs::remove_file(d.join("proj/state/dev/active/i-3.json")).unwrap();
         // A corrupt instance file is skipped, and reported (PLAN-003 F5).
-        fs::write(d.join("proj/state/dev/open/i-bad.json"), "{ nope").unwrap();
+        fs::write(d.join("proj/state/dev/active/i-bad.json"), "{ nope").unwrap();
         assert_eq!(s.instances("dev").unwrap().len(), 2);
         let bad = s.scan("dev").1;
         assert_eq!(bad.len(), 1);
@@ -346,9 +367,65 @@ mod tests {
         fs::remove_dir_all(d).ok();
     }
 
-    // Live instances in `open/`, completed ones in `done/`, refs as marker
-    // files, histories in `history/` (PLAN-005); reads write nothing
-    // (PLAN-006 D6-1).
+    // `count` lists a shelf; `recent` reads its newest files only, ties in
+    // file time included, and orders them as the idle list does (IDLE-7,
+    // PLAN-008 D8-21).
+    // @zen-test: IDLE-7_AC-1
+    #[test]
+    fn count_and_recent_read_little() {
+        let d = crate::test_support::temp_dir("recent");
+        let paused = d.join("state/dev/paused");
+        let mut s = FsStore::new(
+            d.join("user"),
+            [("dev".to_string(), d.join("state"))].into(),
+        );
+        assert_eq!(s.count("dev", Status::Paused).unwrap(), 0);
+        assert!(s.recent("dev", Status::Paused, 3).unwrap().is_empty());
+        for n in 0..6u64 {
+            let mut i = inst(1);
+            i.id = format!("i-{n}");
+            i.status = Status::Paused;
+            // Two share the newest time: the label decides between them.
+            i.updated = if n >= 4 { 100 } else { n };
+            s.put_instance(&i).unwrap();
+        }
+        let mut a = inst(1);
+        a.id = "i-a".into();
+        s.put_instance(&a).unwrap();
+        assert_eq!(s.count("dev", Status::Paused).unwrap(), 6);
+        assert_eq!(s.count("dev", Status::Active).unwrap(), 1);
+        let ids = |v: Vec<Instance>| v.into_iter().map(|i| i.id).collect::<Vec<_>>();
+        assert_eq!(
+            ids(s.recent("dev", Status::Paused, 3).unwrap()),
+            ["i-4", "i-5", "i-3"]
+        );
+        // A file nobody can read is not counted as an instance by `recent`.
+        fs::write(paused.join("i-z.json"), "{ nope").unwrap();
+        assert_eq!(
+            ids(s.recent("dev", Status::Paused, 2).unwrap()),
+            ["i-4", "i-5"]
+        );
+        // Every file's time tied (a coarse clock): all are read, and
+        // `updated` still orders them.
+        let t = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        for e in fs::read_dir(&paused).unwrap().flatten() {
+            fs::File::options()
+                .write(true)
+                .open(e.path())
+                .unwrap()
+                .set_modified(t)
+                .unwrap();
+        }
+        assert_eq!(
+            ids(s.recent("dev", Status::Paused, 2).unwrap()),
+            ["i-4", "i-5"]
+        );
+        fs::remove_dir_all(d).ok();
+    }
+
+    // A shelf per status (`active/`, …, `done/`), refs as marker files,
+    // histories in `history/` (PLAN-005, PLAN-008 D8-21); reads write
+    // nothing (PLAN-006 D6-1).
     // @zen-test: INST-3_AC-1
     // @zen-test: INST-4_AC-1
     #[test]
@@ -375,20 +452,20 @@ mod tests {
         s.put_instance(&b).unwrap();
         s.append_history("dev", "i-a", &HistoryEntry::default())
             .unwrap();
-        assert!(dev.join("open/i-a.json").is_file() && dev.join("done/i-b.json").is_file());
+        assert!(dev.join("active/i-a.json").is_file() && dev.join("done/i-b.json").is_file());
         assert!(dev.join("history/i-a.jsonl").is_file());
         assert_eq!(s.history("dev", "i-a").unwrap().len(), 1);
         assert_eq!(s.instance_by_ref("dev", "R2").unwrap().unwrap().id, "i-b");
-        fs::write(dev.join("open/i-c.json"), "{ nope").unwrap();
+        fs::write(dev.join("active/i-c.json"), "{ nope").unwrap();
         assert_eq!(s.instances("dev").unwrap().len(), 2);
         assert_eq!(s.scan("dev").1.len(), 1);
-        fs::remove_file(dev.join("open/i-c.json")).unwrap();
+        fs::remove_file(dev.join("active/i-c.json")).unwrap();
 
         // Completing moves the file; a paused list never reads `done/`.
         a.version = 2;
         a.status = Status::Completed;
         s.put_instance(&a).unwrap();
-        assert!(dev.join("done/i-a.json").is_file() && !dev.join("open/i-a.json").exists());
+        assert!(dev.join("done/i-a.json").is_file() && !dev.join("active/i-a.json").exists());
         let mut misplaced = inst(1);
         misplaced.id = "i-x".into();
         misplaced.status = Status::Paused;

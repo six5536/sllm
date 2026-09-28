@@ -1,10 +1,10 @@
-//! Instances on disk (PLAN-005): live ones (active, interrupted, paused) in
-//! `<machine>/open/`, completed ones in `<machine>/done/`, each ref in a
-//! marker file under `<machine>/refs/`, and each history in
-//! `<machine>/history/<id>.jsonl`. The layout is the index: status lines and
-//! idle lists read `open/` only, and a ref is one file, however much history
-//! `done/` keeps (INST-9). Reads never write; a write creates the folders it
-//! needs (PLAN-006 D6-1).
+//! Instances on disk (PLAN-005, PLAN-008 D8-21): a shelf per status,
+//! `<machine>/active/`, `interrupted/`, `paused/` and `done/` (completed),
+//! each ref in a marker file under `<machine>/refs/`, and each history in
+//! `<machine>/history/<id>.jsonl`. The layout is the index: a count is a
+//! listing, the idle list reads only the newest paused files, and a ref is
+//! one file, however much history `done/` keeps (INST-9). Reads never write;
+//! a write creates the folders it needs (PLAN-006 D6-1).
 // @zen-component: STO-FileStore
 
 use std::collections::BTreeMap;
@@ -16,8 +16,12 @@ use smllm_core::record::{Instance, Status};
 
 use super::{other, read_json, safe, write};
 
-const OPEN: &str = "open";
+const ACTIVE: &str = "active";
+const INTERRUPTED: &str = "interrupted";
+const PAUSED: &str = "paused";
 const DONE: &str = "done";
+/// Every shelf: the live ones, then `done/`.
+const SHELVES: [&str; 4] = [ACTIVE, INTERRUPTED, PAUSED, DONE];
 const REFS: &str = "refs";
 const HISTORY: &str = "history";
 
@@ -28,10 +32,11 @@ pub(super) fn history_path(dir: &Path, id: &str) -> PathBuf {
 
 /// The directory an instance with `status` lives in.
 fn shelf(status: Status) -> &'static str {
-    if status == Status::Completed {
-        DONE
-    } else {
-        OPEN
+    match status {
+        Status::Active => ACTIVE,
+        Status::Interrupted => INTERRUPTED,
+        Status::Paused => PAUSED,
+        Status::Completed => DONE,
     }
 }
 
@@ -54,10 +59,11 @@ fn locked<T>(dir: &Path, f: impl FnOnce() -> Result<T, HostError>) -> Result<T, 
     result
 }
 
-/// Instance `id` and where it is: `open/` first, where most reads find it.
-/// A reopen moves a file from `done/` back to `open/` without the reader's
-/// lock, so `open/` is read again after `done/`. On a case-insensitive file
-/// system `I-X.json` opens `i-x.json`: only the exact id counts.
+/// Instance `id` and where it is: every shelf in turn, then the live ones
+/// again, since a status change moves a file without the reader's lock (a
+/// reopen from `done/` back to a live shelf, a pause from `active/` to
+/// `paused/`). On a case-insensitive file system `I-X.json` opens
+/// `i-x.json`: only the exact id counts.
 pub(super) fn find(dir: &Path, id: &str) -> Result<Option<(PathBuf, Instance)>, HostError> {
     let name = file_name(id);
     // Too long for a file name: no stored id (they are generated and short),
@@ -65,7 +71,7 @@ pub(super) fn find(dir: &Path, id: &str) -> Result<Option<(PathBuf, Instance)>, 
     if name.len() > 255 {
         return Ok(None);
     }
-    for s in [OPEN, DONE, OPEN] {
+    for s in SHELVES.iter().chain(&SHELVES[..3]) {
         let p = dir.join(s).join(&name);
         if let Some(i) = read_json::<Instance>(&p)?.filter(|i| i.id == id) {
             return Ok(Some((p, i)));
@@ -171,7 +177,7 @@ fn scan_shelf(dir: &Path, out: &mut (Vec<Instance>, Vec<(PathBuf, String)>)) {
     }
 }
 
-/// Every instance file of both shelves (`None`), or of the shelf that holds
+/// Every instance file of every shelf (`None`), or of the shelf that holds
 /// `status`, sorted by id.
 pub(super) fn scan(dir: &Path, status: Option<Status>) -> (Vec<Instance>, Vec<(PathBuf, String)>) {
     let mut out = (Vec::new(), Vec::new());
@@ -181,15 +187,65 @@ pub(super) fn scan(dir: &Path, status: Option<Status>) -> (Vec<Instance>, Vec<(P
             out.0.retain(|i| i.status == s);
         }
         None => {
-            scan_shelf(&dir.join(OPEN), &mut out);
-            scan_shelf(&dir.join(DONE), &mut out);
+            for s in SHELVES {
+                scan_shelf(&dir.join(s), &mut out);
+            }
         }
     }
     out.0.sort_by(|a, b| a.id.cmp(&b.id));
-    // An instance moving shelves while they are read may be seen on both.
+    // An instance moving shelves while they are read may be seen on two.
     out.0.dedup_by(|a, b| a.id == b.id);
     out.1.sort();
     out
+}
+
+/// The instance files of one shelf, newest first by modification time.
+fn listing(dir: &Path) -> Vec<(std::time::SystemTime, PathBuf)> {
+    let Ok(rd) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut files: Vec<_> = rd
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .filter_map(|p| Some((fs::metadata(&p).ok()?.modified().ok()?, p)))
+        .collect();
+    files.sort_by_key(|f| std::cmp::Reverse(f.0));
+    files
+}
+
+/// How many instances have `status`: a listing of its shelf, no file read.
+pub(super) fn count(dir: &Path, status: Status) -> usize {
+    let Ok(rd) = fs::read_dir(dir.join(shelf(status))) else {
+        return 0;
+    };
+    rd.flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
+        .count()
+}
+
+/// The `limit` most recently updated instances with `status`, newest first,
+/// ties by label. A file is written whenever its instance is, so its time
+/// tracks `updated`: only the newest files are read, plus any whose time
+/// ties with the last one kept (a coarse clock), then ordered by `updated`.
+pub(super) fn recent(dir: &Path, status: Status, limit: usize) -> Vec<Instance> {
+    let files = listing(&dir.join(shelf(status)));
+    let mut read = Vec::new();
+    let mut last = None;
+    for (time, path) in files {
+        if read.len() >= limit && last.is_some_and(|t| time < t) {
+            break;
+        }
+        if let Ok(Some(i)) = read_json::<Instance>(&path)
+            && i.status == status
+        {
+            last = Some(time);
+            read.push(i);
+        }
+    }
+    smllm_core::host::newest_first(&mut read);
+    read.truncate(limit);
+    read
 }
 
 /// Save `instance` (INST-8, INST-3): the version follows the stored one; a

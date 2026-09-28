@@ -284,7 +284,7 @@ fn new_forms_and_validate_paths() {
     );
     // A corrupt instance file is skipped everywhere else, and reported here
     // (PLAN-003 F5).
-    w.write(".smllm/state/other/open/i-bad.json", "{ nope");
+    w.write(".smllm/state/other/active/i-bad.json", "{ nope");
     let o = w.run(&["validate", "--warnings"]);
     assert!(
         o.stdout.contains("i-bad.json") && o.stdout.contains("cannot be read"),
@@ -474,8 +474,8 @@ fn state_dir_moves_the_instances() {
         "--json",
     ]);
     assert_eq!(o.code, 0, "{}{}", o.stdout, o.stderr);
-    let open = w.project.join("kept/showcase/open");
-    assert_eq!(std::fs::read_dir(&open).unwrap().count(), 1, "{open:?}");
+    let active = w.project.join("kept/showcase/active");
+    assert_eq!(std::fs::read_dir(&active).unwrap().count(), 1, "{active:?}");
     assert!(w.project.join("kept/.gitignore").is_file());
     assert!(!w.project.join(".smllm/state").exists());
 }

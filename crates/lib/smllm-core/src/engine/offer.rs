@@ -9,7 +9,15 @@ use crate::record::Instance;
 use crate::utils::join;
 
 /// Built-in event names (IDLE-1).
-pub const BUILTINS: [&str; 5] = ["enter", "resume", "pause", "unmatched", "yield"];
+/// `listPaused` is offered only in idle, when its list was cut short (IDLE-7).
+pub const BUILTINS: [&str; 6] = [
+    "enter",
+    "resume",
+    "pause",
+    "unmatched",
+    "yield",
+    "listPaused",
+];
 
 /// An offered event.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -143,10 +151,13 @@ pub(crate) fn machine_offers(
     offers
 }
 
-/// Events offered in idle: `enter`, and `resume` when an instance is interrupted.
+/// Events offered in idle: `enter`, `resume` when an instance is
+/// interrupted, and `listPaused` when the idle list left some of `paused`
+/// out (IDLE-7).
 pub(crate) fn idle_offers(
     config: &Config,
     interrupted: Option<(&Machine, &Instance)>,
+    paused: Option<usize>,
 ) -> Vec<Offer> {
     let mut ref_params: Vec<&str> = Vec::new();
     for m in &config.machines {
@@ -204,6 +215,15 @@ pub(crate) fn idle_offers(
                     inst.state
                 ),
             ),
+            params: Vec::new(),
+        });
+    }
+    if let Some(n) = paused {
+        offers.push(Offer {
+            name: "listPaused".to_string(),
+            description: Some(format!(
+                "List all {n} paused instances, most recently updated first."
+            )),
             params: Vec::new(),
         });
     }

@@ -92,7 +92,7 @@ impl Engine {
         };
         let mut paused = 0;
         for m in &config.machines {
-            paused += host.store.instances_with(&m.id, Status::Paused)?.len() as u32;
+            paused += host.store.count(&m.id, Status::Paused)? as u32;
         }
         Ok(SessionStatus {
             session: session.key,

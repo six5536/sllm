@@ -1,5 +1,5 @@
 //! Idle: smllm's own state outside every machine. Its entry block is the idle
-//! list; its events are `enter` and `resume` (IDLE, INST).
+//! list; its events are `enter`, `resume` and `listPaused` (IDLE, INST).
 // @zen-component: IDLE-Idle
 
 use crate::Error;
@@ -7,12 +7,16 @@ use crate::engine::machine::{self, commit, owned, takeover_note};
 use crate::engine::offer::{check_value, idle_offers};
 use crate::engine::turn::Turn;
 use crate::engine::{Location, Reply, api::random_id};
+use crate::host::newest_first;
 use crate::model::{ActionDef, Machine};
 use crate::prelude::*;
 use crate::record::{Instance, Status};
 use crate::render::{Block, idle_header};
+use crate::utils::SmallMap;
 use crate::utils::join;
-use crate::utils::{SmallMap, insertion_sort_by};
+
+/// Paused instances the idle list shows; `listPaused` shows them all (IDLE-7).
+pub(crate) const IDLE_PAUSED: usize = 10;
 
 /// The idle list (TURN-7): header, notes, `error:`, idle instructions, state
 /// machines, interrupted and paused instances, events.
@@ -133,36 +137,109 @@ fn list(
             i.state
         ));
     }
-    let mut paused = Vec::new();
-    for m in &turn.config.machines {
-        for i in turn.host.store.instances_with(&m.id, Status::Paused)? {
-            paused.push((m, i));
-        }
+    // The newest few of each machine, merged: never every paused instance.
+    let (paused, total) = paused(turn, Some(IDLE_PAUSED))?;
+    paused_lines(b, &paused);
+    if total > paused.len() {
+        b.line(&format!(
+            "…and {} more paused: fire listPaused to list them all.",
+            total - paused.len()
+        ));
     }
-    insertion_sort_by(&mut paused, |(m, i), (n, j)| {
-        m.id.cmp(&n.id).then_with(|| i.label().cmp(j.label()))
-    });
-    if !paused.is_empty() {
-        b.line("Paused:");
-        for (m, i) in &paused {
-            b.line(&format!(
-                "- {} {} ({}) at {}",
-                m.instance.kind,
-                i.label(),
-                m.id,
-                i.state
-            ));
-        }
-    }
-    let offers = idle_offers(turn.config, interrupted.as_ref().map(|(m, i)| (*m, i)));
+    let offers = idle_offers(
+        turn.config,
+        interrupted.as_ref().map(|(m, i)| (*m, i)),
+        (total > IDLE_PAUSED).then_some(total),
+    );
     b.events(key, &offers);
     Ok(())
 }
 
-/// Fire `enter` or `resume` in idle.
+/// Paused instances with their machines, in the idle list's order.
+type Paused<'c> = Vec<(&'c Machine, Instance)>;
+
+/// The paused instances of the configured machines, newest first (ties by
+/// machine, then label), at most `limit` of them; and how many there are.
+// @zen-impl: IDLE-7_AC-1
+fn paused<'c>(turn: &mut Turn<'c, '_>, limit: Option<usize>) -> Result<(Paused<'c>, usize), Error> {
+    let mut all = Vec::new();
+    let mut total = 0;
+    for m in &turn.config.machines {
+        let store = &mut *turn.host.store;
+        let n = store.count(&m.id, Status::Paused)?;
+        total += n;
+        all.extend(store.recent(&m.id, Status::Paused, limit.unwrap_or(n))?);
+    }
+    newest_first(&mut all);
+    if let Some(n) = limit {
+        all.truncate(n);
+    }
+    let machines = &turn.config.machines;
+    let paused = all
+        .into_iter()
+        .filter_map(|i| Some((machines.iter().find(|m| m.id == i.machine)?, i)))
+        .collect();
+    Ok((paused, total))
+}
+
+fn paused_lines(b: &mut Block, paused: &[(&Machine, Instance)]) {
+    if paused.is_empty() {
+        return;
+    }
+    b.line("Paused:");
+    for (m, i) in paused {
+        b.line(&format!(
+            "- {} {} ({}) at {}",
+            m.instance.kind,
+            i.label(),
+            m.id,
+            i.state
+        ));
+    }
+}
+
+/// `listPaused`: every paused instance, in the idle list's order, and the
+/// idle events. A view: it writes nothing, not even the session, so it is
+/// not an event for the stop rule (IDLE-7, PLAN-008 DC-1).
+// @zen-impl: IDLE-7_AC-2
+fn list_paused(turn: &mut Turn<'_, '_>) -> Result<Reply, Error> {
+    let key = turn.session.key.clone();
+    let (paused, total) = paused(turn, None)?;
+    let interrupted = match &turn.session.interrupted {
+        Some(k) => owned(turn.config, turn.host.store, k, Status::Interrupted, &key)?,
+        None => None,
+    };
+    let mut b = Block::open(&idle_header(&key));
+    paused_lines(&mut b, &paused);
+    let offers = idle_offers(
+        turn.config,
+        interrupted.as_ref().map(|(m, i)| (*m, i)),
+        (total > IDLE_PAUSED).then_some(total),
+    );
+    b.events(&key, &offers);
+    Ok(Reply {
+        ok: true,
+        session: key,
+        location: Location::default(),
+        text: b.close(),
+    })
+}
+
+/// Fire `enter`, `resume` or `listPaused` in idle.
 pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Result<Reply, Error> {
+    let listable = turn.event == "listPaused" && more_paused(turn)?;
     match turn.event.as_str() {
         "enter" => enter(turn, params),
+        "listPaused" if listable => {
+            if let Some((n, _)) = params.first() {
+                return reply(
+                    turn,
+                    false,
+                    Some(format!("listPaused takes no params, but got {n}")),
+                );
+            }
+            list_paused(turn)
+        }
         "resume" if turn.session.interrupted.is_some() => {
             if let Some((n, _)) = params.first() {
                 return reply(
@@ -174,15 +251,30 @@ pub(crate) fn fire(turn: &mut Turn<'_, '_>, params: &[(String, String)]) -> Resu
             resume(turn)
         }
         _ => {
-            let offered = if turn.session.interrupted.is_some() {
-                "enter, resume"
-            } else {
-                "enter"
-            };
-            let msg = format!("{} is not offered in idle (offered: {offered})", turn.event);
+            let mut offered = vec!["enter"];
+            if turn.session.interrupted.is_some() {
+                offered.push("resume");
+            }
+            if more_paused(turn)? {
+                offered.push("listPaused");
+            }
+            let msg = format!(
+                "{} is not offered in idle (offered: {})",
+                turn.event,
+                join(offered)
+            );
             reply(turn, false, Some(msg))
         }
     }
+}
+
+/// Whether the idle list is cut short, so `listPaused` is offered.
+fn more_paused(turn: &mut Turn<'_, '_>) -> Result<bool, Error> {
+    let mut total = 0;
+    for m in &turn.config.machines {
+        total += turn.host.store.count(&m.id, Status::Paused)?;
+    }
+    Ok(total > IDLE_PAUSED)
 }
 
 /// How `enter` reaches its state.

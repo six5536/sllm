@@ -19,12 +19,13 @@
 `smllm-core` compiles `no_std` + `alloc` for the size-critical wasm target (a browser host runs the state machines; see PLAN-001 D24). `cargo test` links `std` and **masks** `no_std`/size regressions. Verify import- or size-sensitive changes with `cargo build -p smllm-core --no-default-features --target wasm32-unknown-unknown` and `npm run build:wasm` (prints the `smllm_wasm_bg.wasm` size and fails over its budget), not just the test suite. Parsing, validation and everything std-only belong in `smllm-format` or the app, never in the core.
 
 - Import `String`/`Vec`/`format!`/etc. via `use crate::prelude::*;` — never rely on the std prelude (it is absent under `no_std`).
-- Do NOT use std's general sort (`.sort()`, `.sort_by`, `.sort_by_key`, `.sort_unstable*`) in `smllm-core`: it pulls ~23 KB of driftsort/ipnsort into the wasm. Use `crate::utils::insertion_sort_by_key` for the engine's small collections.
+- Do NOT use std's general sort (`.sort()`, `.sort_by`, `.sort_by_key`, `.sort_unstable*`) in `smllm-core`: it pulls ~23 KB of driftsort/ipnsort into the wasm. Use `crate::utils::merge_sort_by` (stable, O(n log n); PLAN-008 D8-5), and prefer an ordered index over sorting on every call (as `MemoryStore`'s status index).
 - Do NOT use `BTreeSet`/`BTreeMap` in `smllm-core`: each element type instantiates the whole B-tree machinery. Use `crate::utils::SmallMap` (a sorted `Vec`, key order, binary search, shifted insert; serialises as a JSON object).
 - Use ASCII case ops (`to_ascii_lowercase`/`to_ascii_uppercase`) for ASCII data (names, env var names); `to_lowercase`/`to_uppercase` drag the Unicode case-folding tables into the binary.
 - Avoid `{:?}`/`Debug` formatting in non-test code paths of `smllm-core` — it pulls each type's `Debug` impl (and more `core::fmt` machinery) into the release wasm.
 - Every type the core serialises has a `smllm-json` impl beside its `serde` derive (`src/json.rs`: the `object!` field list mirrors the derive's names and `default`s), writing the same JSON byte for byte; add each new or changed type to `json::tests`. `smllm-wasm` uses smllm-json only: never add serde, serde_json or another JSON crate to it (PLAN-007 D7-6).
 - In `smllm-json` conversions, loop and `push` rather than `collect()` into a `Vec<T>` (the adapter inlines each type's decoder per element type: +8.7 KB), and keep `Error` one pointer (a large error makes every `Result` costly to move: +8.8 KB).
+- A `Store` that wraps another delegates every method, the ones with defaults included (`instances_with`, `instance_by_ref`, `count`, `recent`): a default answers by cloning and scanning every instance, bypassing the wrapped store's indexes (PLAN-008 F4 found `WasmStore` ~30× slower this way).
 - IO, time, randomness, regex and process spawning come from the host traits in `smllm_core::host` (NFR-1); never add a dependency to `smllm-core` that needs `std`.
 
 ## Unsafe Rust Code

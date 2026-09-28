@@ -163,12 +163,32 @@ object!(HistoryEntry {
     trace: "trace" default,
 });
 
-object!(MemoryStore {
-    sessions: "sessions" req,
-    bindings: "bindings" req,
-    instances: "instances" req,
-    history: "history" skip,
-});
+/// Its fields are private (its indexes are derived): written through its
+/// accessors, read through [`MemoryStore::from_parts`], which builds them.
+impl ToJson for MemoryStore {
+    fn write_json(&self, out: &mut String) {
+        let mut o = object(out);
+        o.field("sessions", self.sessions())
+            .field("bindings", self.bindings())
+            .field("instances", self.all_instances());
+        if !self.history().is_empty() {
+            o.field("history", self.history());
+        }
+        o.end();
+    }
+}
+
+impl FromJson for MemoryStore {
+    fn from_json(value: JsonValue) -> Result<Self, Error> {
+        let mut f = Fields::from_json(value)?;
+        Ok(MemoryStore::from_parts(
+            f.req("sessions")?,
+            f.req("bindings")?,
+            f.req("instances")?,
+            f.or_default("history")?,
+        ))
+    }
+}
 
 object!(Location {
     machine: "machine" default,

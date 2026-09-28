@@ -80,13 +80,16 @@ fn records_are_the_same_both_ways() {
         params: [("p", String::from("v"))].into_iter().collect(),
         trace: vec!["t".into()],
     };
-    let mut m = MemoryStore::default();
-    m.sessions.insert("sm-1", session());
-    m.bindings.insert("h/x", "sm-1".into());
-    m.instances.insert("m/i", instance());
-    same(&m);
-    m.history.insert("m/i", vec![h.clone()]);
-    same(&m);
+    let parts = |history: SmallMap<Vec<HistoryEntry>>| {
+        MemoryStore::from_parts(
+            [("sm-1", session())].into_iter().collect(),
+            [("h/x", String::from("sm-1"))].into_iter().collect(),
+            [("m/i", instance())].into_iter().collect(),
+            history,
+        )
+    };
+    same(&parts(SmallMap::new()));
+    same(&parts([("m/i", vec![h.clone()])].into_iter().collect()));
     same(&session());
     same(&instance());
     same(&h);

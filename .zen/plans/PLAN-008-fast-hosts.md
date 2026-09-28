@@ -97,6 +97,7 @@ wasm or package is touched) passing, and updates the specs it touches. The wasm 
 | F1 | Requirements and designs in the new terms (D8-20) | — |
 | F2 | The renames in code, agent text, status line, docs (D8-4) | gate; snapshots; wasm tests; no `park` / `parked` / `suspended` left outside plans and the changelog's past entries |
 | F3 | `npm run bench` (D8-1, D8-9): wasm, MCP and CLI per-call times at 0 / 100 / 1,000 instances | the baseline table in §6 |
+| F4 | Merge sort (`utils::merge_sort_by`; insertion sort gone); `Store::count` / `recent` (defaults scan); `MemoryStore` private, `from_parts`, indexes by ref and by status keyed `updated` then label (count = run length, recent = newest groups, no sort, however many tie), the file store's ref rule; the file store's shelf per status, `count` by listing, `recent` by file time (ties read); idle list capped at 10 with `…and K more`, `listPaused` (a view); `newest_first` orders by time, machine, label (one sort for the merge). D8-7 profiling found `WasmStore` never delegated `instances_with` / `instance_by_ref` (since PLAN-005) nor the new two, so the wasm scanned and sorted every instance: all delegate now (rust-rules: a wrapping store delegates every method). Tests: ENG_P-5 proptest (mutation-checked twice), idle cap + `listPaused` snapshot, file store `count` / `recent` with tied times, `scaling.test.mjs` (fails on the original bug). 199 tests + 7 wasm; wasm 127,774 bytes. Local state moved to the new shelves by hand, binary reinstalled |
 | F4 | Engine scaling: merge sort, idle cap and `listPaused`, `MemoryStore` indexes, `Store::count` / `recent`, the file store's shelf per status (D8-2, D8-3, D8-5, D8-6, D8-21), then D8-7's findings | the scaling check in CI; the proptest; store contract tests; idle snapshots; bench |
 | F5 | MCP config cache (D8-8; D8-10 if it shows) | an edited machine file is picked up on the next call, including within one timestamp tick; bench |
 | F6 | The tool definition in core; `Engine::call`; `tool()` / `callTool()` (D8-12, D8-13) | the MCP server serves core's tool; one call table answered alike by MCP and wasm |
@@ -232,22 +233,25 @@ Found, then decided:
 
 ### 6.1 Bench (median ms per call; store size = paused / completed; local disk, this devcontainer)
 
-| path | call | F3 0 / 0 | F3 100 / 1000 | F3 1000 / 1000 |
-| ---- | ---- | ---: | ---: | ---: |
-| wasm | enter | 0.052 | 0.233 | 0.428 |
-| wasm | view | 0.019 | 0.007 | 0.009 |
-| wasm | stop | 0.015 | 0.006 | 0.007 |
-| wasm | pause | 0.054 | 0.331 | 4.312 |
-| mcp | enter | 0.531 | 0.493 | 0.786 |
-| mcp | view | 0.232 | 0.204 | 0.295 |
-| mcp | pause | 0.468 | 1.120 | 11.781 |
-| cli | fire enter | 1.448 | 1.448 | 1.939 |
-| cli | session show | 1.192 | 1.168 | 1.438 |
-| cli | statusline | 1.259 | 1.939 | 7.906 |
-| cli | fire pause | 1.426 | 2.232 | 13.504 |
+| path | call | F3 0 / 0 | F3 100 / 1000 | F3 1000 / 1000 | F4 0 / 0 | F4 100 / 1000 | F4 1000 / 1000 |
+| ---- | ---- | ---: | ---: | ---: | ---: | ---: | ---: |
+| wasm | enter | 0.052 | 0.233 | 0.428 | 0.039 | 0.017 | 0.024 |
+| wasm | view | 0.019 | 0.007 | 0.009 | 0.017 | 0.007 | 0.009 |
+| wasm | stop | 0.015 | 0.006 | 0.007 | 0.014 | 0.006 | 0.007 |
+| wasm | pause | 0.054 | 0.331 | 4.312 | 0.063 | 0.027 | 0.032 |
+| mcp | enter | 0.531 | 0.493 | 0.786 | 0.439 | 0.418 | 0.447 |
+| mcp | view | 0.232 | 0.204 | 0.295 | 0.226 | 0.199 | 0.203 |
+| mcp | pause | 0.468 | 1.120 | 11.781 | 0.447 | 0.615 | 2.348 |
+| cli | fire enter | 1.448 | 1.448 | 1.939 | 1.469 | 1.692 | 1.660 |
+| cli | session show | 1.192 | 1.168 | 1.438 | 1.381 | 1.325 | 1.212 |
+| cli | statusline | 1.259 | 1.939 | 7.906 | 1.246 | 1.325 | 1.425 |
+| cli | fire pause | 1.426 | 2.232 | 13.504 | 1.515 | 1.898 | 4.493 |
 
 F3 findings: the release MCP server is already 0.2–0.8 ms per call, and a CLI call ~1.4 ms (§2's 4.5 ms
 `fire yield` was the installed binary on the container's overlay file system; the cause of the gap is not
 established); the growth is where DC-5 said: `pause` (the idle list reads every
 paused instance) and the status line's count (reads every open file); wasm `enter` grows with all instances
 (`instance_by_ref` clones them, D8-6).
+
+F4: the wasm is flat and ~30–140× faster at 1,000 paused; MCP `pause` meets D8-1 at 100 paused (0.62 ms); at
+1,000 paused the file store's `recent` still stats every `paused/` file (2.3 ms), outside D8-1's stated size.

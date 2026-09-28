@@ -82,6 +82,16 @@ impl<V> SmallMap<V> {
     pub fn keys(&self) -> impl Iterator<Item = &str> {
         self.entries.iter().map(|(k, _)| k.as_str())
     }
+    /// The entries whose key starts with `prefix`, in key order: a
+    /// contiguous run found by two binary searches, so its length and either
+    /// end cost O(log n).
+    pub fn prefixed(&self, prefix: &str) -> &[(String, V)] {
+        let start = self.entries.partition_point(|(k, _)| k.as_str() < prefix);
+        let end = self
+            .entries
+            .partition_point(|(k, _)| k.as_str() < prefix || k.starts_with(prefix));
+        &self.entries[start..end]
+    }
 }
 
 impl<V, K: Into<String>> FromIterator<(K, V)> for SmallMap<V> {
@@ -143,6 +153,23 @@ mod serde_impl {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prefixed_is_the_contiguous_run() {
+        let m: SmallMap<u8> = [("a/1", 1), ("a/2", 2), ("a0", 3), ("b/1", 4), ("a", 5)]
+            .into_iter()
+            .collect();
+        let keys = |p| {
+            m.prefixed(p)
+                .iter()
+                .map(|(k, _)| k.as_str())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(keys("a/"), vec!["a/1", "a/2"]);
+        assert_eq!(keys("b/"), vec!["b/1"]);
+        assert!(keys("c/").is_empty());
+        assert_eq!(keys("").len(), 5);
+    }
 
     #[test]
     fn insert_get_remove_in_key_order() {
